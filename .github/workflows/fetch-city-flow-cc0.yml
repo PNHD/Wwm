@@ -1,0 +1,95 @@
+name: Fetch City Flow CC0 Assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fetch-city-flow-cc0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ASSET_DIR: city-flow-cc0
+
+jobs:
+  fetch-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download official Kenney CC0 packs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ASSET_DIR/raw" "$ASSET_DIR/extracted" "$ASSET_DIR/licenses"
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://kenney.nl/media/pages/assets/city-kit-suburban/2c871b7af2-1745479373/kenney_city-kit-suburban_20.zip' \
+            --output "$ASSET_DIR/raw/kenney_city-kit-suburban_20.zip"
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://www.kenney.nl/media/pages/assets/city-kit-commercial/a742d900eb-1753115042/kenney_city-kit-commercial_2.1.zip' \
+            --output "$ASSET_DIR/raw/kenney_city-kit-commercial_2.1.zip"
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://www.kenney.nl/media/pages/assets/city-kit-roads/74288c9459-1741864740/kenney_city-kit-roads.zip' \
+            --output "$ASSET_DIR/raw/kenney_city-kit-roads.zip"
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip' \
+            --output "$ASSET_DIR/raw/kenney_car-kit.zip"
+
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip' \
+            --output "$ASSET_DIR/raw/kenney_nature-kit.zip"
+
+      - name: Validate and extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum "$ASSET_DIR"/raw/*.zip | tee "$ASSET_DIR/SHA256SUMS.txt"
+          for archive in "$ASSET_DIR"/raw/*.zip; do
+            unzip -tq "$archive"
+            name="$(basename "$archive" .zip)"
+            mkdir -p "$ASSET_DIR/extracted/$name"
+            unzip -q "$archive" -d "$ASSET_DIR/extracted/$name"
+          done
+
+          find "$ASSET_DIR/extracted" -type f \
+            | sed "s#^$ASSET_DIR/extracted/##" \
+            | sort > "$ASSET_DIR/FILE_MANIFEST.txt"
+
+          find "$ASSET_DIR/extracted" -type f \
+            \( -iname 'license*' -o -iname 'readme*' \) \
+            -print0 | while IFS= read -r -d '' file; do
+              dest="$ASSET_DIR/licenses/${file#${ASSET_DIR}/extracted/}"
+              mkdir -p "$(dirname "$dest")"
+              cp "$file" "$dest"
+            done
+
+          cat > "$ASSET_DIR/SOURCES.md" <<'EOF'
+          # City Flow CC0 asset sources
+
+          Downloaded from the official Kenney website on the workflow run date.
+
+          - City Kit (Suburban) 2.0 — CC0 1.0
+          - City Kit (Commercial) 2.1 — CC0 1.0
+          - City Kit (Roads) 2.0 — CC0 1.0
+          - Car Kit 3.1 — CC0 1.0
+          - Nature Kit 1.0 — CC0 1.0
+
+          Kenney states that attribution is not required. Source credit is retained for provenance.
+          EOF
+
+      - name: Upload verified asset bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: city-flow-cc0-kenney-source
+          path: city-flow-cc0
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 14
