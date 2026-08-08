@@ -1,4 +1,4 @@
-name: Forensic Official Global Data API
+name: Forensic Official Global Map SSO
 
 on:
   push:
@@ -14,29 +14,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Extract first-party API routes and map linkage
+      - name: Trace first-party login config and map ticket exchange
         shell: bash
         run: |
           set -euo pipefail
-          base='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
-          curl --fail --silent --show-error --location "$base/index-67f2100d.js" -o /tmp/index.js
-          curl --fail --silent --show-error --location "$base/app-9b07739a.js" -o /tmp/app.js
+          data='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
+          map='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
+          curl --fail --silent --show-error --location "$data/uniLogin-422132ba.js" -o /tmp/unilogin.js
+          curl --fail --silent --show-error --location "$data/index-67f2100d.js" -o /tmp/data-index.js
+          for f in pc-d3f0a0d4.js common-a15f2132.js index-be137abf.js index-1d9774f9.js; do curl --fail --silent --show-error --location "$map/$f" -o "/tmp/$f"; done
           python - <<'PY'
           from pathlib import Path
           import re
-          for name in ['index','app']:
-              t=Path('/tmp/'+name+'.js').read_text('utf-8',errors='ignore')
-              print('FILE',name,'BYTES',len(t.encode()))
+          files=['unilogin.js','data-index.js','pc-d3f0a0d4.js','common-a15f2132.js','index-be137abf.js','index-1d9774f9.js']
+          terms=['MpayOSSDK','gameId','game_id','appChannel','app_channel','loginChannel','login_channel','enableLoginType','showLogin','gameRedirectUrl','JF_GAMEID','SAUTH_JSON','h72na_map','?ticket=','ticket','sso','h72_map_accessToken','accessToken','access_token','roleList','roleLogin','map/points','map/list','finished','finishPointsNum','pointList','s2.easebar.com']
+          for fn in files:
+              t=Path('/tmp/'+fn).read_text('utf-8',errors='ignore')
+              print('\nFILE',fn,'BYTES',len(t.encode()))
+              low=t.lower(); seen=[]
+              for term in terms:
+                  i=low.find(term.lower())
+                  if i<0: continue
+                  s=t[max(0,i-420):min(len(t),i+1300)].replace('\n',' ')[:1720]
+                  print('CTX',term,'::',s)
               routes=set()
-              for pat in [r'url:\s*["\'`]([^"\'`]+)["\'`]',r'["\'`](/(?:login|logout|role|rank|map|point|progress|explore|exploration|record|data|profile|battle|combat|score|user|player|character|collect|finish)[^"\'`]*)["\'`]']:
-                  for m in re.finditer(pat,t,re.I):
-                      v=m.group(1)
-                      if len(v)<220: routes.add(v)
-              print('ROUTES_BEGIN')
-              for x in sorted(routes): print(x)
-              print('ROUTES_END')
-              for term in ['https://s2.easebar.com/78ae9d90792a3e9b','/login/roleList','/login/roleLogin','qinghe','hexi','kaifeng','exploration','map/${','wherewindsmeetgame.com/map','access_token','roleInfo','score','rank','play_time','martial','elegance']:
-                  i=t.lower().find(term.lower())
-                  if i>=0:
-                      print('CTX',term,'::',t[max(0,i-500):min(len(t),i+1600)].replace('\n',' ')[:2100])
+              for m in re.finditer(r'["\'`](/(?:api/)?(?:auth|login|logout|role|map|sso|ticket|point|progress)[^"\'`]*)["\'`]',t,re.I):
+                  if len(m.group(1))<180: routes.add(m.group(1))
+              if routes:
+                  print('ROUTES',*sorted(routes),sep='\n')
+              urls=sorted(set(re.findall(r'https://[^\s"\'`<>\\)]+',t)))
+              for u in urls:
+                  if any(k in u.lower() for k in ['s2.easebar','mpsdk','wherewindsmeetgame.com/map']): print('URL',u[:600])
           PY
