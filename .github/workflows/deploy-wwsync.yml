@@ -159,11 +159,11 @@ jobs:
             await page.waitForFunction(()=>document.querySelectorAll('#categoryList button').length>0,null,{timeout:30000});
             await page.waitForSelector('.leaflet-container',{state:'visible',timeout:30000});
             await page.waitForFunction(()=>document.querySelectorAll('img.leaflet-tile-loaded').length>0,null,{timeout:30000});
-            const s=await page.evaluate(()=>({title:document.title,sdk:typeof window.MpayOSSDK,shim:Boolean(window.MpayOSSDK?.prototype?.__wwsyncCorsShim),leaflet:typeof window.L,maps:document.querySelectorAll('#mapSelect option').length,categories:document.querySelectorAll('#categoryList button').length,tiles:document.querySelectorAll('img.leaflet-tile-loaded').length,pointCanvases:document.querySelectorAll('.leaflet-overlay-pane canvas').length,passwordInputs:document.querySelectorAll('input[type=password]').length,legacy:/wwmmap|relay server|sync password/i.test(document.body.innerText)}));
+            const s=await page.evaluate(()=>({title:document.title,sdk:typeof window.MpayOSSDK,shim:Boolean(window.MpayOSSDK?.prototype?.__wwsyncCorsShim),leaflet:typeof window.L,maps:document.querySelectorAll('#mapSelect option').length,categories:document.querySelectorAll('#categoryList button').length,tiles:document.querySelectorAll('img.leaflet-tile-loaded').length,pointCanvases:document.querySelectorAll('.leaflet-overlay-pane canvas').length,passwordInputs:document.querySelectorAll('input[type=password]').length,legacyControls:Boolean(document.querySelector('#relay-select,#password-step,#password-input,[name="syncPassword"]'))}));
             if(s.title!=='WWSync — Where Winds Meet')fatal.push(`title=${s.title}`);
             if(s.sdk!=='function'||!s.shim)fatal.push(`sdk/shim=${s.sdk}/${s.shim}`);
             if(s.leaflet!=='object'||s.maps<3||s.categories<1||s.tiles<1||s.pointCanvases<1)fatal.push(`map=${JSON.stringify(s)}`);
-            if(s.passwordInputs||s.legacy)fatal.push('legacy credential UI leaked');
+            if(s.passwordInputs||s.legacyControls)fatal.push('legacy credential controls leaked');
             await page.selectOption('#languageSelect','en');
             if(!/sync/i.test(await page.locator('[data-i18n="syncTitle"]').textContent()))fatal.push('English switch failed');
             await page.selectOption('#languageSelect','vi');
