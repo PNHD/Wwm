@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Inspect public official CN map/tool surfaces
+      - name: Distill first-party CN and Global sync surfaces
         shell: bash
         run: |
           set -euo pipefail
@@ -24,65 +24,46 @@ jobs:
           cat > /tmp/probe.cjs <<'NODE'
           const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
           const fs=require('fs');
-          const urls=[
-            'https://ds.163.com/g/yysls',
-            'https://act.ds.163.com/6edef85118d3037a/?mapLevel=0&zoom=3'
+          const pages=[
+            ['CN_GAME','https://ds.163.com/g/yysls'],
+            ['CN_MAP','https://act.ds.163.com/6edef85118d3037a/?mapLevel=0&zoom=3'],
+            ['GLOBAL_MAP','https://www.wherewindsmeetgame.com/map/en/'],
+            ['GLOBAL_EVENT','https://www.wherewindsmeetgame.com/m/202604/qcrlr/en/']
           ];
+          const reqRe=/(api|graphql|socket|websocket|\bws\b|sync|position|coordinate|role|player|game|bind|login|account|finish|collect|map|download|plugin|bridge|native|localhost|127\.0\.0\.1)/i;
+          const linkRe=/(download|pc|windows|map|helper|tool|game|client|plugin|游戏|工具|地图|下载|大神)/i;
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            let allJs=[];
-            for(const target of urls){
-              const page=await browser.newPage({viewport:{width:1440,height:900}});
-              const reqs=[]; const resps=[]; const js=[];
-              page.on('request',r=>reqs.push(`${r.method()} ${r.resourceType()} ${r.url()}`));
-              page.on('response',async r=>{
-                const u=r.url(); resps.push(`${r.status()} ${u}`);
-                if(/\.js(?:\?|$)|\.mjs(?:\?|$)/i.test(u)){
-                  try{const body=await r.text(); if(body.length>200 && !/^\s*<!doctype html/i.test(body))js.push({u,body});}catch{}
-                }
-              });
-              page.on('console',m=>console.log('CONSOLE',target,m.type(),m.text()));
-              const nav=await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000}).catch(e=>null);
-              console.log('\n=== PAGE',target,'NAV',nav?.status(),page.url(),'===');
-              await page.waitForTimeout(12000);
-              console.log('TITLE',await page.title().catch(()=>''));
-              console.log('BODY',JSON.stringify((await page.locator('body').innerText().catch(()=>'' )).slice(0,12000)));
-              const links=(await page.locator('a').evaluateAll(as=>as.map(a=>({text:(a.innerText||'').trim().slice(0,120),href:a.href})).filter(x=>x.href))).slice(0,200);
-              console.log('LINKS',JSON.stringify(links));
-              console.log('IFRAMES',JSON.stringify(await page.locator('iframe').evaluateAll(xs=>xs.map(x=>x.src))));
-              console.log('REQUESTS_BEGIN'); for(const x of [...new Set(reqs)]) console.log(x); console.log('REQUESTS_END');
-              console.log('RESPONSES_BEGIN'); for(const x of [...new Set(resps)]) if(/ds\.163|163\.com|netease|yysl|map|api|ws|socket|plugin|download/i.test(x)) console.log(x); console.log('RESPONSES_END');
-              allJs.push(...js);
+            const allJs=[];
+            for(const [label,target] of pages){
+              const page=await browser.newPage({viewport:{width:1280,height:800}});
+              const reqs=[]; const js=[];
+              page.on('request',r=>{const u=r.url(); if(reqRe.test(u))reqs.push(`${r.method()} ${r.resourceType()} ${u}`)});
+              page.on('response',async r=>{const u=r.url(); if(/\.(?:m?js)(?:\?|$)/i.test(u)){try{const body=await r.text();if(body.length>500&&!/^\s*<!doctype html/i.test(body))js.push({u,body})}catch{}}});
+              const nav=await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>null);
+              await page.waitForTimeout(8000);
+              console.log(`PAGE ${label} HTTP=${nav?.status()||0} FINAL=${page.url()} TITLE=${JSON.stringify(await page.title().catch(()=>''))}`);
+              const links=await page.locator('a').evaluateAll((as)=>as.map(a=>({t:(a.innerText||a.textContent||'').trim().replace(/\s+/g,' ').slice(0,100),h:a.href})).filter(x=>x.h));
+              for(const x of links.filter(x=>linkRe.test(`${x.t} ${x.h}`)).slice(0,12))console.log(`LINK ${label} ${JSON.stringify(x.t)} ${x.h}`);
+              for(const x of [...new Set(reqs)].slice(0,30))console.log(`REQ ${label} ${x}`);
+              for(const x of js.slice(0,12)){console.log(`JS ${label} ${x.u}`);allJs.push({label,...x})}
               await page.close();
             }
-            const unique=new Map(); for(const x of allJs) if(!unique.has(x.u)) unique.set(x.u,x.body);
-            let i=0; for(const [u,body] of unique){fs.writeFileSync(`/tmp/cn-${i}.js`,body); console.log('JS_URL',i,u,'BYTES',body.length); i++;}
+            const terms=['127.0.0.1','localhost','websocket','wss://','postmessage','native','bridge','plugin','ipc','position','coordinate','roleid','serverid','gameid','finished','finishpointsnum','collect','treasure','chest','sync','bind','大神','大地图','同步','实时','坐标','宝箱','已采集'];
+            let n=0;
+            for(const x of allJs){
+              const low=x.body.toLowerCase();
+              for(const term of terms){
+                const i=low.indexOf(term.toLowerCase()); if(i<0)continue;
+                const s=x.body.slice(Math.max(0,i-180),Math.min(x.body.length,i+420)).replace(/\s+/g,' ').slice(0,600);
+                console.log(`HIT ${x.label} ${term} ${x.u} :: ${s}`);
+                if(++n>=45)break;
+              }
+              if(n>=45)break;
+            }
             await browser.close();
           })().catch(e=>{console.error('FATAL',e);process.exit(1)});
           NODE
-          CHROME_PATH="$CHROME_PATH" node /tmp/probe.cjs
-          echo '=== JS INTEROP CONTEXT ==='
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          terms=['websocket','ws://','wss://','127.0.0.1','localhost','postmessage','native','bridge','plugin','ipc','position','coordinate','location','collect','finish','finished','treasure','chest','player','roleid','serverid','gameid','yysls','com.netease.yysls','api/','graphql','socket','大神','大地图','同步','实时','坐标','宝箱','已采集']
-          for p in sorted(Path('/tmp').glob('cn-*.js')):
-              t=p.read_text('utf-8',errors='ignore'); low=t.lower(); hits=[x for x in terms if x.lower() in low]
-              if not hits: continue
-              print('\nFILE',p.name,'BYTES',len(t.encode()),'HITS',hits)
-              centers=[]
-              for term in hits:
-                  needle=term.lower(); pos=0
-                  while True:
-                      i=low.find(needle,pos)
-                      if i<0: break
-                      if not any(abs(i-c)<1800 for c in centers):
-                          centers.append(i)
-                          print('\n---',term,'@',i,'---')
-                          print(t[max(0,i-2200):min(len(t),i+5200)].replace('\n',' ')[:7600])
-                      pos=i+len(needle)
-                      if len(centers)>=35: break
-                  if len(centers)>=35: break
-              for u in sorted(set(re.findall(r'https?://[^\s"<>]+|wss?://[^\s"<>]+',t))):
-                  if any(k in u.lower() for k in ['163','netease','yysl','map','api','socket','ws']): print('URL',u[:1200])
-          PY
+          CHROME_PATH="$CHROME_PATH" node /tmp/probe.cjs | tee /tmp/report.txt
+          echo REPORT_LINES=$(wc -l </tmp/report.txt)
+          test $(wc -c </tmp/report.txt) -lt 60000
