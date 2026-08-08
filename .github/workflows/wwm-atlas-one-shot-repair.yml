@@ -49,13 +49,13 @@ jobs:
           ! find dist -type f -path '*/.github/*' | grep -q .
           rm -rf dist
 
-      - name: Commit repaired tree
+      - name: Commit runtime repair
         run: |
           set -euo pipefail
+          git restore --source=HEAD -- .github/workflows/validate-wwm-map.yml .github/workflows/deploy-cloudflare-pages.yml
           git config user.name "WWM Atlas Repair Bot"
           git config user.email "actions@users.noreply.github.com"
-          git rm .github/wwm-atlas-repair.py .github/workflows/wwm-atlas-one-shot-repair.yml
-          git add app.js sw.js _headers README.md docs/DATA_CONTRACT.md .github/workflows/validate-wwm-map.yml .github/workflows/deploy-cloudflare-pages.yml
+          git add app.js sw.js _headers README.md docs/DATA_CONTRACT.md
           git diff --cached --check
           git commit -m "Fix WWM Atlas runtime and production QA"
           git push origin HEAD:repair/wwm-atlas-production-qa-20260808
