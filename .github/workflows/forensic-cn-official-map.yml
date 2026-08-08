@@ -1,10 +1,9 @@
-name: Extract Official Global UniLogin Config
+name: Find Official Data Tool Session Contract
 
 on:
   push:
     branches: [feature/wwm-native-sync-v2]
     paths: ['.github/workflows/forensic-cn-official-map.yml']
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,35 +11,26 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: Extract exact public login config
+      - name: Extract token storage and SSO request contract
         shell: bash
         run: |
           set -euo pipefail
-          root='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
-          curl --fail --silent --show-error --location "$root/uniLogin-422132ba.js" -o /tmp/u.js
-          curl --fail --silent --show-error --location "$root/index-67f2100d.js" -o /tmp/i.js
-          curl --fail --silent --show-error --location "$root/app-9b07739a.js" -o /tmp/a.js
+          src='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/index-67f2100d.js'
+          curl --fail --silent --show-error --location "$src" -o /tmp/i.js
           python - <<'PY'
           from pathlib import Path
           import re
-          for fn in ['u.js','i.js','a.js']:
-              t=Path('/tmp/'+fn).read_text('utf-8',errors='ignore'); low=t.lower()
-              print('\nFILE',fn,'BYTES',len(t.encode()))
-              terms=['async init','init(e,t)','init(t,e)','APPID','JF_GAMEID','LOGIN_CHANNEL','APP_CHANNEL','GAME_VERSION','NETEASE_GLOBAL_ENABLE_LOGIN_TYPES','NETEASE_GLOBAL_GAME_REDIRECT_URL','NETEASE_GLOBAL_SERVER_BASE_URL','netease_global','h72naxx2gb','gameId:398','game_id:398','login_channel','app_channel','enableLoginType','openLogin(e)','Su.init','uniLogin.init']
-              printed=[]
-              for term in terms:
-                  pos=0
-                  while True:
-                      i=low.find(term.lower(),pos)
-                      if i<0: break
-                      if not any(abs(i-x)<1000 for x in printed):
-                          printed.append(i)
-                          print('CTX',term,'::',t[max(0,i-700):min(len(t),i+2200)].replace('\n',' ')[:2900])
-                      pos=i+len(term)
-                      if len(printed)>=16: break
-                  if len(printed)>=16: break
-              for m in re.finditer(r'(?:APPID|JF_GAMEID|LOGIN_CHANNEL|APP_CHANNEL|GAME_VERSION|NETEASE_GLOBAL_ENABLE_LOGIN_TYPES|NETEASE_GLOBAL_GAME_REDIRECT_URL)\s*[:=]\s*([^,;}]{1,180})',t):
-                  print('ASSIGN',m.group(0)[:260])
+          t=Path('/tmp/i.js').read_text('utf-8',errors='ignore')
+          for term in ['updateToken(e)','updateToken(t.data)','token:', 'access_token', 'VueBase.cookie', 'cookie.get', 'cookie.set', '/sso/ticket', 'h72na_map']:
+              print('\nTERM',term)
+              pos=0
+              while True:
+                  i=t.find(term,pos)
+                  if i<0: break
+                  print(t[max(0,i-900):min(len(t),i+2300)].replace('\n',' ')[:3200])
+                  pos=i+len(term)
+                  if pos>i+len(term) and pos>0: break
+          keys=sorted(set(re.findall(r'["\']([A-Za-z0-9_:-]{3,60}(?:token|Token|access|login)[A-Za-z0-9_:-]{0,30})["\']',t)))
+          print('\nKEYS',keys[:120])
           PY
