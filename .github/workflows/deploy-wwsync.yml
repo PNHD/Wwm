@@ -17,7 +17,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,4 +92,79 @@ jobs:
           node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWSync') process.exit(1)"
           curl --fail --silent --show-error --location 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' -o /tmp/official.json
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/official.json','utf8')); if(!x.success||!Array.isArray(x.data?.maps)||x.data.maps.length<3) process.exit(1)"
-          echo "WWSync smoke passed: $base"
+          curl --silent --show-error -X OPTIONS -D /tmp/cors.headers -o /tmp/cors.body \
+            -H "Origin: $base" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            'https://s2.easebar.com/39f12eda6b86452b/api/auth/ursRoles'
+          grep -qi '^access-control-allow-origin:' /tmp/cors.headers
+          grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
+          echo "WWSync HTTP smoke passed: $base"
+
+      - name: Browser smoke official map and login shell
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH" || { echo 'No Chrome/Chromium available on runner.' >&2; exit 1; }
+          npm install --no-save --no-package-lock playwright-core@latest >/tmp/npm-playwright.log 2>&1
+          cat > /tmp/wwsync-browser-smoke.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          const url = process.env.DEPLOYMENT_URL;
+          const executablePath = process.env.CHROME_PATH;
+          (async () => {
+            const browser = await chromium.launch({executablePath, headless:true, args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page = await browser.newPage({viewport:{width:1440,height:900}});
+            const fatal = [];
+            const csp = [];
+            page.on('pageerror', e => fatal.push(`pageerror: ${e.message}`));
+            page.on('console', msg => {
+              const text = msg.text();
+              if (/content security policy|refused to|violates.*directive/i.test(text)) csp.push(`${msg.type()}: ${text}`);
+            });
+            page.on('requestfailed', req => {
+              const u = req.url();
+              if (/s2\.easebar\.com|mpay-h5-sdk-oversea|\/app\.js/.test(u)) fatal.push(`requestfailed: ${u} ${req.failure()?.errorText||''}`);
+            });
+            const response = await page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
+            if (!response || !response.ok()) throw new Error(`navigation HTTP ${response?.status()}`);
+            await page.waitForFunction(() => document.querySelectorAll('#mapSelect option').length >= 3, null, {timeout:45000});
+            await page.waitForFunction(() => document.querySelectorAll('#categoryList button').length > 0, null, {timeout:45000});
+            await page.waitForSelector('.maplibregl-canvas', {state:'visible', timeout:45000});
+            const checks = await page.evaluate(async () => {
+              const list = await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US');
+              const points = await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US');
+              return {
+                sdk: typeof window.MpayOSSDK,
+                listStatus: list.status,
+                listCorsOk: list.ok,
+                pointsStatus: points.status,
+                pointsCorsOk: points.ok,
+                mapOptions: document.querySelectorAll('#mapSelect option').length,
+                categories: document.querySelectorAll('#categoryList button').length,
+                canvases: document.querySelectorAll('.maplibregl-canvas').length
+              };
+            });
+            console.log('BROWSER_CHECKS', JSON.stringify(checks));
+            if (checks.sdk !== 'function') fatal.push(`MpayOSSDK type=${checks.sdk}`);
+            if (!checks.listCorsOk || checks.listStatus !== 200) fatal.push(`map/list status=${checks.listStatus}`);
+            if (!checks.pointsCorsOk || checks.pointsStatus !== 200) fatal.push(`map/points status=${checks.pointsStatus}`);
+            if (checks.mapOptions < 3 || checks.categories < 1 || checks.canvases < 1) fatal.push('map UI did not initialize');
+            await page.click('#loginButton');
+            await page.waitForFunction(() => {
+              const n = document.querySelector('#mosdk__container');
+              return !!n && (n.childElementCount > 0 || n.innerHTML.length > 0);
+            }, null, {timeout:15000}).catch(async e => {
+              const status = await page.locator('#authStatus').textContent().catch(()=> '');
+              fatal.push(`official login UI did not open: ${e.message}; status=${status}`);
+            });
+            console.log('CSP_EVENTS', JSON.stringify(csp));
+            console.log('FATAL_EVENTS', JSON.stringify(fatal));
+            await page.screenshot({path:'/tmp/wwsync-browser.png', fullPage:true}).catch(()=>{});
+            await browser.close();
+            if (csp.length || fatal.length) process.exit(1);
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/wwsync-browser-smoke.cjs
+          echo "WWSync browser smoke passed: $DEPLOYMENT_URL"
