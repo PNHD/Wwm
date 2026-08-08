@@ -1,0 +1,74 @@
+name: Forensic WWMMAP UID Sync
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/forensic-wwmmap-uid-sync.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect public WWMMAP frontend sync protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location 'https://wwmmap.pages.dev/map' -o /tmp/map.html
+          python - <<'PY'
+          from pathlib import Path
+          import re, html
+          t=Path('/tmp/map.html').read_text('utf-8',errors='ignore')
+          print('HTML_BYTES',len(t.encode()))
+          print('SCRIPTS')
+          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
+          for s in srcs: print(s)
+          print('LINKS')
+          for h in re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I): print(h)
+          Path('/tmp/scripts.txt').write_text('\n'.join(srcs))
+          PY
+          mkdir -p /tmp/wwmmap-js
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urljoin
+          import subprocess
+          base='https://wwmmap.pages.dev/map'
+          for i,s in enumerate(Path('/tmp/scripts.txt').read_text().splitlines()):
+              if not s: continue
+              u=urljoin(base,s)
+              out=f'/tmp/wwmmap-js/{i:02d}.js'
+              print('FETCH',u)
+              subprocess.run(['curl','--fail','--silent','--show-error','--location',u,'-o',out],check=True)
+          PY
+          echo '=== JS FILES ==='
+          wc -c /tmp/wwmmap-js/* || true
+          echo '=== SYNC/API EVIDENCE ==='
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          needles=['start_game_sync','gameauth','sync','relay','websocket','wss://','ws://','uid','allow','permission','confirm','player','position','coordinate','marker','completion','finished','signature','verify','discord']
+          for p in sorted(Path('/tmp/wwmmap-js').glob('*.js')):
+              text=p.read_text('utf-8',errors='ignore')
+              print('\n###',p.name,'bytes',len(text.encode()))
+              lows=text.lower()
+              seen=[]
+              for n in needles:
+                  pos=0; hits=0
+                  while hits<15:
+                      i=lows.find(n.lower(),pos)
+                      if i<0: break
+                      lo=max(0,i-900); hi=min(len(text),i+2200)
+                      chunk=text[lo:hi].replace('\n',' ')
+                      sig=(n,i)
+                      print(f'--- {n} @ {i} ---')
+                      print(chunk[:3200])
+                      pos=i+len(n); hits+=1
+              urls=sorted(set(re.findall(r'https?://[^"\'`<>\\\s)]+',text)))
+              for u in urls:
+                  if any(k in u.lower() for k in ['wwm','sync','relay','game','api','ws']):
+                      print('URL',u[:1500])
+          PY
