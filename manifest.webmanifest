@@ -1,7 +1,7 @@
 {
-  "name": "WWSync",
-  "short_name": "WWSync",
-  "description": "Where Winds Meet companion map with official-account progress import.",
+  "name": "WWMSync",
+  "short_name": "WWMSync",
+  "description": "Where Winds Meet companion map with a verified sync capability boundary.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#070b0f",
