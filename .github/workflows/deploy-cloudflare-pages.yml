@@ -88,8 +88,16 @@ jobs:
           base_url="https://${CLOUDFLARE_PROJECT_NAME}.pages.dev"
           fetch() {
             local path="$1" output="$2"
+            echo "SMOKE fetch ${path}"
             curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-time 45 "${base_url}${path}" -o "$output"
+            test -s "$output" || { echo "Empty response for ${path}" >&2; exit 1; }
           }
+          assert_contains() {
+            local file="$1" needle="$2" label="$3"
+            grep -Fq "$needle" "$file" || { echo "SMOKE FAIL ${label}: missing ${needle}" >&2; head -c 600 "$file" >&2 || true; echo >&2; exit 1; }
+            echo "SMOKE PASS ${label}"
+          }
+
           fetch "/" /tmp/root.html
           fetch "/map" /tmp/map.html
           fetch "/styles.css" /tmp/styles.css
@@ -97,15 +105,21 @@ jobs:
           fetch "/bootstrap.mjs" /tmp/bootstrap.mjs
           fetch "/manifest.webmanifest" /tmp/manifest.webmanifest
           fetch "/api/sync/relay-servers" /tmp/relays.json
-          grep -q '<title>WWM Atlas — Auto Sync Map</title>' /tmp/root.html
-          grep -q '<title>WWM Atlas — Auto Sync Map</title>' /tmp/map.html
-          grep -q '/api/sync/gameauth' /tmp/app.js
-          node -e "JSON.parse(require('fs').readFileSync('/tmp/manifest.webmanifest','utf8'))"
-          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/relays.json','utf8')); if(!Array.isArray(x.servers)||!x.servers.length) process.exit(1)"
+
+          assert_contains /tmp/root.html 'WWM Atlas — Auto Sync Map' 'root title'
+          assert_contains /tmp/map.html 'WWM Atlas — Auto Sync Map' 'map title'
+          assert_contains /tmp/app.js '/api/sync/gameauth' 'sync client'
+          node -e "JSON.parse(require('fs').readFileSync('/tmp/manifest.webmanifest','utf8')); console.log('SMOKE PASS manifest JSON')"
+          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/relays.json','utf8')); if(!Array.isArray(x.servers)||!x.servers.length){console.error(x);process.exit(1)}; console.log('SMOKE PASS relay registry', x.servers.length)"
+
+          echo 'SMOKE POST invalid auth payload'
           status="$(curl --silent --show-error --output /tmp/auth-invalid.json --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$base_url/api/sync/gameauth")"
-          test "$status" = "400"
+          if [ "$status" != "400" ]; then echo "SMOKE FAIL gameauth expected 400 got ${status}" >&2; cat /tmp/auth-invalid.json >&2 || true; exit 1; fi
+          echo 'SMOKE PASS gameauth function routing'
+
+          echo 'SMOKE HEAD security headers'
           curl --fail --silent --show-error --location --head --retry 8 --retry-delay 3 --retry-all-errors --connect-timeout 10 --max-time 30 "$base_url/" > /tmp/root.headers
-          grep -qi '^x-content-type-options: nosniff' /tmp/root.headers
-          grep -qi '^referrer-policy: strict-origin-when-cross-origin' /tmp/root.headers
-          grep -qi '^permissions-policy: camera=(), microphone=(), geolocation=()' /tmp/root.headers
+          grep -qi '^x-content-type-options: nosniff' /tmp/root.headers || { echo 'Missing nosniff' >&2; cat /tmp/root.headers >&2; exit 1; }
+          grep -qi '^referrer-policy: strict-origin-when-cross-origin' /tmp/root.headers || { echo 'Missing referrer-policy' >&2; cat /tmp/root.headers >&2; exit 1; }
+          grep -qi '^permissions-policy: camera=(), microphone=(), geolocation=()' /tmp/root.headers || { echo 'Missing permissions-policy' >&2; cat /tmp/root.headers >&2; exit 1; }
           echo "Production auto-sync smoke test passed: $base_url"
