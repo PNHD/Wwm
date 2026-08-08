@@ -12,67 +12,95 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect exact public WWM sync client contract
+      - name: Extract compact public sync contract
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import re, urllib.request
+          from pathlib import Path
 
           UA = {'User-Agent': 'Mozilla/5.0 WWM-Atlas-Forensic/1.0'}
           BASE = 'https://wwmmap.pages.dev/js/map_2026/'
 
           def get(path):
-              url = BASE + path
-              req = urllib.request.Request(url, headers=UA)
+              req = urllib.request.Request(BASE + path, headers=UA)
               with urllib.request.urlopen(req, timeout=30) as r:
-                  text = r.read().decode('utf-8', 'replace')
-                  print('FETCHED', r.status, url, len(text))
-                  return text
+                  return r.read().decode('utf-8', 'replace')
 
-          def safe(line):
-              line = re.sub(r'(?i)(authorization\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', line)
-              line = re.sub(r'(?i)(token\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', line)
-              return line[:1800] + ('…' if len(line) > 1800 else '')
+          def extract_function(text, needle):
+              pos = text.find(needle)
+              if pos < 0:
+                  return f'NOT_FOUND: {needle}'
+              line_start = text.rfind('\n', 0, pos) + 1
+              brace = text.find('{', pos)
+              if brace < 0:
+                  return text[line_start:pos+500]
+              depth = 0
+              quote = None
+              esc = False
+              for i in range(brace, min(len(text), brace + 12000)):
+                  c = text[i]
+                  if quote:
+                      if esc:
+                          esc = False
+                      elif c == '\\':
+                          esc = True
+                      elif c == quote:
+                          quote = None
+                      continue
+                  if c in "'\"`":
+                      quote = c
+                  elif c == '{':
+                      depth += 1
+                  elif c == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return text[line_start:i+1]
+              return text[line_start:brace+4000]
 
-          def dump(name, text, start, end):
-              print(f'===== {name} L{start}-L{end} =====')
+          def contexts(text, terms, radius=3):
               lines = text.splitlines()
-              for idx in range(max(1,start), min(end,len(lines))+1):
-                  print(f'{idx}: {safe(lines[idx-1])}')
+              out = []
+              used = set()
+              for idx, line in enumerate(lines):
+                  if any(t.lower() in line.lower() for t in terms):
+                      lo, hi = max(0, idx-radius), min(len(lines), idx+radius+1)
+                      if (lo, hi) in used:
+                          continue
+                      used.add((lo, hi))
+                      for j in range(lo, hi):
+                          s = lines[j]
+                          s = re.sub(r'(?i)(authorization\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', s)
+                          s = re.sub(r'(?i)(token\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', s)
+                          out.append(f'{j+1}: {s[:1500]}')
+                      out.append('---')
+              return '\n'.join(out)
 
-          def contexts(name, text, terms, radius=5):
-              lines = text.splitlines()
-              seen = set()
-              for idx, line in enumerate(lines, 1):
-                  if any(term.lower() in line.lower() for term in terms):
-                      lo, hi = max(1, idx-radius), min(len(lines), idx+radius)
-                      key=(lo,hi)
-                      if key in seen: continue
-                      seen.add(key)
-                      dump(name, text, lo, hi)
-
-          gamesync = get('gamesync.js?v=4')
           auth = get('auth_modal.js')
+          sync = get('gamesync.js?v=4')
           settings = get('settings_modal.js')
-          storage = get('storage.js')
+          mapcfg = get('map_config.js')
 
-          # Current sync session startup + websocket + packet handling.
-          dump('gamesync', gamesync, 266, 390)
-          contexts('gamesync', gamesync,
-                   ['wsDomain','relay','startSyncer','start_game_sync','X-WWM-UID','WebSocket','completed','marker','gameState','handleState','receivedInitialData'],
-                   radius=8)
+          sections = []
+          sections.append('=== AUTH.invokeClientMethod ===\n' + extract_function(auth, 'invokeClientMethod'))
+          sections.append('=== AUTH network/domain contexts ===\n' + contexts(auth, ['fetch(', 'apiDomain', 'X-WWM-UID', 'verificationHash', 'generatedPassword'], 4))
+          sections.append('=== SYNC constructor/domain/relay contexts ===\n' + contexts(sync, ['wsDomain', 'relayServers', 'relay', 'connectionKey'], 4))
+          sections.append('=== SYNC start_game_sync contexts ===\n' + contexts(sync, ['start_game_sync', 'startSyncer'], 8))
+          sections.append('=== SYNC websocket contexts ===\n' + contexts(sync, ['new WebSocket', '/ws/game', 'onmessage', 'message.data', 'JSON.parse'], 8))
+          sections.append('=== SYNC completion/player contexts ===\n' + contexts(sync, ['completed', 'completedMarkers', 'markerIds', 'playerPosition', 'position', 'receivedInitialData'], 8))
+          sections.append('=== SETTINGS relay contexts ===\n' + contexts(settings, ['relay', 'wsDomain', 'server'], 5))
+          sections.append('=== MAP_CONFIG correlation/id contexts ===\n' + contexts(mapcfg, ['gameId', 'markerId', 'correl', 'completed'], 2)[:12000])
 
-          # Authentication/linking/client-method transport.
-          contexts('auth_modal', auth,
-                   ['invokeClientMethod','fetch(','X-WWM-UID','verificationHash','generatedPassword','handleBind','handleLogin','handleReset','uid','password','client_method','method'],
-                   radius=10)
-
-          # Relay/server selection and persisted sync snapshot.
-          contexts('settings_modal', settings,
-                   ['relay','server','snapshotData','completed','sync'],
-                   radius=10)
-          contexts('storage', storage,
-                   ['completed','progress','marker'],
-                   radius=8)
+          text = '\n\n'.join(sections)
+          Path('wwm-sync-contract.txt').write_text(text, encoding='utf-8')
+          print('CONTRACT_BYTES', len(text.encode('utf-8')))
           PY
+
+      - name: Upload compact forensic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwm-sync-contract
+          path: wwm-sync-contract.txt
+          if-no-files-found: error
+          retention-days: 1
