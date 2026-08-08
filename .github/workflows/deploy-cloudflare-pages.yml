@@ -28,18 +28,17 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN" >&2; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID" >&2; exit 1; }
 
-      - name: Validate static site
+      - name: Validate production source
         run: |
           set -euo pipefail
           node --check app.js
           node --check sw.js
           node --check bootstrap.mjs
+          find functions -type f -name '*.js' -print0 | xargs -0 -n1 node --check
           python - <<'PY'
           import json
-          from pathlib import Path
-          for path in list(Path('data').glob('*.json')) + list(Path('data').glob('*.geojson')):
-              with path.open(encoding='utf-8') as handle:
-                  json.load(handle)
+          for path in ['manifest.webmanifest', '_routes.json']:
+              json.load(open(path, encoding='utf-8'))
               print('valid', path)
           PY
 
@@ -48,10 +47,10 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js bootstrap.mjs sw.js manifest.webmanifest _redirects _headers robots.txt dist/
-          cp -R assets data dist/
+          cp index.html styles.css app.js bootstrap.mjs sw.js manifest.webmanifest _redirects _headers _routes.json robots.txt dist/
           test -f dist/index.html
-          test -f dist/data/sources.json
+          test -f dist/_routes.json
+          test -d functions/api/sync
           if find dist -type f -path '*/.github/*' | grep -q .; then
             echo 'Internal GitHub files leaked into dist.' >&2
             exit 1
@@ -64,23 +63,11 @@ jobs:
         run: |
           set -euo pipefail
           project_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PROJECT_NAME}"
-          status="$(curl --silent --show-error --output /tmp/cloudflare-project.json --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "$project_url")"
-
+          status="$(curl --silent --show-error --output /tmp/cloudflare-project.json --write-out '%{http_code}' --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$project_url")"
           case "$status" in
-            200)
-              echo "Cloudflare Pages project exists: ${CLOUDFLARE_PROJECT_NAME}"
-              ;;
-            404)
-              echo "Cloudflare Pages project not found; creating ${CLOUDFLARE_PROJECT_NAME}"
-              npx --yes wrangler@latest pages project create "$CLOUDFLARE_PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH"
-              ;;
-            *)
-              echo "Cloudflare project lookup failed with HTTP ${status}" >&2
-              cat /tmp/cloudflare-project.json >&2
-              exit 1
-              ;;
+            200) echo "Cloudflare Pages project exists: ${CLOUDFLARE_PROJECT_NAME}" ;;
+            404) npx --yes wrangler@latest pages project create "$CLOUDFLARE_PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH" ;;
+            *) echo "Cloudflare project lookup failed with HTTP ${status}" >&2; cat /tmp/cloudflare-project.json >&2; exit 1 ;;
           esac
 
       - name: Deploy production
@@ -99,44 +86,26 @@ jobs:
         run: |
           set -euo pipefail
           base_url="https://${CLOUDFLARE_PROJECT_NAME}.pages.dev"
-
           fetch() {
-            local path="$1"
-            local output="$2"
-            curl --fail --silent --show-error --location \
-              --retry 12 --retry-delay 5 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 \
-              "${base_url}${path}" -o "$output"
+            local path="$1" output="$2"
+            curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-time 45 "${base_url}${path}" -o "$output"
           }
-
           fetch "/" /tmp/root.html
           fetch "/map" /tmp/map.html
           fetch "/styles.css" /tmp/styles.css
           fetch "/app.js" /tmp/app.js
           fetch "/bootstrap.mjs" /tmp/bootstrap.mjs
           fetch "/manifest.webmanifest" /tmp/manifest.webmanifest
-          fetch "/data/sources.json" /tmp/sources.json
-          fetch "/?source=official" /tmp/official.html
-          fetch "/?source=personal" /tmp/personal.html
-
-          grep -q '<title>WWM Atlas' /tmp/root.html
-          grep -q '<title>WWM Atlas' /tmp/map.html
-          grep -q '<title>WWM Atlas' /tmp/official.html
-          grep -q '<title>WWM Atlas' /tmp/personal.html
-          test -s /tmp/styles.css
-          test -s /tmp/app.js
-          test -s /tmp/bootstrap.mjs
-
+          fetch "/api/sync/relay-servers" /tmp/relays.json
+          grep -q '<title>WWM Atlas — Auto Sync Map</title>' /tmp/root.html
+          grep -q '<title>WWM Atlas — Auto Sync Map</title>' /tmp/map.html
+          grep -q '/api/sync/gameauth' /tmp/app.js
           node -e "JSON.parse(require('fs').readFileSync('/tmp/manifest.webmanifest','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('/tmp/sources.json','utf8'))"
-
-          curl --fail --silent --show-error --location --head \
-            --retry 12 --retry-delay 5 --retry-all-errors \
-            --connect-timeout 10 --max-time 30 \
-            "$base_url/" > /tmp/root.headers
-
+          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/relays.json','utf8')); if(!Array.isArray(x.servers)||!x.servers.length) process.exit(1)"
+          status="$(curl --silent --show-error --output /tmp/auth-invalid.json --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$base_url/api/sync/gameauth")"
+          test "$status" = "400"
+          curl --fail --silent --show-error --location --head --retry 8 --retry-delay 3 --retry-all-errors --connect-timeout 10 --max-time 30 "$base_url/" > /tmp/root.headers
           grep -qi '^x-content-type-options: nosniff' /tmp/root.headers
           grep -qi '^referrer-policy: strict-origin-when-cross-origin' /tmp/root.headers
           grep -qi '^permissions-policy: camera=(), microphone=(), geolocation=()' /tmp/root.headers
-
-          echo "Production smoke test passed: $base_url"
+          echo "Production auto-sync smoke test passed: $base_url"
