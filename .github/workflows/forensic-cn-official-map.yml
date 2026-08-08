@@ -47,7 +47,8 @@ jobs:
               await page.waitForTimeout(12000);
               console.log('TITLE',await page.title().catch(()=>''));
               console.log('BODY',JSON.stringify((await page.locator('body').innerText().catch(()=>'' )).slice(0,12000)));
-              console.log('LINKS',JSON.stringify((await page.locator('a').evaluateAll(as=>as.map(a=>({text:(a.innerText||'').trim().slice(0,120),href:a.href})).filter(x=>x.href))).slice(0,200))));
+              const links=(await page.locator('a').evaluateAll(as=>as.map(a=>({text:(a.innerText||'').trim().slice(0,120),href:a.href})).filter(x=>x.href))).slice(0,200);
+              console.log('LINKS',JSON.stringify(links));
               console.log('IFRAMES',JSON.stringify(await page.locator('iframe').evaluateAll(xs=>xs.map(x=>x.src))));
               console.log('REQUESTS_BEGIN'); for(const x of [...new Set(reqs)]) console.log(x); console.log('REQUESTS_END');
               console.log('RESPONSES_BEGIN'); for(const x of [...new Set(resps)]) if(/ds\.163|163\.com|netease|yysl|map|api|ws|socket|plugin|download/i.test(x)) console.log(x); console.log('RESPONSES_END');
@@ -82,7 +83,6 @@ jobs:
                       pos=i+len(needle)
                       if len(centers)>=35: break
                   if len(centers)>=35: break
-              urls=sorted(set(re.findall(r'(?:https?|wss?)://[^"\'`<>\\\s)]+',t)))
-              for u in urls:
+              for u in sorted(set(re.findall(r'https?://[^\s"<>]+|wss?://[^\s"<>]+',t))):
                   if any(k in u.lower() for k in ['163','netease','yysl','map','api','socket','ws']): print('URL',u[:1200])
           PY
