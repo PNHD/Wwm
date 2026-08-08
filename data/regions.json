@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "regions": [
+    {
+      "id": "qinghe-demo",
+      "name": "Qinghe",
+      "demo": true,
+      "status": "DEMO_ONLY",
+      "geojson": "./data/qinghe-demo.geojson",
+      "mapImage": "./assets/map-placeholder.svg",
+      "mapCoordinates": [[-120, 70], [120, 70], [120, -70], [-120, -70]],
+      "bounds": [[-120, -70], [120, 70]]
+    }
+  ]
+}

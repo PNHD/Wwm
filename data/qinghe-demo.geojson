@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "id": "demo-qh-001", "properties": { "id": "demo-qh-001", "category": "chest", "name": "Demo Chest — Riverside", "description": "Synthetic M0 marker used to validate progress tracking and filtering." }, "geometry": { "type": "Point", "coordinates": [-58, 24] } },
+    { "type": "Feature", "id": "demo-qh-002", "properties": { "id": "demo-qh-002", "category": "chest", "name": "Demo Chest — Ridge", "description": "Synthetic marker. Not a real in-game location." }, "geometry": { "type": "Point", "coordinates": [-25, 42] } },
+    { "type": "Feature", "id": "demo-qh-003", "properties": { "id": "demo-qh-003", "category": "puzzle", "name": "Demo Puzzle — Stone Ring", "description": "Used to exercise category filters and search." }, "geometry": { "type": "Point", "coordinates": [6, 17] } },
+    { "type": "Feature", "id": "demo-qh-004", "properties": { "id": "demo-qh-004", "category": "landmark", "name": "Demo Landmark — Watchtower", "description": "Synthetic landmark for the M0 interface prototype." }, "geometry": { "type": "Point", "coordinates": [48, 36] } },
+    { "type": "Feature", "id": "demo-qh-005", "properties": { "id": "demo-qh-005", "category": "npc", "name": "Demo NPC — Wanderer", "description": "No external dataset is bundled in M0." }, "geometry": { "type": "Point", "coordinates": [70, 2] } },
+    { "type": "Feature", "id": "demo-qh-006", "properties": { "id": "demo-qh-006", "category": "collectible", "name": "Demo Collectible — Herb", "description": "Synthetic marker used to test completion import/export." }, "geometry": { "type": "Point", "coordinates": [30, -24] } },
+    { "type": "Feature", "id": "demo-qh-007", "properties": { "id": "demo-qh-007", "category": "puzzle", "name": "Demo Puzzle — Bell", "description": "Synthetic marker. Deep-linkable with #poi=demo-qh-007." }, "geometry": { "type": "Point", "coordinates": [-15, -34] } },
+    { "type": "Feature", "id": "demo-qh-008", "properties": { "id": "demo-qh-008", "category": "landmark", "name": "Demo Landmark — Southern Gate", "description": "Synthetic marker for navigation testing." }, "geometry": { "type": "Point", "coordinates": [-64, -23] } }
+  ]
+}

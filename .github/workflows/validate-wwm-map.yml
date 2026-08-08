@@ -1,0 +1,38 @@
+name: Validate WWM Map
+
+on:
+  push:
+    branches: [feature/wwm-map-m0-foundation]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JavaScript syntax
+        run: node --check app.js
+      - name: Validate JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in Path('data').glob('*.json'):
+              with path.open(encoding='utf-8') as f:
+                  json.load(f)
+              print('valid', path)
+          with Path('data/qinghe-demo.geojson').open(encoding='utf-8') as f:
+              doc = json.load(f)
+          ids = [str(feature['id']) for feature in doc['features']]
+          assert len(ids) == len(set(ids)), 'POI ids must be unique'
+          print('unique POI ids', len(ids))
+          PY
+      - name: Reject accidental third-party asset URLs in data
+        run: |
+          if grep -RInE 'wwmmap\.pages\.dev|map\.17173\.com|wherewindsmeetgame\.com/map' data assets; then
+            echo 'Third-party map dependency detected in bundled runtime data.' >&2
+            exit 1
+          fi

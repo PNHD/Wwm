@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0f14" />
+    <meta name="description" content="Independent Where Winds Meet exploration map prototype." />
+    <title>WWM Map — Independent Prototype</title>
+    <link rel="preconnect" href="https://unpkg.com" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar" aria-label="Map controls">
+        <div class="brand-row">
+          <div>
+            <p class="eyebrow">Independent companion</p>
+            <h1>WWM Map</h1>
+          </div>
+          <span id="data-status" class="status-pill">M0 demo</span>
+        </div>
+
+        <label class="field-label" for="region-select">Region</label>
+        <select id="region-select" class="control"></select>
+
+        <label class="field-label" for="search-input">Search POI</label>
+        <input id="search-input" class="control" type="search" placeholder="Search name or description…" autocomplete="off" />
+
+        <div class="section-heading">
+          <span>Categories</span>
+          <button id="toggle-all" class="text-button" type="button">Hide all</button>
+        </div>
+        <div id="category-list" class="category-list"></div>
+
+        <div class="progress-card">
+          <div>
+            <span class="muted">Completed</span>
+            <strong id="progress-count">0 / 0</strong>
+          </div>
+          <label class="switch-row">
+            <input id="hide-completed" type="checkbox" />
+            <span>Hide completed</span>
+          </label>
+        </div>
+
+        <div class="button-grid">
+          <button id="export-progress" class="secondary-button" type="button">Export</button>
+          <button id="import-progress" class="secondary-button" type="button">Import</button>
+          <input id="import-file" type="file" accept="application/json" hidden />
+        </div>
+
+        <p class="legal-note">
+          M0 uses a generated placeholder map and demo POIs only. No game artwork or third-party map dataset is bundled.
+        </p>
+      </aside>
+
+      <main class="map-stage">
+        <div id="map" aria-label="Interactive map"></div>
+        <div class="top-overlay">
+          <div class="result-chip"><span id="visible-count">0</span> visible POIs</div>
+          <button id="reset-view" class="icon-button" type="button" aria-label="Reset map view">Reset view</button>
+        </div>
+        <div id="empty-state" class="empty-state" hidden>No POIs match the current filters.</div>
+      </main>
+    </div>
+
+    <noscript>This map requires JavaScript.</noscript>
+    <script src="https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
