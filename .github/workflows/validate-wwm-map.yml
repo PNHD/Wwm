@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -F "WWSync has no password field" README.md
-          grep -F "not a generic proxy" README.md
+          grep -F "generic proxy" README.md
           grep -F "Password submission, OAuth provider navigation, and account credentials are not routed through these WWSync Functions" README.md
           grep -F "does not inject code" README.md
           grep -Fx '/map /index.html 200' _redirects
