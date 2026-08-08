@@ -1,4 +1,4 @@
-name: Verify Official Global Map SSO Contract
+name: Extract Official Global UniLogin Config
 
 on:
   push:
@@ -14,51 +14,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Extract h72na SSO exchange and test public boundary
+      - name: Extract exact public login config
         shell: bash
         run: |
           set -euo pipefail
-          src='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js'
-          curl --fail --silent --show-error --location "$src" -o /tmp/map.js
+          root='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
+          curl --fail --silent --show-error --location "$root/uniLogin-422132ba.js" -o /tmp/u.js
+          curl --fail --silent --show-error --location "$root/index-67f2100d.js" -o /tmp/i.js
+          curl --fail --silent --show-error --location "$root/app-9b07739a.js" -o /tmp/a.js
           python - <<'PY'
           from pathlib import Path
           import re
-          t=Path('/tmp/map.js').read_text('utf-8',errors='ignore')
-          terms=['h72naSsoLogin','new URLSearchParams(window.location.search).get("ticket")',"new URLSearchParams(window.location.search).get('ticket')",'vN(','/api/auth/h72naLogin','history.replaceState','ticket=','updateToken','nickName']
-          for term in terms:
-              print('\nTERM',term)
-              pos=0; count=0
-              while True:
-                  i=t.find(term,pos)
-                  if i<0: break
-                  print('CTX',t[max(0,i-900):min(len(t),i+2600)].replace('\n',' ')[:3500])
-                  pos=i+len(term); count+=1
-                  if count>=4: break
-              print('COUNT',count)
-          for m in re.finditer(r'h72naSsoLogin\s*\([^)]*\)\s*\{',t):
-              i=m.start(); print('\nMETHOD_CTX',t[max(0,i-500):min(len(t),i+5000)].replace('\n',' ')[:5500])
-          PY
-
-          echo '=== CORS PREFLIGHT ==='
-          curl --silent --show-error -X OPTIONS -D /tmp/cors.headers -o /tmp/cors.body \
-            -H 'Origin: https://wwmsync.pages.dev' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/auth/h72naLogin'
-          awk 'BEGIN{IGNORECASE=1}/^HTTP\//||/^access-control-/{print}' /tmp/cors.headers
-
-          echo '=== SYNTHETIC INVALID TICKET ==='
-          status="$(curl --silent --show-error --output /tmp/invalid.json --write-out '%{http_code}' \
-            -H 'Origin: https://wwmsync.pages.dev' \
-            -H 'Content-Type: application/json' \
-            --data '{"ticket":"wwmsync-invalid-synthetic-ticket"}' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/auth/h72naLogin' || true)"
-          echo "HTTP $status"
-          python - <<'PY'
-          import json
-          try:
-              x=json.load(open('/tmp/invalid.json'))
-              print(json.dumps({k:x.get(k) for k in ('success','code','msg','message') if k in x},ensure_ascii=False))
-          except Exception as e:
-              print('BODY_PARSE_ERROR',e)
+          for fn in ['u.js','i.js','a.js']:
+              t=Path('/tmp/'+fn).read_text('utf-8',errors='ignore'); low=t.lower()
+              print('\nFILE',fn,'BYTES',len(t.encode()))
+              terms=['async init','init(e,t)','init(t,e)','APPID','JF_GAMEID','LOGIN_CHANNEL','APP_CHANNEL','GAME_VERSION','NETEASE_GLOBAL_ENABLE_LOGIN_TYPES','NETEASE_GLOBAL_GAME_REDIRECT_URL','NETEASE_GLOBAL_SERVER_BASE_URL','netease_global','h72naxx2gb','gameId:398','game_id:398','login_channel','app_channel','enableLoginType','openLogin(e)','Su.init','uniLogin.init']
+              printed=[]
+              for term in terms:
+                  pos=0
+                  while True:
+                      i=low.find(term.lower(),pos)
+                      if i<0: break
+                      if not any(abs(i-x)<1000 for x in printed):
+                          printed.append(i)
+                          print('CTX',term,'::',t[max(0,i-700):min(len(t),i+2200)].replace('\n',' ')[:2900])
+                      pos=i+len(term)
+                      if len(printed)>=16: break
+                  if len(printed)>=16: break
+              for m in re.finditer(r'(?:APPID|JF_GAMEID|LOGIN_CHANNEL|APP_CHANNEL|GAME_VERSION|NETEASE_GLOBAL_ENABLE_LOGIN_TYPES|NETEASE_GLOBAL_GAME_REDIRECT_URL)\s*[:=]\s*([^,;}]{1,180})',t):
+                  print('ASSIGN',m.group(0)[:260])
           PY
