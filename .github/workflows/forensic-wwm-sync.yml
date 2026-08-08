@@ -12,95 +12,71 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract compact public sync contract
+      - name: Probe public sync service availability and CORS
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import re, urllib.request
-          from pathlib import Path
+          origin='https://wwm-atlas-pnhd.pages.dev'
+          base='https://wwmmap.pages.dev'
+          out='wwm-sync-network.txt'
+          : > "$out"
 
-          UA = {'User-Agent': 'Mozilla/5.0 WWM-Atlas-Forensic/1.0'}
-          BASE = 'https://wwmmap.pages.dev/js/map_2026/'
+          echo '=== relay_servers GET ===' >> "$out"
+          curl --silent --show-error --location \
+            --dump-header /tmp/relay.headers \
+            --output /tmp/relay.body \
+            "$base/service/relay_servers"
+          sed -n '1,40p' /tmp/relay.headers >> "$out"
+          echo 'BODY:' >> "$out"
+          head -c 6000 /tmp/relay.body >> "$out"
+          echo >> "$out"
 
-          def get(path):
-              req = urllib.request.Request(BASE + path, headers=UA)
-              with urllib.request.urlopen(req, timeout=30) as r:
-                  return r.read().decode('utf-8', 'replace')
+          echo '=== relay_servers CORS GET ===' >> "$out"
+          curl --silent --show-error --location \
+            --header "Origin: $origin" \
+            --dump-header /tmp/cors-get.headers \
+            --output /dev/null \
+            "$base/service/relay_servers"
+          sed -n '1,50p' /tmp/cors-get.headers >> "$out"
 
-          def extract_function(text, needle):
-              pos = text.find(needle)
-              if pos < 0:
-                  return f'NOT_FOUND: {needle}'
-              line_start = text.rfind('\n', 0, pos) + 1
-              brace = text.find('{', pos)
-              if brace < 0:
-                  return text[line_start:pos+500]
-              depth = 0
-              quote = None
-              esc = False
-              for i in range(brace, min(len(text), brace + 12000)):
-                  c = text[i]
-                  if quote:
-                      if esc:
-                          esc = False
-                      elif c == '\\':
-                          esc = True
-                      elif c == quote:
-                          quote = None
-                      continue
-                  if c in "'\"`":
-                      quote = c
-                  elif c == '{':
-                      depth += 1
-                  elif c == '}':
-                      depth -= 1
-                      if depth == 0:
-                          return text[line_start:i+1]
-              return text[line_start:brace+4000]
+          echo '=== gameauth OPTIONS preflight ===' >> "$out"
+          curl --silent --show-error --request OPTIONS \
+            --header "Origin: $origin" \
+            --header 'Access-Control-Request-Method: POST' \
+            --header 'Access-Control-Request-Headers: content-type' \
+            --dump-header /tmp/gameauth-options.headers \
+            --output /tmp/gameauth-options.body \
+            "$base/service/gameauth" || true
+          sed -n '1,60p' /tmp/gameauth-options.headers >> "$out"
+          echo 'BODY:' >> "$out"
+          head -c 2000 /tmp/gameauth-options.body >> "$out"
+          echo >> "$out"
 
-          def contexts(text, terms, radius=3):
-              lines = text.splitlines()
-              out = []
-              used = set()
-              for idx, line in enumerate(lines):
-                  if any(t.lower() in line.lower() for t in terms):
-                      lo, hi = max(0, idx-radius), min(len(lines), idx+radius+1)
-                      if (lo, hi) in used:
-                          continue
-                      used.add((lo, hi))
-                      for j in range(lo, hi):
-                          s = lines[j]
-                          s = re.sub(r'(?i)(authorization\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', s)
-                          s = re.sub(r'(?i)(token\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', s)
-                          out.append(f'{j+1}: {s[:1500]}')
-                      out.append('---')
-              return '\n'.join(out)
+          echo '=== call_client_method OPTIONS preflight ===' >> "$out"
+          curl --silent --show-error --request OPTIONS \
+            --header "Origin: $origin" \
+            --header 'Access-Control-Request-Method: POST' \
+            --header 'Access-Control-Request-Headers: content-type,x-wwm-uid,x-wwm-pass,client-lang' \
+            --dump-header /tmp/call-options.headers \
+            --output /tmp/call-options.body \
+            "$base/service/call_client_method" || true
+          sed -n '1,60p' /tmp/call-options.headers >> "$out"
+          echo 'BODY:' >> "$out"
+          head -c 2000 /tmp/call-options.body >> "$out"
+          echo >> "$out"
 
-          auth = get('auth_modal.js')
-          sync = get('gamesync.js?v=4')
-          settings = get('settings_modal.js')
-          mapcfg = get('map_config.js')
+          echo '=== known websocket relay HTTPS probes ===' >> "$out"
+          for host in wwmmapsync.sangtacvietcdn.xyz wwmmapsync.stv-appdomain-00000001.org; do
+            echo "HOST $host" >> "$out"
+            curl --silent --show-error --head --max-time 15 "https://$host/" >> "$out" 2>&1 || true
+          done
 
-          sections = []
-          sections.append('=== AUTH.invokeClientMethod ===\n' + extract_function(auth, 'invokeClientMethod'))
-          sections.append('=== AUTH network/domain contexts ===\n' + contexts(auth, ['fetch(', 'apiDomain', 'X-WWM-UID', 'verificationHash', 'generatedPassword'], 4))
-          sections.append('=== SYNC constructor/domain/relay contexts ===\n' + contexts(sync, ['wsDomain', 'relayServers', 'relay', 'connectionKey'], 4))
-          sections.append('=== SYNC start_game_sync contexts ===\n' + contexts(sync, ['start_game_sync', 'startSyncer'], 8))
-          sections.append('=== SYNC websocket contexts ===\n' + contexts(sync, ['new WebSocket', '/ws/game', 'onmessage', 'message.data', 'JSON.parse'], 8))
-          sections.append('=== SYNC completion/player contexts ===\n' + contexts(sync, ['completed', 'completedMarkers', 'markerIds', 'playerPosition', 'position', 'receivedInitialData'], 8))
-          sections.append('=== SETTINGS relay contexts ===\n' + contexts(settings, ['relay', 'wsDomain', 'server'], 5))
-          sections.append('=== MAP_CONFIG correlation/id contexts ===\n' + contexts(mapcfg, ['gameId', 'markerId', 'correl', 'completed'], 2)[:12000])
-
-          text = '\n\n'.join(sections)
-          Path('wwm-sync-contract.txt').write_text(text, encoding='utf-8')
-          print('CONTRACT_BYTES', len(text.encode('utf-8')))
-          PY
+          echo "NETWORK_PROBE_BYTES $(wc -c < "$out")"
 
       - name: Upload compact forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-sync-contract
-          path: wwm-sync-contract.txt
+          name: wwm-sync-network
+          path: wwm-sync-network.txt
           if-no-files-found: error
           retention-days: 1
