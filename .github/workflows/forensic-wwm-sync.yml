@@ -12,64 +12,63 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract auth flow and marker data sources
+      - name: Inspect public marker schema and map metadata
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import re, urllib.request
-          from pathlib import Path
+          curl --fail --silent --show-error \
+            'https://wwmmap.pages.dev/data/markers_2026.json' \
+            -o /tmp/markers.json
+          curl --fail --silent --show-error \
+            'https://wwmmap.pages.dev/js/map_2026/map_config.js' \
+            -o /tmp/map_config.mjs
 
-          UA={'User-Agent':'Mozilla/5.0 WWM-Atlas-Forensic/1.0'}
-          BASE='https://wwmmap.pages.dev/js/map_2026/'
-          def get(name):
-              req=urllib.request.Request(BASE+name,headers=UA)
-              with urllib.request.urlopen(req,timeout=30) as r:
-                  return r.read().decode('utf-8','replace')
-          def ctx(name,text,terms,radius=6):
-              lines=text.splitlines(); out=[]; spans=[]
-              for i,line in enumerate(lines):
-                  if any(t.lower() in line.lower() for t in terms):
-                      lo=max(0,i-radius); hi=min(len(lines),i+radius+1)
-                      if any(lo>=a and hi<=b for a,b in spans): continue
-                      spans.append((lo,hi)); out.append(f'=== {name} {lo+1}-{hi} ===')
-                      out.extend(f'{j+1}: {lines[j][:1800]}' for j in range(lo,hi))
-              return '\n'.join(out)
-
-          auth=get('auth_modal.js')
-          markers=get('markers.js')
-          mapjs=get('map.js?v=20260604')
-          config=get('map_config.js')
-          app=get('app.js?v=5')
-          text=[]
-          text.append(ctx('AUTH',auth,[
-              'playerId:', 'password:', 'action:', 'status === "bound"', 'status === "unbound"',
-              'bind_success','login_success','reset_initiated','getCredentials','getValidCredentials','localStorage.setItem("wwm_user"'
-          ],8))
-          text.append(ctx('MARKERS',markers,[
-              'fetch(', '.json', 'markerData', 'loadMarkers', 'setCompletedMarkersFromSync', 'completedMarkerIds', 'marker.id', 'sync'
-          ],8))
-          text.append(ctx('MAP',mapjs,['fetch(','.json','marker','mapConfig','markers'],5))
-          text.append(ctx('APP',app,['fetch(','.json','mapConfig','markerManager'],5))
-          text.append(ctx('CONFIG',config,['dataUrl','marker','json','fetch','mapId','spaceId'],2)[:18000])
-
-          # concise URL/path literals from all files
-          corpus='\n'.join([auth,markers,mapjs,config,app])
-          lits=[]
-          for s in re.findall(r'["\']([^"\'\n]{1,260})["\']',corpus):
-              sl=s.lower()
-              if any(k in sl for k in ['.json','/service/','marker','map_config','tiles','geojson','poi']):
-                  if len(s)<260: lits.append(s)
-          text.append('=== RELEVANT_LITERALS ===\n'+'\n'.join(sorted(set(lits))[:1000]))
-          out='\n\n'.join(text)
-          Path('wwm-auth-marker-contract.txt').write_text(out,encoding='utf-8')
-          print('BYTES',len(out.encode()))
+          python - <<'PY' > /tmp/marker-summary.txt
+          import json, os
+          data=json.load(open('/tmp/markers.json',encoding='utf-8'))
+          markers=data.get('markers',[])
+          print('MARKER_FILE_BYTES',os.path.getsize('/tmp/markers.json'))
+          print('MARKER_COUNT',len(markers))
+          print('TOP_LEVEL_KEYS',sorted(data.keys()))
+          if markers:
+              print('MARKER_KEYS',sorted(markers[0].keys()))
+              for i,m in enumerate(markers[:5]):
+                  sample={k:m.get(k) for k in ['id','alId','mapId','category','x','y','z','lng','lat','name','title'] if k in m}
+                  print('SAMPLE',i,json.dumps(sample,ensure_ascii=False)[:1600])
+          print('MAP_IDS',sorted({str(m.get('mapId')) for m in markers})[:100])
+          print('CATEGORY_COUNT',len({str(m.get('category')) for m in markers}))
+          ids=[str(m.get('id')) for m in markers if m.get('id') is not None]
+          alids=[str(m.get('alId')) for m in markers if m.get('alId')]
+          prefixes={s.split('_',1)[0] for s in ids+alids if '_' in s}
+          print('SYNCISH_PREFIXES',sorted(prefixes))
           PY
+
+          cat > /tmp/map-summary.mjs <<'NODE'
+          import { mapInfo } from 'file:///tmp/map_config.mjs';
+          const summary = Object.entries(mapInfo).map(([id,m]) => ({
+            id,
+            name: m.name,
+            spaceId: m.spaceId,
+            tileFolder: m.tileFolder,
+            tileUrl: m.tileUrl,
+            worldRange: m.worldRange,
+            center: m.center,
+            minZoom: m.minZoom,
+            maxZoom: m.maxZoom,
+            isDungeon: m.isDungeon || false,
+          }));
+          console.log('MAP_COUNT', summary.length);
+          console.log(JSON.stringify(summary, null, 2));
+          NODE
+          node /tmp/map-summary.mjs > /tmp/map-summary.txt
+
+          cat /tmp/marker-summary.txt /tmp/map-summary.txt > wwm-map-data-summary.txt
+          echo "SUMMARY_BYTES $(wc -c < wwm-map-data-summary.txt)"
 
       - name: Upload compact forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-auth-marker-contract
-          path: wwm-auth-marker-contract.txt
+          name: wwm-map-data-summary
+          path: wwm-map-data-summary.txt
           if-no-files-found: error
           retention-days: 1
