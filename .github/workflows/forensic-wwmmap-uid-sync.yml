@@ -14,80 +14,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect public WWMMAP frontend sync protocol
+      - name: Extract public sync API and websocket contract
         shell: bash
         run: |
           set -euo pipefail
-          for route in / /map /legacy-map; do
-            name="$(echo "$route" | sed 's#^/$#root#; s#^/##; s#/#-#g')"
-            status="$(curl --silent --show-error --location --output "/tmp/${name}.html" --write-out '%{http_code}' "https://wwmmap.pages.dev${route}" || true)"
-            echo "ROUTE ${route} HTTP ${status} BYTES $(wc -c < "/tmp/${name}.html" 2>/dev/null || echo 0)"
-            head -c 500 "/tmp/${name}.html" 2>/dev/null | tr '\n' ' ' || true
-            echo
-          done
-
+          curl --silent --show-error --location 'https://wwmmap.pages.dev/' -o /tmp/root.html
           python - <<'PY'
           from pathlib import Path
           import re
           from urllib.parse import urljoin
-          bases={'root':'https://wwmmap.pages.dev/','map':'https://wwmmap.pages.dev/map','legacy-map':'https://wwmmap.pages.dev/legacy-map'}
-          all_urls=[]
-          for name,base in bases.items():
-              p=Path('/tmp')/(name+'.html')
-              if not p.exists(): continue
-              t=p.read_text('utf-8',errors='ignore')
-              print('\nHTML',name,'BYTES',len(t.encode()))
-              srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
-              links=re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I)
-              for u in srcs+links:
-                  full=urljoin(base,u)
-                  print('ASSET',full)
-                  if any(x in full for x in ['.js','_next/static','assets/']): all_urls.append(full)
-              for u in re.findall(r'https?://[^"\'<>\\\s)]+',t):
-                  if any(k in u.lower() for k in ['wwm','sync','relay','api','game']): print('HTML_URL',u[:1200])
-          Path('/tmp/assets.txt').write_text('\n'.join(dict.fromkeys(all_urls)))
+          t=Path('/tmp/root.html').read_text('utf-8',errors='ignore')
+          assets=[]
+          for u in re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
+              assets.append(urljoin('https://wwmmap.pages.dev/',u))
+          Path('/tmp/assets.txt').write_text('\n'.join(dict.fromkeys(assets)))
+          print('ASSET_COUNT',len(dict.fromkeys(assets)))
           PY
-
-          mkdir -p /tmp/wwmmap-js
+          mkdir -p /tmp/js
           i=0
           while IFS= read -r url; do
             [ -n "$url" ] || continue
-            case "$url" in *.js*|*/_next/static/*|*/assets/*)
-              out="/tmp/wwmmap-js/$(printf '%03d' "$i").js"
-              status="$(curl --silent --show-error --location --output "$out" --write-out '%{http_code}' "$url" || true)"
-              echo "FETCH_JS HTTP ${status} ${url} BYTES $(wc -c < "$out" 2>/dev/null || echo 0)"
-              i=$((i+1))
-              ;;
-            esac
+            out="/tmp/js/$(printf '%03d' "$i").js"
+            curl --silent --show-error --location "$url" -o "$out" || true
+            echo "JS $(basename "$out") $(wc -c < "$out" 2>/dev/null || echo 0) $url"
+            i=$((i+1))
           done < /tmp/assets.txt
 
-          echo '=== SYNC/API EVIDENCE ==='
           python - <<'PY'
           from pathlib import Path
           import re
-          needles=['start_game_sync','gameauth','game sync','realtime game sync','relay','websocket','wss://','ws://','uid','allow','permission','confirmation timed out','only receive messages from friends','character not linked','verification code','wwmmap password','player','position','coordinate','completion','finished','signature','verify & link','daily permission']
-          for p in sorted(Path('/tmp/wwmmap-js').glob('*.js')):
+          needles=[
+            'sync.wwm-map.com','9521','receiver_msg_privilege','friend_only_restriction','sync_success',
+            'start_game_sync','stop_game_sync','game_sync','gameauth','verify','verification','link character',
+            'accountId','account_id','uid','roleId','role_id','characterId','character_id',
+            'WebSocket','new WebSocket','messageType','message_type','eventType','event_type',
+            'position','coordinates','marker','finished','completion','progress','permission','confirm'
+          ]
+          api_re=re.compile(r'(?:(?:https?|wss?)://[^"\'`<>\\\s)]+|/[A-Za-z0-9_.~!$&()*+,;=:@%/-]*(?:api|sync|auth|verify|account|game|character|relay|ws)[A-Za-z0-9_.~!$&()*+,;=:@%/?-]*)',re.I)
+          for p in sorted(Path('/tmp/js').glob('*.js')):
               text=p.read_text('utf-8',errors='ignore')
-              if not text.strip(): continue
-              lows=text.lower()
-              relevant=False
-              for n in needles:
-                  if n.lower() in lows: relevant=True; break
-              if not relevant: continue
-              print('\n###',p.name,'bytes',len(text.encode()))
-              for n in needles:
-                  pos=0; hits=0
-                  while hits<12:
-                      i=lows.find(n.lower(),pos)
-                      if i<0: break
-                      lo=max(0,i-1000); hi=min(len(text),i+2600)
-                      print(f'--- {n} @ {i} ---')
-                      print(text[lo:hi].replace('\n',' ')[:3800])
-                      pos=i+len(n); hits+=1
-              urls=sorted(set(re.findall(r'(?:https?|wss?)://[^"\'`<>\\\s)]+',text)))
-              for u in urls:
-                  if any(k in u.lower() for k in ['wwm','sync','relay','game','api','ws','cloudflare']): print('URL',u[:1500])
+              low=text.lower()
+              hits=[n for n in needles if n.lower() in low]
+              if not hits: continue
+              print(f'\n===== FILE {p.name} BYTES {len(text.encode())} HITS {hits} =====')
+              printed=[]
+              for n in hits:
+                  pos=0; count=0
+                  while count<8:
+                      at=low.find(n.lower(),pos)
+                      if at<0: break
+                      key=(max(0,at-1800)//500)
+                      if key not in printed:
+                          printed.append(key)
+                          lo=max(0,at-1800); hi=min(len(text),at+4200)
+                          print(f'\n--- CONTEXT {n} @{at} ---')
+                          print(text[lo:hi].replace('\n',' ')[:6500])
+                      pos=at+len(n); count+=1
+              print('\n--- URL_AND_ROUTE_LITERALS ---')
+              vals=[]
+              for m in api_re.finditer(text):
+                  v=m.group(0)
+                  if 2 < len(v) < 1200: vals.append(v)
+              for v in sorted(set(vals)):
+                  print(v)
           PY
-
-          echo '=== NEXT/ROUTE MANIFEST HINTS ==='
-          grep -RhoE '/_next/static/[^"'"' ]+' /tmp/*.html 2>/dev/null | sort -u | head -100 || true
