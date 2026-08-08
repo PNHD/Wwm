@@ -1,4 +1,4 @@
-name: Forensic Official WWM Sync Surface
+name: Forensic WWM Sync Surfaces
 
 on:
   push:
@@ -14,46 +14,58 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trace public official map store endpoints
+      - name: Trace public sync surfaces
         shell: bash
         run: |
           set -euo pipefail
-          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
-          for f in common-a15f2132.js pc-d3f0a0d4.js index-1d9774f9.js index-be137abf.js; do
-            curl --fail --silent --show-error --location --compressed "$root/$f" -o "/tmp/$f"
-          done
+          curl --fail --silent --show-error --location --compressed \
+            'https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js' \
+            -o /tmp/official-common.js
+          curl --fail --silent --show-error --location --compressed \
+            'https://sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js' \
+            -o /tmp/mpay.js
+          curl --fail --silent --show-error --location --compressed \
+            'https://wwmmap.pages.dev/js/map_2026/app.js?v=5' \
+            -o /tmp/legacy-app.js
 
-          python - <<'PY' > official-sync-store.txt
+          python - <<'PY' > sync-surfaces.txt
           from pathlib import Path
           import re
-          files=[Path('/tmp/common-a15f2132.js'),Path('/tmp/pc-d3f0a0d4.js'),Path('/tmp/index-1d9774f9.js'),Path('/tmp/index-be137abf.js')]
-          terms=['silentLogin','loginWithRole','mapPoints','mapList','roleList','updateToken','userinfo','uuid','nickName','token','role_id','roleId','point','collect','complete','login','bind']
+          files=[Path('/tmp/official-common.js'),Path('/tmp/mpay.js'),Path('/tmp/legacy-app.js')]
+          terms=['127.0.0.1:3030','localhost','start_game_sync','call_client_method','gameauth','WebSocket','wss://','ws://','relay','invokeClientMethod','getSauthJson','h72naLogin','ursRoles','ursLogin','ticket','bridge']
           for p in files:
               text=p.read_text('utf-8',errors='ignore')
               print(f'=== {p.name} BYTES {len(text.encode())} ===')
               for term in terms:
                   start=0; n=0
                   while True:
-                      i=text.find(term,start)
-                      if i<0 or n>=8: break
-                      lo=max(0,i-1400); hi=min(len(text),i+3000)
+                      i=text.lower().find(term.lower(),start)
+                      if i<0 or n>=16: break
+                      lo=max(0,i-1800); hi=min(len(text),i+4200)
                       print(f'--- {term} @ {i} ---')
-                      print(' '.join(text[lo:hi].split())[:6200])
+                      print(' '.join(text[lo:hi].split())[:8200])
                       start=i+len(term); n+=1
-              print('--- URL/ROUTE LITERALS ---')
-              lits=[]
-              for m in re.finditer(r'(["\'])(.{1,420}?)\1',text,re.S):
-                  s=' '.join(m.group(2).split()); low=s.lower()
-                  if ('/' in s or 'http' in low) and any(k in low for k in ['api','map','role','login','user','point','collect','token','bind','server','sdk']):
-                      lits.append(s)
-              for s in sorted(set(lits))[:500]: print(s[:900])
+              print('--- NETWORK LITERALS ---')
+              urls=sorted(set(re.findall(r'https?://[^\"\'<>\\\s)]+|wss?://[^\"\'<>\\\s)]+',text)))
+              for u in urls:
+                  low=u.lower()
+                  if any(k in low for k in ['127.0.0.1','localhost','sync','relay','gameauth','client','easebar','wherewindsmeet','wwmmap']):
+                      print(u[:1200])
           PY
-          echo "SUMMARY_BYTES $(wc -c < official-sync-store.txt)"
 
-      - name: Upload compact forensic artifact
+          # Keep complete public assets in the short-lived artifact so protocol context is inspectable.
+          cp /tmp/official-common.js ./official-common.js
+          cp /tmp/mpay.js ./mpay.js
+          cp /tmp/legacy-app.js ./legacy-app.js
+
+      - name: Upload forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: official-wwm-sync-store
-          path: official-sync-store.txt
+          name: wwm-sync-surfaces
+          path: |
+            sync-surfaces.txt
+            official-common.js
+            mpay.js
+            legacy-app.js
           if-no-files-found: error
           retention-days: 1
