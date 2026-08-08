@@ -1,48 +1,44 @@
-# WWM Map — independent prototype
+# WWM Atlas — Where Winds Meet map hub
 
-M0 foundation for a self-owned Where Winds Meet exploration map.
+Production-oriented, self-owned map companion for **Where Winds Meet**.
 
-## Current state
+## What this project is
 
-**M0 / DEMO_ONLY.** The UI and progress system are functional, but the bundled map and POIs are synthetic. This repository intentionally does not mirror `wwmmap.pages.dev`, 17173, the official game map, or any other third-party dataset.
+WWM Atlas avoids depending on the abandoned `wwmmap.pages.dev` application architecture. Instead it provides one stable shell with:
 
-### Implemented
+- **Official Map** as the primary real map source.
+- **17173 CN** as a dense Chinese fallback.
+- **MapGenie** as an English fallback.
+- **Personal Overlay** for user-owned GeoJSON, filtering and completion tracking.
+- Local-only quick notes and progress backup/restore.
+- Vietnamese and English UI.
+- `/map` routing for Cloudflare Pages.
+- PWA shell caching.
 
-- MapLibre GL JS v6 ESM map shell with a local image source.
-- Region registry and normalized GeoJSON POI contract.
-- Category filters and search.
-- Marker clustering for large future datasets.
-- Local completion tracking.
-- Hide completed.
-- Progress import/export JSON.
-- Shareable `#poi=<id>` deep links.
-- Responsive desktop/mobile layout.
-- No backend, account, Discord or old WWM Map dependency.
+The project intentionally **does not copy or mirror third-party marker databases, game artwork or map tiles**. Real map content is loaded from the selected provider, while personal state belongs to this site and stays in the browser.
 
 ## Run locally
-
-Serve the directory with any static HTTP server; do not open `index.html` through `file://` because JSON is loaded with `fetch()`.
 
 ```bash
 python -m http.server 8080
 ```
 
-Then open `http://localhost:8080`.
+Open `http://localhost:8080/index.html` (Cloudflare handles `/map` through `_redirects`).
 
-## Deployment target
+## Cloudflare Pages
 
-Static hosting such as Cloudflare Pages. Build command: none. Output directory: repository root.
+Static project. No build step is required.
 
-## Data safety rule
+- Build command: *(empty)*
+- Build output directory: `/`
+- Production URL target: `https://<project>.pages.dev/map`
 
-Upstream providers must be converted into the normalized contract described in `docs/DATA_CONTRACT.md`. The frontend must not call an undocumented third-party schema directly.
+For Wrangler direct-upload CI, see `.github/workflows/deploy-cloudflare-pages.yml`.
 
-## M1 gate
+## Data contract
 
-Before importing real WWM data, establish:
+Personal datasets use GeoJSON `FeatureCollection` with `Point` features. See `docs/DATA_CONTRACT.md`.
 
-1. map asset/tile provenance and acceptable reuse terms;
-2. coordinate transform per region/floor;
-3. stable upstream IDs or a deterministic ID strategy;
-4. importer fixture tests;
-5. a data-source fallback strategy.
+## Status
+
+**Production shell complete.** Cloudflare deployment is automated when the repository exposes `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.

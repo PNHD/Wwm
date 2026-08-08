@@ -1,8 +1,10 @@
-name: Validate WWM Map
+name: Validate WWM Atlas
 
 on:
   push:
-    branches: [feature/wwm-map-m0-foundation]
+    branches:
+      - feature/wwm-map-m0-foundation
+      - production/wwm-atlas
   pull_request:
 
 permissions:
@@ -13,33 +15,77 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Validate JavaScript syntax
-        run: node --check app.js
-      - name: Validate MapLibre v6 ESM integration
         run: |
-          grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.mjs" index.html
-          if grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.js" index.html; then
-            echo 'MapLibre v6 is ESM-only; UMD bundle reference is invalid.' >&2
-            exit 1
-          fi
-      - name: Validate JSON
+          set -euo pipefail
+          node --check app.js
+          node --check sw.js
+          node --check bootstrap.mjs
+
+      - name: Validate JSON and GeoJSON
         run: |
+          set -euo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
-          for path in Path('data').glob('*.json'):
-              with path.open(encoding='utf-8') as f:
-                  json.load(f)
+          files = list(Path('data').glob('*.json')) + list(Path('data').glob('*.geojson'))
+          for path in files:
+              with path.open(encoding='utf-8') as handle:
+                  doc = json.load(handle)
+              if path.suffix == '.geojson':
+                  assert doc.get('type') == 'FeatureCollection', f'{path}: expected FeatureCollection'
+                  ids = [str(feature.get('id') or feature.get('properties', {}).get('id')) for feature in doc.get('features', [])]
+                  assert len(ids) == len(set(ids)), f'{path}: duplicate POI ids'
               print('valid', path)
-          with Path('data/qinghe-demo.geojson').open(encoding='utf-8') as f:
-              doc = json.load(f)
-          ids = [str(feature['id']) for feature in doc['features']]
-          assert len(ids) == len(set(ids)), 'POI ids must be unique'
-          print('unique POI ids', len(ids))
           PY
-      - name: Reject accidental third-party asset URLs in data
+
+      - name: Validate source allowlist
         run: |
-          if grep -RInE 'wwmmap\.pages\.dev|map\.17173\.com|wherewindsmeetgame\.com/map' data assets; then
-            echo 'Third-party map dependency detected in bundled runtime data.' >&2
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const sources = JSON.parse(fs.readFileSync('data/sources.json', 'utf8'));
+          const expected = new Map([
+            ['official', 'https://www.wherewindsmeetgame.com/map/en/'],
+            ['17173', 'https://map.17173.com/yysls/maps/qinghe'],
+            ['mapgenie', 'https://mapgenie.io/where-winds-meet/maps/world'],
+            ['personal', null],
+          ]);
+          if (!Array.isArray(sources) || sources.length !== expected.size) throw new Error('Unexpected source registry shape');
+          for (const source of sources) {
+            if (!expected.has(source.id)) throw new Error(`Unexpected source: ${source.id}`);
+            if (expected.get(source.id) !== (source.url || null)) throw new Error(`Unexpected URL for ${source.id}`);
+          }
+          NODE
+          if grep -RInF 'wwmmap.pages.dev' index.html app.js bootstrap.mjs sw.js data assets; then
+            echo 'Legacy WWM Map dependency detected.' >&2
             exit 1
           fi
+
+      - name: Validate MapLibre v6 lazy ESM integration
+        run: |
+          set -euo pipefail
+          grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.mjs" app.js
+          if grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.js" app.js index.html bootstrap.mjs; then
+            echo 'MapLibre v6 is ESM-only; UMD bundle reference is invalid.' >&2
+            exit 1
+          fi
+          if grep -F "maplibre-gl@6.2.0" index.html bootstrap.mjs; then
+            echo 'MapLibre must remain lazy-loaded from Personal Overlay only.' >&2
+            exit 1
+          fi
+
+      - name: Validate routing and HTML
+        run: |
+          set -euo pipefail
+          grep -Fx '/map /index.html 200' _redirects
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class Parser(HTMLParser):
+              pass
+          parser = Parser()
+          parser.feed(Path('index.html').read_text(encoding='utf-8'))
+          print('valid index.html')
+          PY

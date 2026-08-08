@@ -1,76 +1,135 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b0f14" />
-    <meta name="description" content="Independent Where Winds Meet exploration map prototype." />
-    <title>WWM Map — Independent Prototype</title>
-    <link rel="preconnect" href="https://unpkg.com" />
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div id="app" class="app-shell">
-      <aside class="sidebar" aria-label="Map controls">
-        <div class="brand-row">
-          <div>
-            <p class="eyebrow">Independent companion</p>
-            <h1>WWM Map</h1>
-          </div>
-          <span id="data-status" class="status-pill">M0 demo</span>
-        </div>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0d12" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="WWM Atlas — bản đồ đồng hành độc lập cho Where Winds Meet, ưu tiên bản đồ chính thức và có nguồn dự phòng." />
+  <meta name="robots" content="index,follow" />
+  <meta property="og:title" content="WWM Atlas — Where Winds Meet Map" />
+  <meta property="og:description" content="Bản đồ đồng hành độc lập: Official Map, 17173, MapGenie và personal overlay." />
+  <meta property="og:type" content="website" />
+  <title>WWM Atlas — Where Winds Meet Map</title>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/map" aria-label="WWM Atlas">
+        <span class="brand-mark" aria-hidden="true">風</span>
+        <span>
+          <strong>WWM Atlas</strong>
+          <small data-i18n="brandTag">Independent map hub</small>
+        </span>
+      </a>
 
-        <label class="field-label" for="region-select">Region</label>
+      <nav id="source-tabs" class="source-tabs" aria-label="Map source"></nav>
+
+      <div class="top-actions">
+        <button id="toggle-sidebar" class="ghost-button mobile-only" type="button" aria-label="Mở bảng điều khiển">☰</button>
+        <label class="language-picker">
+          <span class="sr-only">Language</span>
+          <select id="language-select" aria-label="Language">
+            <option value="vi">VI</option>
+            <option value="en">EN</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <aside id="sidebar" class="sidebar" aria-label="Map controls">
+      <section class="source-summary">
+        <div class="section-kicker" data-i18n="mapSource">Nguồn bản đồ</div>
+        <div class="source-title-row">
+          <div>
+            <h1 id="active-source-name">Official Map</h1>
+            <p id="active-source-description" class="muted-copy"></p>
+          </div>
+          <span id="source-badge" class="status-pill">Primary</span>
+        </div>
+        <div class="source-actions">
+          <button id="reload-source" class="secondary-button" type="button" data-i18n="reload">Tải lại</button>
+          <a id="open-source" class="secondary-button link-button" target="_blank" rel="noopener noreferrer" data-i18n="openNewTab">Mở tab mới</a>
+        </div>
+      </section>
+
+      <section id="external-panel" class="control-section">
+        <div class="notice-card">
+          <strong data-i18n="externalNoticeTitle">Không mirror dữ liệu bên thứ ba</strong>
+          <p data-i18n="externalNoticeBody">Trang này giữ UI và dữ liệu cá nhân của bạn độc lập. Nội dung bản đồ thật được tải trực tiếp từ nhà cung cấp đã chọn.</p>
+        </div>
+        <label class="field-label" for="quick-notes" data-i18n="notes">Ghi chú nhanh</label>
+        <textarea id="quick-notes" class="control notes-control" rows="8" data-i18n-placeholder="notesPlaceholder" placeholder="Ghi vị trí, nhiệm vụ hoặc thứ cần quay lại…"></textarea>
+        <p class="tiny-copy" data-i18n="notesSaved">Ghi chú được lưu chỉ trên trình duyệt này.</p>
+      </section>
+
+      <section id="personal-panel" class="control-section" hidden>
+        <label class="field-label" for="region-select" data-i18n="region">Khu vực</label>
         <select id="region-select" class="control"></select>
 
-        <label class="field-label" for="search-input">Search POI</label>
-        <input id="search-input" class="control" type="search" placeholder="Search name or description…" autocomplete="off" />
+        <label class="field-label" for="search-input" data-i18n="searchPoi">Tìm POI</label>
+        <input id="search-input" class="control" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Tên hoặc mô tả…" autocomplete="off" />
 
         <div class="section-heading">
-          <span>Categories</span>
-          <button id="toggle-all" class="text-button" type="button">Hide all</button>
+          <span data-i18n="categories">Danh mục</span>
+          <button id="toggle-all" class="text-button" type="button" data-i18n="hideAll">Ẩn hết</button>
         </div>
         <div id="category-list" class="category-list"></div>
 
         <div class="progress-card">
           <div>
-            <span class="muted">Completed</span>
+            <span class="muted" data-i18n="completed">Đã xong</span>
             <strong id="progress-count">0 / 0</strong>
           </div>
           <label class="switch-row">
             <input id="hide-completed" type="checkbox" />
-            <span>Hide completed</span>
+            <span data-i18n="hideCompleted">Ẩn đã xong</span>
           </label>
         </div>
 
         <div class="button-grid">
-          <button id="export-progress" class="secondary-button" type="button">Export</button>
-          <button id="import-progress" class="secondary-button" type="button">Import</button>
-          <input id="import-file" type="file" accept="application/json" hidden />
+          <button id="import-dataset" class="secondary-button" type="button" data-i18n="importData">Nhập POI</button>
+          <button id="export-progress" class="secondary-button" type="button" data-i18n="exportState">Xuất dữ liệu</button>
+          <button id="import-progress" class="secondary-button" type="button" data-i18n="importState">Nhập dữ liệu</button>
+          <button id="reset-view" class="secondary-button" type="button" data-i18n="resetView">Reset view</button>
         </div>
+        <input id="dataset-file" type="file" accept="application/geo+json,application/json,.geojson,.json" hidden />
+        <input id="import-file" type="file" accept="application/json" hidden />
 
-        <p class="legal-note">
-          M0 uses a generated placeholder map and demo POIs only. No game artwork or third-party map dataset is bundled.
-        </p>
-      </aside>
+        <p class="tiny-copy" data-i18n="personalHint">Personal Overlay dùng dataset của bạn. Dataset mẫu đi kèm chỉ để test giao diện, không phải vị trí thật trong game.</p>
+      </section>
 
-      <main class="map-stage">
-        <div id="map" aria-label="Interactive map"></div>
-        <div class="top-overlay">
-          <div class="result-chip"><span id="visible-count">0</span> visible POIs</div>
-          <button id="reset-view" class="icon-button" type="button" aria-label="Reset map view">Reset view</button>
+      <footer class="sidebar-footer">
+        <div class="health-row"><span class="health-dot"></span><span data-i18n="localFirst">Local-first · Không tài khoản</span></div>
+        <p>Fan-made companion. Not affiliated with Everstone Studio / NetEase.</p>
+      </footer>
+    </aside>
+
+    <main class="map-stage">
+      <section id="external-stage" class="stage-layer external-stage">
+        <iframe id="map-frame" title="Where Winds Meet map source" loading="eager" referrerpolicy="strict-origin-when-cross-origin" allow="fullscreen; clipboard-read; clipboard-write"></iframe>
+        <div id="frame-loading" class="frame-loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <strong data-i18n="loadingMap">Đang tải bản đồ…</strong>
+          <small data-i18n="iframeFallback">Nếu nguồn chặn iframe, dùng nút “Mở tab mới”.</small>
         </div>
-        <div id="empty-state" class="empty-state" hidden>No POIs match the current filters.</div>
-      </main>
-    </div>
+      </section>
 
-    <noscript>This map requires JavaScript.</noscript>
-    <script type="module">
-      import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.mjs';
-      window.maplibregl = maplibregl;
-      await import('./app.js');
-    </script>
-  </body>
+      <section id="personal-stage" class="stage-layer personal-stage" hidden>
+        <div id="map" aria-label="Personal interactive map"></div>
+        <div class="map-overlay-left">
+          <div class="result-chip"><span id="visible-count">0</span> <span data-i18n="visiblePoi">POI đang hiện</span></div>
+          <span id="data-status" class="status-pill">Demo</span>
+        </div>
+        <div id="empty-state" class="empty-state" hidden data-i18n="noPoi">Không có POI phù hợp bộ lọc.</div>
+      </section>
+    </main>
+  </div>
+
+  <noscript>WWM Atlas requires JavaScript.</noscript>
+  <script type="module" src="/bootstrap.mjs"></script>
+</body>
 </html>

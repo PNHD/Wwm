@@ -1,0 +1,34 @@
+[
+  {
+    "id": "official",
+    "name": "Official Map",
+    "badge": "Primary",
+    "url": "https://www.wherewindsmeetgame.com/map/en/",
+    "descriptionVi": "Bản đồ tương tác chính thức của Where Winds Meet. Đây là nguồn mặc định vì được đội game duy trì.",
+    "descriptionEn": "The official Where Winds Meet interactive map. This is the default source because it is maintained by the game team."
+  },
+  {
+    "id": "17173",
+    "name": "17173 CN",
+    "badge": "CN fallback",
+    "url": "https://map.17173.com/yysls/maps/qinghe",
+    "descriptionVi": "Bản đồ cộng đồng Trung Quốc có mật độ POI cao. Trình duyệt có thể dịch tự động nếu cần.",
+    "descriptionEn": "A dense Chinese community map with extensive POI coverage. Browser translation may help."
+  },
+  {
+    "id": "mapgenie",
+    "name": "MapGenie",
+    "badge": "EN fallback",
+    "url": "https://mapgenie.io/where-winds-meet/maps/world",
+    "descriptionVi": "Nguồn tiếng Anh dễ tra cứu, dùng làm fallback khi official/CN map không tiện.",
+    "descriptionEn": "An English-first fallback that is convenient for quick lookups."
+  },
+  {
+    "id": "personal",
+    "name": "Personal Overlay",
+    "badge": "Local",
+    "url": "",
+    "descriptionVi": "Map riêng của bạn: import GeoJSON, lọc POI và lưu tiến độ hoàn toàn trong trình duyệt.",
+    "descriptionEn": "Your own local map: import GeoJSON, filter POIs and keep completion state entirely in the browser."
+  }
+]
