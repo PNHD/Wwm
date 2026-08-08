@@ -7,7 +7,9 @@ const ALLOWED = new Set([
 function sameOrigin(request) {
   const url = new URL(request.url);
   const origin = request.headers.get('origin');
-  return origin === url.origin;
+  if (origin) return origin === url.origin;
+  const fetchSite = request.headers.get('sec-fetch-site');
+  return fetchSite === 'same-origin' || fetchSite === 'same-site';
 }
 
 function jsonError(status, message) {
