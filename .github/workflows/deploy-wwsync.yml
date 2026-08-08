@@ -107,10 +107,23 @@ jobs:
             'https://s2.easebar.com/39f12eda6b86452b/api/auth/ursRoles'
           grep -qi '^access-control-allow-origin:' /tmp/cors.headers
           grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
-          status="$(curl --silent --show-error --output /tmp/device-method.json --write-out '%{http_code}' "$base/api/mpay/device-init")"
-          test "$status" = '405'
-          status="$(curl --silent --show-error --output /tmp/config-forbidden.json --write-out '%{http_code}' "$base/api/mpay/oauth-config")"
-          test "$status" = '403'
+
+          ci='00000000-0000-4000-8000-000000000001'
+          device_payload="uuid=${ci}&resolution=300*150&device_brand=&device_name=&device_type=4&device_model=unknown&system_name=Linux&system_version=CI&game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&debug_mode=0&package_name="
+          status="$(curl --silent --show-error --output /tmp/device.json --write-out '%{http_code}' -X POST \
+            -H "Origin: $base" \
+            -H 'content-type: application/x-www-form-urlencoded; charset=utf-8' \
+            --data "$device_payload" \
+            "$base/api/mpay/device-init")"
+          test "$status" = '200' || { echo "device-init HTTP $status" >&2; cat /tmp/device.json >&2; exit 1; }
+          device_id="$(node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/device.json','utf8')); const id=x?.device?.id; if(!id) process.exit(1); process.stdout.write(String(id))")"
+          config_query="game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&device_id=${device_id}&debug_mode=0&package_name=&qrcode_app_id=&version=v2"
+          status="$(curl --silent --show-error --output /tmp/oauth-config.json --write-out '%{http_code}' \
+            -H "Origin: $base" \
+            "$base/api/mpay/oauth-config?${config_query}")"
+          test "$status" = '200' || { echo "oauth-config HTTP $status" >&2; cat /tmp/oauth-config.json >&2; exit 1; }
+          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/oauth-config.json','utf8')); if(!x?.data?.login_methods?.length) { console.error(x); process.exit(1) }"
+          echo "WWSync Mpay bootstrap smoke passed with device ${device_id}"
           echo "WWSync HTTP smoke passed: $base"
 
       - name: Browser smoke official map and login shell
