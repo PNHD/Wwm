@@ -1,9 +1,9 @@
 {
-  "name": "WWM Atlas — Auto Sync Map",
-  "short_name": "WWM Atlas",
-  "start_url": "/map",
+  "name": "WWSync",
+  "short_name": "WWSync",
+  "description": "Where Winds Meet companion map with official-account progress import.",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "#080b0f",
-  "theme_color": "#080b0f",
-  "description": "Where Winds Meet companion map with VI/EN UI and game progress auto-sync."
+  "background_color": "#070b0f",
+  "theme_color": "#0a0f14"
 }

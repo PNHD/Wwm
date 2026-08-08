@@ -1,118 +1,40 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#080b0f" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="description" content="WWM Atlas — Where Winds Meet map with game progress auto-sync." />
-  <meta name="robots" content="index,follow" />
-  <meta property="og:title" content="WWM Atlas — Auto Sync Map" />
-  <meta property="og:description" content="Where Winds Meet companion map with VI/EN interface and game progress auto-sync." />
-  <meta property="og:type" content="website" />
-  <title>WWM Atlas — Auto Sync Map</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a0f14">
+  <meta name="description" content="WWSync — Where Winds Meet map with official-account progress import.">
+  <title>WWSync — Where Winds Meet</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="https://sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js"></script>
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/map" aria-label="WWM Atlas">
-        <span class="brand-mark" aria-hidden="true">風</span>
-        <span><strong>WWM Atlas</strong><small data-i18n="brandTag">Auto-sync companion map</small></span>
-      </a>
-      <div class="top-status">
-        <span id="sync-status-dot" class="health-dot is-idle"></span>
-        <span id="sync-status-label" data-i18n="disconnected">Chưa kết nối</span>
-      </div>
-      <div class="top-actions">
-        <a class="ghost-link" href="https://www.wherewindsmeetgame.com/map/en/" target="_blank" rel="noopener noreferrer" data-i18n="officialMap">Bản đồ chính thức</a>
-        <button id="toggle-sidebar" class="ghost-button mobile-only" type="button" aria-label="Toggle controls">☰</button>
-        <label class="language-picker"><span class="sr-only">Language</span><select id="language-select" aria-label="Language"><option value="vi">VI</option><option value="en">EN</option></select></label>
-      </div>
+      <a class="brand" href="/" aria-label="WWSync home"><span class="brand-mark">W</span><span><strong>WWSync</strong><small data-i18n="tagline">Where Winds Meet companion</small></span></a>
+      <div class="top-actions"><span id="sourceBadge" class="source-badge" data-i18n="officialSource">Official WWM data</span><select id="languageSelect" class="compact-select" aria-label="Language"><option value="vi">VI</option><option value="en">EN</option></select></div>
     </header>
-
-    <aside id="sidebar" class="sidebar" aria-label="Map controls">
-      <section class="hero-section">
-        <div class="section-kicker" data-i18n="autoSync">AUTO SYNC</div>
-        <h1 data-i18n="syncTitle">Đồng bộ tiến độ game</h1>
-        <p class="muted-copy" data-i18n="syncIntro">Nhập UID một lần. Sau khi xác nhận trong game, các điểm đã hoàn thành sẽ tự được đánh dấu — không cần mark lại thủ công.</p>
-      </section>
-
-      <section class="control-section auth-section">
-        <div id="auth-ready" class="account-card" hidden>
-          <div><span class="muted" data-i18n="linkedUid">UID đã liên kết</span><strong id="linked-uid"></strong></div>
-          <button id="logout-btn" class="text-button" type="button" data-i18n="unlink">Gỡ liên kết</button>
-        </div>
-        <div id="auth-form">
-          <label class="field-label" for="uid-input" data-i18n="uidLabel">UID nhân vật</label>
-          <div class="inline-control">
-            <input id="uid-input" class="control" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="123456789" />
-            <button id="check-uid-btn" class="primary-button" type="button" data-i18n="checkUid">Kiểm tra</button>
-          </div>
-        </div>
-        <div id="password-step" class="auth-step" hidden>
-          <p class="tiny-copy" data-i18n="boundAccount">UID này đã từng liên kết với dịch vụ sync. Nhập mật khẩu sync đã tạo trước đây.</p>
-          <label class="field-label" for="password-input" data-i18n="syncPassword">Mật khẩu sync</label>
-          <input id="password-input" class="control" type="password" autocomplete="off" />
-          <label class="check-row"><input id="remember-credential" type="checkbox" /><span data-i18n="rememberDevice">Nhớ trên thiết bị này</span></label>
-          <div class="button-grid"><button id="login-btn" class="primary-button" type="button" data-i18n="link">Liên kết</button><button id="forgot-btn" class="secondary-button" type="button" data-i18n="forgot">Quên mật khẩu</button></div>
-        </div>
-        <div id="verify-step" class="auth-step notice-card accent-card" hidden>
-          <strong data-i18n="verifyInGame">Xác nhận trong game</strong>
-          <p data-i18n="verifyHelp">Giữ game đang mở và chấp nhận yêu cầu xác nhận có mã bên dưới. Sau đó bấm “Tôi đã xác nhận”.</p>
-          <div class="verification-code"><span data-i18n="verificationCode">Mã xác nhận</span><code id="verification-hash">—</code></div>
-          <button id="confirm-bind-btn" class="primary-button" type="button" data-i18n="confirmed">Tôi đã xác nhận</button>
-        </div>
-        <div id="reset-step" class="auth-step notice-card accent-card" hidden>
-          <strong data-i18n="resetInGame">Reset mật khẩu trong game</strong>
-          <p data-i18n="resetHelp">Xác nhận yêu cầu reset có mã bên dưới trong game, rồi bấm hoàn tất.</p>
-          <div class="verification-code"><span data-i18n="verificationCode">Mã xác nhận</span><code id="reset-hash">—</code></div>
-          <button id="confirm-reset-btn" class="primary-button" type="button" data-i18n="finishReset">Hoàn tất reset</button>
-        </div>
-        <div id="auth-message" class="inline-message" role="status" aria-live="polite"></div>
-      </section>
-
-      <section class="control-section sync-controls">
-        <div class="section-heading"><span data-i18n="gameSync">Game Sync</span><span id="last-sync" class="tiny-copy"></span></div>
-        <label class="field-label" for="relay-select" data-i18n="relay">Máy chủ relay</label>
-        <select id="relay-select" class="control"><option value="default">Vietnam Main Server</option></select>
-        <button id="sync-btn" class="primary-button sync-button" type="button" disabled><span aria-hidden="true">↻</span><span data-i18n="syncNow">Đồng bộ ngay</span></button>
-        <p class="tiny-copy" data-i18n="syncPrivacy">Mật khẩu sync chỉ được giữ trong trình duyệt của bạn và chuyển qua adapter Cloudflare để gọi dịch vụ tương thích. WWM Atlas không lưu mật khẩu ở server.</p>
-      </section>
-
-      <section class="control-section">
-        <div class="progress-card large-progress">
-          <div><span class="muted" data-i18n="autoCompleted">Đã tự nhận diện</span><strong id="progress-count">0 / —</strong></div>
-          <label class="switch-row"><input id="hide-completed" type="checkbox" /><span data-i18n="hideCompleted">Ẩn đã xong</span></label>
-        </div>
-        <label class="field-label" for="map-select" data-i18n="map">Bản đồ</label>
-        <select id="map-select" class="control"></select>
-        <label class="field-label" for="search-input" data-i18n="search">Tìm địa điểm</label>
-        <input id="search-input" class="control" type="search" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Tên địa điểm…" />
-        <div id="search-results" class="search-results" hidden></div>
-      </section>
-
-      <section class="notice-card compatibility-note">
-        <strong data-i18n="compatTitle">Compatibility mode</strong>
-        <p data-i18n="compatBody">Auto-sync hiện tương thích với bridge công khai của WWM Map. Dữ liệu marker và tile được tải lúc chạy; WWM Atlas không mirror database hoặc artwork vào repository.</p>
-      </section>
-      <footer class="sidebar-footer"><p>Fan-made companion. Not affiliated with Everstone Studio / NetEase.</p></footer>
-    </aside>
-
-    <main class="map-stage">
-      <div id="map-viewport" class="map-viewport" tabindex="0" aria-label="Where Winds Meet interactive map">
-        <div id="tile-layer" class="tile-layer" aria-hidden="true"></div>
-        <canvas id="marker-canvas"></canvas>
-        <div class="map-hud top-left"><span id="map-name" class="hud-chip">—</span><span id="visible-count" class="hud-chip">0 POI</span></div>
-        <div class="map-hud top-right zoom-controls"><button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="fit-map" type="button" data-i18n-title="fitMap" title="Fit map">⌂</button></div>
-        <div id="map-loading" class="map-loading"><span class="spinner"></span><strong data-i18n="loadingData">Đang tải dữ liệu bản đồ…</strong><small data-i18n="loadingNote">Lần đầu có thể tải khoảng 15 MB dữ liệu marker.</small></div>
-        <div id="map-error" class="map-error" hidden><strong data-i18n="mapLoadFailed">Không tải được dữ liệu bản đồ.</strong><button id="retry-map" class="secondary-button" type="button" data-i18n="retry">Thử lại</button></div>
-        <div id="poi-popover" class="poi-popover" hidden></div>
-      </div>
+    <main class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <section class="panel hero-panel">
+          <p class="eyebrow">WWSYNC</p><h1 data-i18n="syncTitle">Đồng bộ tiến độ</h1>
+          <p class="muted" data-i18n="syncIntro">Đăng nhập bằng cửa sổ chính thức của NetEase. WWSync không dùng mật khẩu WWMMAP, bridge hay relay cũ.</p>
+          <div id="signedOutView" class="auth-block"><button id="loginButton" class="primary-button" type="button"><span>↗</span><span data-i18n="loginOfficial">Đăng nhập Where Winds Meet</span></button><p class="fineprint" data-i18n="loginPrivacy">Thông tin đăng nhập được nhập trong UI chính thức của NetEase; WWSync không có ô nhập mật khẩu.</p></div>
+          <div id="signedInView" class="auth-block hidden"><div class="identity-card"><div><span class="label" data-i18n="character">Nhân vật</span><strong id="characterName">—</strong></div><button id="logoutButton" class="text-button" type="button" data-i18n="logout">Đăng xuất</button></div><button id="refreshButton" class="primary-button" type="button"><span>↻</span><span data-i18n="refreshProgress">Làm mới tiến độ</span></button></div>
+          <div id="authStatus" class="status-line" role="status" aria-live="polite"></div>
+        </section>
+        <section id="rolePanel" class="panel hidden"><div class="section-head"><h2 data-i18n="chooseCharacter">Chọn nhân vật</h2><span id="roleCount" class="count-pill">0</span></div><div id="roleList" class="role-list"></div></section>
+        <section class="panel progress-panel"><div class="section-head"><h2 data-i18n="progress">Tiến độ</h2><span id="syncStateBadge" class="status-badge neutral" data-i18n="notSignedIn">Chưa đăng nhập</span></div><div class="progress-grid"><div><span data-i18n="completed">Đã hoàn thành</span><strong id="completedCount">0</strong></div><div><span data-i18n="totalPoints">Tổng điểm</span><strong id="totalCount">0</strong></div></div><div class="progress-track"><div id="progressFill" class="progress-fill"></div></div><p id="progressNote" class="fineprint" data-i18n="progressNote">Trước khi đăng nhập, các điểm từ Official Map được xem là chưa hoàn thành.</p></section>
+        <section class="panel controls-panel"><label class="field-label" for="mapSelect" data-i18n="map">Bản đồ</label><select id="mapSelect" class="field-select"></select><label class="field-label" for="searchInput" data-i18n="search">Tìm kiếm</label><input id="searchInput" class="field-input" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Tên địa điểm / loại điểm..."><label class="toggle-row"><input id="hideCompleted" type="checkbox"><span data-i18n="hideCompleted">Ẩn điểm đã hoàn thành</span></label><div class="section-head category-head"><h2 data-i18n="categories">Danh mục</h2><button id="toggleCategories" class="text-button" type="button" data-i18n="all">Tất cả</button></div><div id="categoryList" class="category-list"></div></section>
+        <section class="panel diagnostic-panel"><div class="section-head"><h2 data-i18n="syncCheck">Kiểm tra nguồn sync</h2><span id="diagnosticBadge" class="status-badge neutral">—</span></div><p id="diagnosticText" class="fineprint" data-i18n="diagnosticIntro">WWSync sẽ so sánh trạng thái “finished” của Official Map sau khi đăng nhập. Chỉ khi dữ liệu tài khoản thực tế phản ánh tiến độ game, trạng thái này mới được coi là auto-sync đã xác minh.</p></section>
+      </aside>
+      <section class="map-stage"><div id="map" class="map"></div><div id="mapLoading" class="map-loading"><div class="spinner"></div><span data-i18n="loadingMap">Đang tải bản đồ…</span></div><button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle sidebar">☰</button><div class="map-credit"><span data-i18n="fanMade">Fan-made companion</span> · <a href="https://www.wherewindsmeetgame.com/map/en/" target="_blank" rel="noopener noreferrer" data-i18n="officialMap">Official Map</a></div></section>
     </main>
   </div>
-  <noscript>WWM Atlas requires JavaScript.</noscript>
-  <script type="module" src="/bootstrap.mjs"></script>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
