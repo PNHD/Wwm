@@ -25,18 +25,17 @@ jobs:
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const page=await browser.newPage({viewport:{width:1440,height:900}});
-            page.on('response',r=>{if(r.status()>=400)console.log('HTTP_ERROR',r.status(),r.url())});
+            page.on('response',async r=>{if(r.status()>=400){let body='';try{body=(await r.text()).slice(0,300).replace(/\s+/g,' ')}catch{}console.log('HTTP_ERROR',r.status(),r.url(),body)}});
             page.on('request',r=>{if(/mpsdk|easebar|\/api\/mpay|mosdk/i.test(r.url()))console.log('REQUEST',r.method(),r.url())});
             page.on('requestfailed',r=>console.log('FAILED',r.url(),r.failure()?.errorText||''));
-            page.on('pageerror',e=>console.log('PAGEERROR',e.message, e.stack||''));
+            page.on('pageerror',e=>console.log('PAGEERROR',e.message,e.stack||''));
             page.on('console',m=>console.log('CONSOLE',m.type(),m.text()));
             await page.goto('https://preview.wwsync-pnhd.pages.dev',{waitUntil:'domcontentloaded',timeout:60000});
             await page.waitForFunction(()=>typeof window.MpayOSSDK==='function'&&Boolean(window.MpayOSSDK.prototype.__wwsyncCorsShim),null,{timeout:30000});
             await page.click('#loginButton');
             await page.waitForTimeout(12000);
-            console.log('STATUS',await page.locator('#authStatus').textContent().catch(()=>''));
-            console.log('DIALOGS',await page.locator('[id*=mosdk],[class*=mosdk]').count());
-            console.log('BODY_HAS_LOGIN',/login|log in|sign in/i.test((await page.locator('body').innerText()).slice(0,8000)));
+            const state=await page.evaluate(()=>{const nodes=[...document.querySelectorAll('[id*=mosdk],[class*=mosdk]')];return{status:document.querySelector('#authStatus')?.textContent||'',dialogs:nodes.length,visible:nodes.filter(n=>{const s=getComputedStyle(n);const r=n.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}).map(n=>({id:n.id,cls:n.className,w:n.getBoundingClientRect().width,h:n.getBoundingClientRect().height})).slice(0,20)}});
+            console.log('LOGIN_STATE',JSON.stringify(state));
             await browser.close();
           })().catch(e=>{console.error('DIAG_FATAL',e);process.exit(1)});
           NODE
