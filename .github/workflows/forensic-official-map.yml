@@ -18,128 +18,125 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Probe official map surfaces
+      - name: Deep probe official CN and Global map surfaces
         shell: bash
         run: |
           python - <<'PY'
-          import json, re, ssl, urllib.request, urllib.parse, urllib.error
-          from html.parser import HTMLParser
+          import json, re, ssl, urllib.request, urllib.error
           from pathlib import Path
 
-          TARGETS = [
-              "https://www.wherewindsmeetgame.com/map/en/",
-              "https://www.wherewindsmeetgame.com/map/",
-              "https://ds.163.com/g/yysls",
-              "https://act.ds.163.com/",
-          ]
           UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
           ctx = ssl.create_default_context()
-          out = {"targets": [], "assets": [], "findings": []}
 
-          class Assets(HTMLParser):
-              def __init__(self):
-                  super().__init__(); self.urls=[]
-              def handle_starttag(self, tag, attrs):
-                  d=dict(attrs)
-                  if tag == "script" and d.get("src"):
-                      self.urls.append(d["src"])
-                  if tag == "link" and d.get("href") and ("javascript" in d.get("as", "") or "script" in d.get("rel", "") or d["href"].split("?",1)[0].endswith((".js", ".mjs"))):
-                      self.urls.append(d["href"])
+          ASSETS = {
+            "global_pc": "https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js",
+            "global_common": "https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js",
+            "cn_yysls": "https://g.166.net/res/a19/p__g__yysls.8e3f9c6a.async.js",
+            "cn_umi": "https://g.166.net/res/a19/umi.e9951072.js",
+            "cn_vendor": "https://g.166.net/res/a19/chunk-vendors.9e331439.js",
+            "cn_runtime": "https://g.166.net/res/a19/runtime~umi.683df681.js",
+          }
 
-          def fetch(url, max_bytes=5_000_000):
-              req=urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-              with urllib.request.urlopen(req, timeout=25, context=ctx) as r:
-                  data=r.read(max_bytes+1)
-                  return {
-                      "status": getattr(r, "status", 200),
-                      "final_url": r.geturl(),
-                      "headers": dict(r.headers.items()),
-                      "body": data[:max_bytes],
-                      "truncated": len(data)>max_bytes,
-                  }
+          GLOBAL_GETS = [
+            "https://www.wherewindsmeetgame.com/api/map/list",
+            "https://www.wherewindsmeetgame.com/api/map/points",
+            "https://www.wherewindsmeetgame.com/api/map/point",
+          ]
 
-          html_assets=[]
-          for url in TARGETS:
-              rec={"url":url}
+          def fetch(url, max_bytes=12_000_000):
+              req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"}, method="GET")
               try:
-                  r=fetch(url, 3_000_000)
-                  text=r["body"].decode("utf-8", "replace")
-                  rec.update({"status":r["status"],"final_url":r["final_url"],"bytes":len(r["body"]),"content_type":r["headers"].get("Content-Type"),"server":r["headers"].get("Server")})
-                  p=Assets(); p.feed(text)
-                  resolved=[]
-                  for raw in p.urls:
-                      u=urllib.parse.urljoin(r["final_url"], raw)
-                      if u not in resolved: resolved.append(u)
-                  rec["script_assets"]=resolved
-                  html_assets += resolved
-                  # Inline endpoint-like strings can be useful even when bootstrapped dynamically.
-                  for m in re.findall(r'https?://[^"\'<>\\\s]{4,220}', text):
-                      out["findings"].append({"source":url,"kind":"absolute_url","value":m})
-              except Exception as e:
-                  rec["error"]=f"{type(e).__name__}: {e}"
-              out["targets"].append(rec)
+                  with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+                      data = r.read(max_bytes + 1)
+                      return {"status": getattr(r, "status", 200), "final_url": r.geturl(), "headers": dict(r.headers.items()), "body": data[:max_bytes], "truncated": len(data) > max_bytes}
+              except urllib.error.HTTPError as e:
+                  data = e.read(max_bytes + 1)
+                  return {"status": e.code, "final_url": e.geturl(), "headers": dict(e.headers.items()), "body": data[:max_bytes], "truncated": len(data) > max_bytes}
 
-          # Restrict asset fan-out to official/NetEase-owned hosts discovered by the pages.
-          allowed_suffixes=("wherewindsmeetgame.com", "163.com", "netease.com", "nie.netease.com")
-          assets=[]
-          for u in html_assets:
-              host=(urllib.parse.urlparse(u).hostname or "").lower()
-              if any(host==s or host.endswith("."+s) for s in allowed_suffixes):
-                  if u not in assets: assets.append(u)
-          assets=assets[:60]
-
-          keyword_re=re.compile(r'(?i)(sync|progress|collect|marker|point|poi|location|position|coord|role|character|uid|login|token|socket|websocket|wss|native|ipc|bridge|game|yysls|map)')
-          string_re=re.compile(r'(["\'])(.{1,240}?)\1')
-          abs_re=re.compile(r'https?://[^"\'<>\\\s]{4,220}')
-          path_re=re.compile(r'/(?:api|v\d+|map|maps|game|user|role|point|poi|marker|collect|progress|sync|location|position|login|auth|account)[A-Za-z0-9_?&=./:%+\-]{1,220}', re.I)
-
-          for i,u in enumerate(assets):
-              a={"url":u}
+          report = {"assets": {}, "contexts": {}, "global_gets": []}
+          texts = {}
+          for name, url in ASSETS.items():
               try:
-                  r=fetch(u, 6_000_000)
-                  body=r["body"]
-                  text=body.decode("utf-8", "replace")
-                  a.update({"status":r["status"],"bytes":len(body),"truncated":r["truncated"],"content_type":r["headers"].get("Content-Type")})
-                  vals=set(abs_re.findall(text)) | set(path_re.findall(text))
-                  # Also keep compact quoted strings containing protocol-relevant terms.
-                  for _,s in string_re.findall(text):
-                      if keyword_re.search(s) and len(s) <= 220:
-                          vals.add(s)
-                  ranked=[]
-                  for v in vals:
-                      if keyword_re.search(v): ranked.append(v)
-                  ranked=sorted(set(ranked), key=lambda s:(len(s),s))[:250]
-                  for v in ranked:
-                      out["findings"].append({"source":u,"kind":"asset_string","value":v})
+                  r = fetch(url)
+                  text = r["body"].decode("utf-8", "replace")
+                  texts[name] = text
+                  report["assets"][name] = {"url": url, "status": r["status"], "bytes": len(r["body"]), "truncated": r["truncated"], "content_type": r["headers"].get("Content-Type")}
               except Exception as e:
-                  a["error"]=f"{type(e).__name__}: {e}"
-              out["assets"].append(a)
+                  report["assets"][name] = {"url": url, "error": f"{type(e).__name__}: {e}"}
 
-          # De-duplicate findings globally and cap noise while preserving source attribution.
-          seen=set(); clean=[]
-          for f in out["findings"]:
-              k=(f["source"],f["value"])
-              if k in seen: continue
-              seen.add(k); clean.append(f)
-          out["findings"]=clean[:3000]
+          needles = {
+            "global_common": [
+              "/api/map/list", "/api/map/points", "/api/map/point", "/api/map/point/finish", "/api/user/point/finish",
+              "/api/auth/h72naLogin", "/api/auth/ursLogin", "/api/auth/ursRoles", "mapList", "mapPoints", "silentLogin",
+              "Find my location", "Select character", "point_finished", "showPosition", "GAME_NAME", "JF_GAMEID", "CHANNEL_GAME_ID",
+              "ntGameLoginSuccess", "NATIVE_EVENT_HANDLER", "baseURL", "axios.create"
+            ],
+            "global_pc": ["mapList", "mapPoints", "silentLogin", "finished", "Select character", "Find my location"],
+            "cn_yysls": [
+              "地图", "共创", "同步", "宝箱", "位置", "坐标", "PC", "pc", "download", "Download", ".exe", ".zip", ".msi",
+              "yysls", "map", "plugin", "tool", "大神", "一键", "实时", "游戏", "启动", "overlay", "助手"
+            ],
+            "cn_umi": ["yysls", "地图", "download", "map", "plugin", "tool", "sync", "bridge", "native"],
+          }
 
-          Path("forensic-summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-          print("=== TARGETS ===")
-          for t in out["targets"]:
-              print(json.dumps(t, ensure_ascii=False))
-          print("=== ASSETS ===")
-          for a in out["assets"]:
-              print(json.dumps(a, ensure_ascii=False))
-          print("=== PROTOCOL FINDINGS (first 500) ===")
-          for f in out["findings"][:500]:
-              print(json.dumps(f, ensure_ascii=False))
-          print(f"TOTAL_FINDINGS={len(out['findings'])}")
+          def contexts(text, needle, radius=520, limit=8):
+              out=[]; start=0
+              while len(out) < limit:
+                  i=text.find(needle, start)
+                  if i < 0: break
+                  lo=max(0, i-radius); hi=min(len(text), i+len(needle)+radius)
+                  out.append(text[lo:hi].replace("\n", " "))
+                  start=i+len(needle)
+              return out
+
+          for asset, ns in needles.items():
+              text = texts.get(asset, "")
+              report["contexts"][asset] = {}
+              for n in ns:
+                  c = contexts(text, n)
+                  if c: report["contexts"][asset][n] = c
+
+          # Extract absolute URLs and API-like paths from the CN game page bundle.
+          cn = texts.get("cn_yysls", "")
+          abs_urls = sorted(set(re.findall(r'https?://[^"\'<>\\\s]{4,260}', cn)))
+          path_like = sorted(set(re.findall(r'/(?:api|activity|act|map|maps|game|tool|download|client|pc|yysls)[A-Za-z0-9_?&=./:%+\-]{1,240}', cn, re.I)))
+          report["cn_urls"] = abs_urls[:500]
+          report["cn_paths"] = path_like[:500]
+
+          # Read-only GET probes only. Never call finish/login mutation endpoints.
+          for url in GLOBAL_GETS:
+              try:
+                  r = fetch(url, 300_000)
+                  body = r["body"].decode("utf-8", "replace")
+                  report["global_gets"].append({"url": url, "status": r["status"], "content_type": r["headers"].get("Content-Type"), "allow_origin": r["headers"].get("Access-Control-Allow-Origin"), "body_prefix": body[:5000]})
+              except Exception as e:
+                  report["global_gets"].append({"url": url, "error": f"{type(e).__name__}: {e}"})
+
+          Path("forensic-deep-summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+          print("=== ASSET STATUS ===")
+          for k,v in report["assets"].items(): print(k, json.dumps(v, ensure_ascii=False))
+          print("=== GLOBAL READ-ONLY GETS ===")
+          for v in report["global_gets"]: print(json.dumps(v, ensure_ascii=False))
+          print("=== GLOBAL CONTEXTS ===")
+          for asset in ("global_common", "global_pc"):
+              for needle, arr in report["contexts"].get(asset, {}).items():
+                  print(f"--- {asset} :: {needle} :: {len(arr)}")
+                  for s in arr[:4]: print(s)
+          print("=== CN YYSLS CONTEXTS ===")
+          for needle, arr in report["contexts"].get("cn_yysls", {}).items():
+              print(f"--- cn_yysls :: {needle} :: {len(arr)}")
+              for s in arr[:5]: print(s)
+          print("=== CN URLS ===")
+          for u in report.get("cn_urls", []): print(u)
+          print("=== CN PATHS ===")
+          for p in report.get("cn_paths", []): print(p)
           PY
 
-      - name: Upload forensic summary
+      - name: Upload deep forensic summary
         uses: actions/upload-artifact@v4
         with:
-          name: official-map-forensic-summary
-          path: forensic-summary.json
+          name: official-map-forensic-deep-summary
+          path: forensic-deep-summary.json
           if-no-files-found: error
           retention-days: 7
