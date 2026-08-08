@@ -15,11 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Validate runtime syntax
         run: |
           set -euo pipefail
           node --check app.js
+          node --check mpay-shim.js
           node --check sw.js
+          node --check functions/api/mpay/device-init.js
+          node --check functions/api/mpay/oauth-config.js
           python - <<'PY'
           import json
           from html.parser import HTMLParser
@@ -31,29 +35,51 @@ jobs:
           assert '<title>WWSync — Where Winds Meet</title>' in html
           assert 'loginButton' in html
           assert 'languageSelect' in html
+          assert '/mpay-shim.js' in html
           print('runtime structure valid')
           PY
+
       - name: Enforce clean sync architecture
         run: |
           set -euo pipefail
-          grep -F "MpayOSSDK" index.html app.js
+          grep -F "MpayOSSDK" index.html app.js mpay-shim.js
           grep -F "https://s2.easebar.com/39f12eda6b86452b" app.js
           grep -F "/api/auth/ursRoles" app.js
           grep -F "/api/auth/ursLogin" app.js
           grep -F "/api/map/points" app.js
           grep -F "h72_map_accessToken" app.js
-          if grep -RInE 'wwmmap\.pages\.dev|/service/gameauth|/service/call_client_method|start_game_sync|sangtacvietcdn|stv-appdomain|MapGenie|mapgenie|17173|default_server_password|localhost:63333|GET_GAME_STATE' index.html app.js styles.css sw.js manifest.webmanifest _headers; then
+          grep -F "/api/mpay/device-init" mpay-shim.js
+          grep -F "/api/mpay/oauth-config" mpay-shim.js
+          grep -F "https://sdk-os.mpsdk.easebar.com/api/devices/init" functions/api/mpay/device-init.js
+          grep -F "https://sdk-os.mpsdk.easebar.com/api/users/login/v2/oauth/config" functions/api/mpay/oauth-config.js
+          if grep -RInE 'wwmmap\.pages\.dev|/service/gameauth|/service/call_client_method|start_game_sync|sangtacvietcdn|stv-appdomain|MapGenie|mapgenie|17173|default_server_password|localhost:63333|GET_GAME_STATE' index.html app.js mpay-shim.js styles.css sw.js manifest.webmanifest _headers functions; then
             echo 'Legacy/manual sync dependency leaked into WWSync runtime.' >&2
             exit 1
           fi
-          if [ -d functions ]; then echo 'WWSync pure-web build must not ship legacy Pages Functions.' >&2; exit 1; fi
+          mapfile -t function_files < <(find functions -type f | sort)
+          expected=(functions/api/mpay/device-init.js functions/api/mpay/oauth-config.js)
+          if [ "${function_files[*]}" != "${expected[*]}" ]; then
+            printf 'Unexpected Pages Functions:\n%s\n' "${function_files[*]}" >&2
+            exit 1
+          fi
+          if grep -RInE 'request\.url.*https?://|new URL\([^)]*request\.url[^)]*\).*searchParams.*(url|host|target)' functions/api/mpay; then
+            echo 'Potential generic proxy behavior detected.' >&2
+            exit 1
+          fi
           test ! -f _routes.json
+
       - name: Validate privacy and deployment contract
         run: |
           set -euo pipefail
           grep -F "WWSync has no password field" README.md
+          grep -F "not a generic proxy" README.md
+          grep -F "Password submission, OAuth provider navigation, and account credentials are not routed through these WWSync Functions" README.md
           grep -F "does not inject code" README.md
           grep -Fx '/map /index.html 200' _redirects
+          test "$(wc -l < _redirects)" -eq 1
           grep -F "X-Content-Type-Options: nosniff" _headers
           grep -F "Content-Security-Policy:" _headers
-          if grep -RInE 'CLOUDFLARE_API_TOKEN=[A-Za-z0-9]|CLOUDFLARE_ACCOUNT_ID=[A-Za-z0-9]' index.html app.js sw.js README.md; then echo 'Potential committed Cloudflare secret detected.' >&2; exit 1; fi
+          if grep -RInE 'CLOUDFLARE_API_TOKEN=[A-Za-z0-9]|CLOUDFLARE_ACCOUNT_ID=[A-Za-z0-9]' index.html app.js mpay-shim.js sw.js README.md functions; then
+            echo 'Potential committed Cloudflare secret detected.' >&2
+            exit 1
+          fi
