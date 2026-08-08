@@ -3,7 +3,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://sdk-os.mpsdk.easebar.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://sdk-os.mpsdk.easebar.com; img-src 'self' data: blob: https://www.wherewindsmeetgame.com https://*.easebar.com https://*.netease.com; connect-src 'self' https://s2.easebar.com https://*.easebar.com https://*.netease.com https://www.wherewindsmeetgame.com https://unpkg.com; frame-src https://*.easebar.com https://*.netease.com https://accounts.google.com https://www.facebook.com https://discord.com https://store.steampowered.com; font-src 'self' data: https://*.easebar.com; object-src 'none'; base-uri 'self'; form-action 'self' https://*.easebar.com https://*.netease.com
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://sdk-os.mpsdk.easebar.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://sdk-os.mpsdk.easebar.com; img-src 'self' data: blob: https://www.wherewindsmeetgame.com https://*.easebar.com https://*.netease.com; connect-src 'self' https://s2.easebar.com https://*.easebar.com https://*.netease.com https://www.wherewindsmeetgame.com https://unpkg.com; worker-src 'self' blob:; frame-src https://*.easebar.com https://*.netease.com https://accounts.google.com https://www.facebook.com https://discord.com https://store.steampowered.com; font-src 'self' data: https://*.easebar.com; object-src 'none'; base-uri 'self'; form-action 'self' https://*.easebar.com https://*.netease.com
 
 /sw.js
   Cache-Control: no-cache
