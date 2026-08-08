@@ -108,20 +108,44 @@ jobs:
           grep -qi '^access-control-allow-origin:' /tmp/cors.headers
           grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
 
+          # Cloudflare may publish static assets a few seconds before the Pages Functions
+          # worker is available at the immutable deployment hostname. Exercise the exact
+          # deployment, but tolerate only that specific short propagation window.
           ci='00000000-0000-4000-8000-000000000001'
           device_payload="uuid=${ci}&resolution=300*150&device_brand=&device_name=&device_type=4&device_model=unknown&system_name=Linux&system_version=CI&game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&debug_mode=0&package_name="
-          status="$(curl --silent --show-error --output /tmp/device.json --write-out '%{http_code}' -X POST \
-            -H "Origin: $base" \
-            -H 'content-type: application/x-www-form-urlencoded; charset=utf-8' \
-            --data "$device_payload" \
-            "$base/api/mpay/device-init")"
-          test "$status" = '200' || { echo "device-init HTTP $status" >&2; cat /tmp/device.json >&2; exit 1; }
+          status=''
+          for attempt in $(seq 1 20); do
+            status="$(curl --silent --show-error --output /tmp/device.json --write-out '%{http_code}' -X POST \
+              -H "Origin: $base" \
+              -H 'content-type: application/x-www-form-urlencoded; charset=utf-8' \
+              --data "$device_payload" \
+              "$base/api/mpay/device-init")"
+            if [ "$status" = '200' ]; then break; fi
+            if [ "$status" = '404' ] && grep -Fq 'Deployment Not Found' /tmp/device.json; then
+              echo "Waiting for Pages Functions propagation (${attempt}/20)..."
+              sleep 3
+              continue
+            fi
+            echo "device-init HTTP $status" >&2; cat /tmp/device.json >&2; exit 1
+          done
+          test "$status" = '200' || { echo 'Pages Functions did not become ready in time.' >&2; cat /tmp/device.json >&2; exit 1; }
           device_id="$(node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/device.json','utf8')); const id=x?.device?.id; if(!id) process.exit(1); process.stdout.write(String(id))")"
+
           config_query="game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&device_id=${device_id}&debug_mode=0&package_name=&qrcode_app_id=&version=v2"
-          status="$(curl --silent --show-error --output /tmp/oauth-config.json --write-out '%{http_code}' \
-            -H "Origin: $base" \
-            "$base/api/mpay/oauth-config?${config_query}")"
-          test "$status" = '200' || { echo "oauth-config HTTP $status" >&2; cat /tmp/oauth-config.json >&2; exit 1; }
+          status=''
+          for attempt in $(seq 1 20); do
+            status="$(curl --silent --show-error --output /tmp/oauth-config.json --write-out '%{http_code}' \
+              -H "Origin: $base" \
+              "$base/api/mpay/oauth-config?${config_query}")"
+            if [ "$status" = '200' ]; then break; fi
+            if [ "$status" = '404' ] && grep -Fq 'Deployment Not Found' /tmp/oauth-config.json; then
+              echo "Waiting for oauth-config function propagation (${attempt}/20)..."
+              sleep 3
+              continue
+            fi
+            echo "oauth-config HTTP $status" >&2; cat /tmp/oauth-config.json >&2; exit 1
+          done
+          test "$status" = '200' || { echo 'oauth-config function did not become ready in time.' >&2; cat /tmp/oauth-config.json >&2; exit 1; }
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/oauth-config.json','utf8')); if(!x?.data?.login_methods?.length) { console.error(x); process.exit(1) }"
           echo "WWSync Mpay bootstrap smoke passed with device ${device_id}"
           echo "WWSync HTTP smoke passed: $base"
