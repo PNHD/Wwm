@@ -1,4 +1,4 @@
-name: Deploy WWSync to Cloudflare Pages
+name: Deploy WWMSync to Cloudflare Pages
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  CLOUDFLARE_PROJECT_NAME: wwsync-pnhd
+  CLOUDFLARE_PROJECT_NAME: wwmsync
   PRODUCTION_BRANCH: production/wwsync
 
 jobs:
@@ -35,12 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           node --check app.js
-          node --check mpay-shim.js
           node --check sw.js
-          node --check functions/api/mpay/device-init.js
-          node --check functions/api/mpay/oauth-config.js
           rm -rf dist && mkdir dist
-          cp index.html styles.css app.js mpay-shim.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css app.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           test ! -d dist/.github
           test ! -d dist/functions
 
@@ -76,7 +73,7 @@ jobs:
             --project-name "$CLOUDFLARE_PROJECT_NAME" \
             --branch "$branch" \
             --commit-hash "$GITHUB_SHA" \
-            --commit-message "WWSync ${GITHUB_SHA::7}" | tee /tmp/wrangler-deploy.log
+            --commit-message "WWMSync ${GITHUB_SHA::7}" | tee /tmp/wrangler-deploy.log
           exact_url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.pages\.dev' /tmp/wrangler-deploy.log | head -n1)"
           test -n "$exact_url"
           echo "exact_url=$exact_url" >> "$GITHUB_OUTPUT"
@@ -97,47 +94,21 @@ jobs:
           fetch "$exact/" /tmp/root.html
           fetch "$exact/map" /tmp/map.html
           fetch "$exact/app.js" /tmp/app.js
-          fetch "$exact/mpay-shim.js" /tmp/mpay-shim.js
           fetch "$exact/manifest.webmanifest" /tmp/manifest.json
-          grep -Fq 'WWSync — Where Winds Meet' /tmp/root.html
-          grep -Fq 'WWSync — Where Winds Meet' /tmp/map.html
+          grep -Fq 'WWMSync — Where Winds Meet' /tmp/root.html
+          grep -Fq 'WWMSync — Where Winds Meet' /tmp/map.html
           grep -Fq 'leaflet@1.9.4' /tmp/root.html
-          grep -Fq '/mpay-shim.js' /tmp/root.html
-          grep -Fq 'MpayOSSDK' /tmp/app.js
-          node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWSync') process.exit(1)"
+          grep -Fq 'characterUid' /tmp/root.html
+          grep -Fq 'syncButton' /tmp/root.html
+          grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
+          ! grep -Eq 'MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/service/gameauth|/service/call_client_method|start_game_sync|wwmmap\.pages\.dev' /tmp/root.html /tmp/app.js
+          node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWMSync') process.exit(1)"
 
           fetch 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' /tmp/official.json
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/official.json','utf8')); if(!x.success||!Array.isArray(x.data?.maps)||x.data.maps.length<3) process.exit(1)"
+          echo "WWMSync HTTP smoke passed: exact=$exact runtime=$base"
 
-          ci='00000000-0000-4000-8000-000000000001'
-          device_payload="uuid=${ci}&resolution=300*150&device_brand=&device_name=&device_type=4&device_model=unknown&system_name=Linux&system_version=CI&game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&debug_mode=0&package_name="
-          device_ok=0
-          for attempt in $(seq 1 20); do
-            status="$(curl --silent --show-error --output /tmp/device.json --write-out '%{http_code}' -X POST -H "Origin: $base" -H 'content-type: application/x-www-form-urlencoded; charset=utf-8' --data "$device_payload" "$base/api/mpay/device-init" || true)"
-            if [ "$status" = '200' ]; then device_ok=1; break; fi
-            echo "device-init not ready (HTTP $status), attempt $attempt/20"
-            sleep 3
-          done
-          test "$device_ok" = '1' || { cat /tmp/device.json >&2 || true; exit 1; }
-          device_id="$(node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/device.json','utf8')); const id=x?.device?.id; if(!id) process.exit(1); process.stdout.write(String(id))")"
-          config_query="game_id=398&cp=w&cv=3.1.5&gv=1.0.0&ci=${ci}&app_channel=netease_global.h5activity&lang=en_US&device_id=${device_id}&debug_mode=0&package_name=&qrcode_app_id=&version=v2"
-          oauth_ok=0
-          for attempt in $(seq 1 20); do
-            status="$(curl --silent --show-error --output /tmp/oauth.json --write-out '%{http_code}' -H "Origin: $base" "$base/api/mpay/oauth-config?${config_query}" || true)"
-            if [ "$status" = '200' ] && node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/oauth.json','utf8')); process.exit(x?.data?.login_methods?.length ? 0 : 1)"; then oauth_ok=1; break; fi
-            echo "oauth-config not ready (HTTP $status), attempt $attempt/20"
-            sleep 3
-          done
-          test "$oauth_ok" = '1' || { cat /tmp/oauth.json >&2 || true; exit 1; }
-
-          curl --silent --show-error -X OPTIONS -D /tmp/cors.headers -o /tmp/cors.body \
-            -H "Origin: $base" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/auth/ursRoles'
-          grep -qi '^access-control-allow-origin:' /tmp/cors.headers
-          grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
-          echo "WWSync HTTP smoke passed: exact=$exact runtime=$base"
-
-      - name: Browser smoke official map and login shell
+      - name: Browser smoke map and UID boundary
         env:
           RUNTIME_URL: ${{ steps.deploy.outputs.runtime_url }}
         run: |
@@ -150,7 +121,8 @@ jobs:
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const page=await browser.newPage({viewport:{width:1440,height:900}});
-            const fatal=[]; const csp=[];
+            const fatal=[]; const csp=[]; const requests=[];
+            page.on('request',r=>requests.push(r.url()));
             page.on('pageerror',e=>console.log('PAGEERROR',e.message));
             page.on('console',m=>{const text=m.text();console.log('CONSOLE',m.type(),text);if(/content security policy|violates.*directive|refused to.*content security policy/i.test(text))csp.push(text)});
             const response=await page.goto(process.env.RUNTIME_URL,{waitUntil:'domcontentloaded',timeout:60000});
@@ -159,23 +131,29 @@ jobs:
             await page.waitForFunction(()=>document.querySelectorAll('#categoryList button').length>0,null,{timeout:30000});
             await page.waitForSelector('.leaflet-container',{state:'visible',timeout:30000});
             await page.waitForFunction(()=>document.querySelectorAll('img.leaflet-tile-loaded').length>0,null,{timeout:30000});
-            const s=await page.evaluate(()=>({title:document.title,sdk:typeof window.MpayOSSDK,shim:Boolean(window.MpayOSSDK?.prototype?.__wwsyncCorsShim),leaflet:typeof window.L,maps:document.querySelectorAll('#mapSelect option').length,categories:document.querySelectorAll('#categoryList button').length,tiles:document.querySelectorAll('img.leaflet-tile-loaded').length,pointCanvases:document.querySelectorAll('.leaflet-overlay-pane canvas').length,passwordInputs:document.querySelectorAll('input[type=password]').length,legacyControls:Boolean(document.querySelector('#relay-select,#password-step,#password-input,[name="syncPassword"]'))}));
-            if(s.title!=='WWSync — Where Winds Meet')fatal.push(`title=${s.title}`);
-            if(s.sdk!=='function'||!s.shim)fatal.push(`sdk/shim=${s.sdk}/${s.shim}`);
+            const before=page.url();
+            const s=await page.evaluate(()=>({title:document.title,mpay:typeof window.MpayOSSDK,leaflet:typeof window.L,maps:document.querySelectorAll('#mapSelect option').length,categories:document.querySelectorAll('#categoryList button').length,tiles:document.querySelectorAll('img.leaflet-tile-loaded').length,pointCanvases:document.querySelectorAll('.leaflet-overlay-pane canvas').length,passwordInputs:document.querySelectorAll('input[type=password]').length,uidInputs:document.querySelectorAll('#characterUid').length,syncButtons:document.querySelectorAll('#syncButton').length}));
+            if(s.title!=='WWMSync — Where Winds Meet')fatal.push(`title=${s.title}`);
+            if(s.mpay!=='undefined')fatal.push(`MpayOSSDK=${s.mpay}`);
             if(s.leaflet!=='object'||s.maps<3||s.categories<1||s.tiles<1||s.pointCanvases<1)fatal.push(`map=${JSON.stringify(s)}`);
-            if(s.passwordInputs||s.legacyControls)fatal.push('legacy credential controls leaked');
+            if(s.passwordInputs!==0||s.uidInputs!==1||s.syncButtons!==1)fatal.push(`sync UI=${JSON.stringify(s)}`);
             await page.selectOption('#languageSelect','en');
-            if(!/sync/i.test(await page.locator('[data-i18n="syncTitle"]').textContent()))fatal.push('English switch failed');
+            if(!/game sync/i.test(await page.locator('[data-i18n="syncTitle"]').textContent()))fatal.push('English switch failed');
             await page.selectOption('#languageSelect','vi');
-            await page.click('#loginButton');
-            await page.waitForSelector('#mosdk__dialog-container',{state:'visible',timeout:30000}).catch(e=>fatal.push(`official login UI missing: ${e.message}`));
-            const loginMethods=await page.locator('.mosdk__login-method-item').count().catch(()=>0);
-            if(loginMethods<2)fatal.push(`login methods=${loginMethods}`);
-            console.log('BROWSER_STATE',JSON.stringify({...s,loginMethods}));
+            await page.fill('#characterUid','1234567890');
+            await page.click('#syncButton');
+            const status=(await page.locator('#syncStatus').textContent()).trim();
+            const stored=await page.evaluate(()=>localStorage.getItem('wwmsync:uid'));
+            if(!/chưa thể|không thể/i.test(status))fatal.push(`sync boundary status=${status}`);
+            if(stored!=='1234567890')fatal.push(`stored uid=${stored}`);
+            if(page.url()!==before)fatal.push(`unexpected navigation ${before} -> ${page.url()}`);
+            const forbidden=requests.filter(u=>/sdk-os\.mpsdk|wwmmap\.pages\.dev|sangtacviet|stv-appdomain|\/service\/(gameauth|call_client_method)/i.test(u));
+            if(forbidden.length)fatal.push(`forbidden requests=${forbidden.join(',')}`);
+            console.log('BROWSER_STATE',JSON.stringify({...s,status,stored,forbiddenRequests:forbidden.length}));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
             if(csp.length||fatal.length)process.exit(1);
           })().catch(e=>{console.error('BROWSER_FATAL',e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWSync browser smoke passed: $RUNTIME_URL"
+          echo "WWMSync browser smoke passed: $RUNTIME_URL"
