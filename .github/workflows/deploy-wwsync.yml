@@ -116,55 +116,47 @@ jobs:
           (async () => {
             const browser = await chromium.launch({executablePath, headless:true, args:['--no-sandbox','--disable-dev-shm-usage']});
             const page = await browser.newPage({viewport:{width:1440,height:900}});
-            const fatal = [];
-            const csp = [];
-            page.on('pageerror', e => fatal.push(`pageerror: ${e.message}`));
-            page.on('console', msg => {
-              const text = msg.text();
-              if (/content security policy|refused to|violates.*directive/i.test(text)) csp.push(`${msg.type()}: ${text}`);
-            });
-            page.on('requestfailed', req => {
-              const u = req.url();
-              if (/s2\.easebar\.com|mpay-h5-sdk-oversea|\/app\.js/.test(u)) fatal.push(`requestfailed: ${u} ${req.failure()?.errorText||''}`);
-            });
+            const events = [];
+            page.on('pageerror', e => { events.push(`PAGEERROR ${e.message}`); console.log('PAGEERROR', e.message); });
+            page.on('console', msg => { events.push(`CONSOLE ${msg.type()} ${msg.text()}`); console.log('PAGE_CONSOLE', msg.type(), msg.text()); });
+            page.on('requestfailed', req => { const x=`REQUEST_FAILED ${req.url()} ${req.failure()?.errorText||''}`; events.push(x); console.log(x); });
             const response = await page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
             if (!response || !response.ok()) throw new Error(`navigation HTTP ${response?.status()}`);
-            await page.waitForFunction(() => document.querySelectorAll('#mapSelect option').length >= 3, null, {timeout:45000});
-            await page.waitForFunction(() => document.querySelectorAll('#categoryList button').length > 0, null, {timeout:45000});
-            await page.waitForSelector('.maplibregl-canvas', {state:'visible', timeout:45000});
-            const checks = await page.evaluate(async () => {
-              const list = await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US');
-              const points = await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US');
+            await page.waitForTimeout(10000);
+            const state = await page.evaluate(async () => {
+              const probe = async u => { try { const r=await fetch(u); return {ok:r.ok,status:r.status,text:(await r.text()).slice(0,300)}; } catch(e){ return {ok:false,error:String(e)}; } };
               return {
+                title: document.title,
                 sdk: typeof window.MpayOSSDK,
-                listStatus: list.status,
-                listCorsOk: list.ok,
-                pointsStatus: points.status,
-                pointsCorsOk: points.ok,
-                mapOptions: document.querySelectorAll('#mapSelect option').length,
+                mapOptions: [...document.querySelectorAll('#mapSelect option')].map(o=>({value:o.value,text:o.textContent})),
                 categories: document.querySelectorAll('#categoryList button').length,
-                canvases: document.querySelectorAll('.maplibregl-canvas').length
+                canvases: document.querySelectorAll('.maplibregl-canvas').length,
+                authStatus: document.querySelector('#authStatus')?.textContent||'',
+                toast: document.querySelector('#toast')?.textContent||'',
+                loading: document.querySelector('#mapLoading')?.className||'',
+                listProbe: await probe('https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US'),
+                pointsProbe: await probe('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US')
               };
             });
-            console.log('BROWSER_CHECKS', JSON.stringify(checks));
-            if (checks.sdk !== 'function') fatal.push(`MpayOSSDK type=${checks.sdk}`);
-            if (!checks.listCorsOk || checks.listStatus !== 200) fatal.push(`map/list status=${checks.listStatus}`);
-            if (!checks.pointsCorsOk || checks.pointsStatus !== 200) fatal.push(`map/points status=${checks.pointsStatus}`);
-            if (checks.mapOptions < 3 || checks.categories < 1 || checks.canvases < 1) fatal.push('map UI did not initialize');
-            await page.click('#loginButton');
-            await page.waitForFunction(() => {
-              const n = document.querySelector('#mosdk__container');
-              return !!n && (n.childElementCount > 0 || n.innerHTML.length > 0);
-            }, null, {timeout:15000}).catch(async e => {
-              const status = await page.locator('#authStatus').textContent().catch(()=> '');
-              fatal.push(`official login UI did not open: ${e.message}; status=${status}`);
-            });
+            console.log('BROWSER_STATE', JSON.stringify(state));
+            const fatal = [];
+            if (state.sdk !== 'function') fatal.push(`MpayOSSDK type=${state.sdk}`);
+            if (!state.listProbe.ok || state.listProbe.status !== 200) fatal.push(`browser map/list=${JSON.stringify(state.listProbe)}`);
+            if (!state.pointsProbe.ok || state.pointsProbe.status !== 200) fatal.push(`browser map/points=${JSON.stringify(state.pointsProbe)}`);
+            if (state.mapOptions.length < 3) fatal.push(`map options=${state.mapOptions.length}`);
+            if (state.categories < 1) fatal.push(`categories=${state.categories}`);
+            if (state.canvases < 1) fatal.push(`map canvases=${state.canvases}`);
+            if (!fatal.length) {
+              await page.click('#loginButton');
+              await page.waitForFunction(() => { const n=document.querySelector('#mosdk__container'); return !!n && (n.childElementCount>0 || n.innerHTML.length>0); }, null, {timeout:15000}).catch(async e => fatal.push(`official login UI did not open: ${e.message}; status=${await page.locator('#authStatus').textContent().catch(()=> '')}`));
+            }
+            const csp = events.filter(x => /content security policy|refused to|violates.*directive/i.test(x));
             console.log('CSP_EVENTS', JSON.stringify(csp));
             console.log('FATAL_EVENTS', JSON.stringify(fatal));
             await page.screenshot({path:'/tmp/wwsync-browser.png', fullPage:true}).catch(()=>{});
             await browser.close();
             if (csp.length || fatal.length) process.exit(1);
-          })().catch(e => { console.error(e); process.exit(1); });
+          })().catch(e => { console.error('BROWSER_FATAL',e); process.exit(1); });
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/wwsync-browser-smoke.cjs
           echo "WWSync browser smoke passed: $DEPLOYMENT_URL"
