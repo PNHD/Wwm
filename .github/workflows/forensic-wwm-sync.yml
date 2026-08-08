@@ -12,71 +12,64 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public sync service availability and CORS
+      - name: Extract auth flow and marker data sources
         shell: bash
         run: |
           set -euo pipefail
-          origin='https://wwm-atlas-pnhd.pages.dev'
-          base='https://wwmmap.pages.dev'
-          out='wwm-sync-network.txt'
-          : > "$out"
+          python - <<'PY'
+          import re, urllib.request
+          from pathlib import Path
 
-          echo '=== relay_servers GET ===' >> "$out"
-          curl --silent --show-error --location \
-            --dump-header /tmp/relay.headers \
-            --output /tmp/relay.body \
-            "$base/service/relay_servers"
-          sed -n '1,40p' /tmp/relay.headers >> "$out"
-          echo 'BODY:' >> "$out"
-          head -c 6000 /tmp/relay.body >> "$out"
-          echo >> "$out"
+          UA={'User-Agent':'Mozilla/5.0 WWM-Atlas-Forensic/1.0'}
+          BASE='https://wwmmap.pages.dev/js/map_2026/'
+          def get(name):
+              req=urllib.request.Request(BASE+name,headers=UA)
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  return r.read().decode('utf-8','replace')
+          def ctx(name,text,terms,radius=6):
+              lines=text.splitlines(); out=[]; spans=[]
+              for i,line in enumerate(lines):
+                  if any(t.lower() in line.lower() for t in terms):
+                      lo=max(0,i-radius); hi=min(len(lines),i+radius+1)
+                      if any(lo>=a and hi<=b for a,b in spans): continue
+                      spans.append((lo,hi)); out.append(f'=== {name} {lo+1}-{hi} ===')
+                      out.extend(f'{j+1}: {lines[j][:1800]}' for j in range(lo,hi))
+              return '\n'.join(out)
 
-          echo '=== relay_servers CORS GET ===' >> "$out"
-          curl --silent --show-error --location \
-            --header "Origin: $origin" \
-            --dump-header /tmp/cors-get.headers \
-            --output /dev/null \
-            "$base/service/relay_servers"
-          sed -n '1,50p' /tmp/cors-get.headers >> "$out"
+          auth=get('auth_modal.js')
+          markers=get('markers.js')
+          mapjs=get('map.js?v=20260604')
+          config=get('map_config.js')
+          app=get('app.js?v=5')
+          text=[]
+          text.append(ctx('AUTH',auth,[
+              'playerId:', 'password:', 'action:', 'status === "bound"', 'status === "unbound"',
+              'bind_success','login_success','reset_initiated','getCredentials','getValidCredentials','localStorage.setItem("wwm_user"'
+          ],8))
+          text.append(ctx('MARKERS',markers,[
+              'fetch(', '.json', 'markerData', 'loadMarkers', 'setCompletedMarkersFromSync', 'completedMarkerIds', 'marker.id', 'sync'
+          ],8))
+          text.append(ctx('MAP',mapjs,['fetch(','.json','marker','mapConfig','markers'],5))
+          text.append(ctx('APP',app,['fetch(','.json','mapConfig','markerManager'],5))
+          text.append(ctx('CONFIG',config,['dataUrl','marker','json','fetch','mapId','spaceId'],2)[:18000])
 
-          echo '=== gameauth OPTIONS preflight ===' >> "$out"
-          curl --silent --show-error --request OPTIONS \
-            --header "Origin: $origin" \
-            --header 'Access-Control-Request-Method: POST' \
-            --header 'Access-Control-Request-Headers: content-type' \
-            --dump-header /tmp/gameauth-options.headers \
-            --output /tmp/gameauth-options.body \
-            "$base/service/gameauth" || true
-          sed -n '1,60p' /tmp/gameauth-options.headers >> "$out"
-          echo 'BODY:' >> "$out"
-          head -c 2000 /tmp/gameauth-options.body >> "$out"
-          echo >> "$out"
-
-          echo '=== call_client_method OPTIONS preflight ===' >> "$out"
-          curl --silent --show-error --request OPTIONS \
-            --header "Origin: $origin" \
-            --header 'Access-Control-Request-Method: POST' \
-            --header 'Access-Control-Request-Headers: content-type,x-wwm-uid,x-wwm-pass,client-lang' \
-            --dump-header /tmp/call-options.headers \
-            --output /tmp/call-options.body \
-            "$base/service/call_client_method" || true
-          sed -n '1,60p' /tmp/call-options.headers >> "$out"
-          echo 'BODY:' >> "$out"
-          head -c 2000 /tmp/call-options.body >> "$out"
-          echo >> "$out"
-
-          echo '=== known websocket relay HTTPS probes ===' >> "$out"
-          for host in wwmmapsync.sangtacvietcdn.xyz wwmmapsync.stv-appdomain-00000001.org; do
-            echo "HOST $host" >> "$out"
-            curl --silent --show-error --head --max-time 15 "https://$host/" >> "$out" 2>&1 || true
-          done
-
-          echo "NETWORK_PROBE_BYTES $(wc -c < "$out")"
+          # concise URL/path literals from all files
+          corpus='\n'.join([auth,markers,mapjs,config,app])
+          lits=[]
+          for s in re.findall(r'["\']([^"\'\n]{1,260})["\']',corpus):
+              sl=s.lower()
+              if any(k in sl for k in ['.json','/service/','marker','map_config','tiles','geojson','poi']):
+                  if len(s)<260: lits.append(s)
+          text.append('=== RELEVANT_LITERALS ===\n'+'\n'.join(sorted(set(lits))[:1000]))
+          out='\n\n'.join(text)
+          Path('wwm-auth-marker-contract.txt').write_text(out,encoding='utf-8')
+          print('BYTES',len(out.encode()))
+          PY
 
       - name: Upload compact forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-sync-network
-          path: wwm-sync-network.txt
+          name: wwm-auth-marker-contract
+          path: wwm-auth-marker-contract.txt
           if-no-files-found: error
           retention-days: 1
