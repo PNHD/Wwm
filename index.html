@@ -9,6 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/styles.css">
+  <style>[lang="vi"] .copy-en,[lang="en"] .copy-vi{display:none}</style>
   <script defer src="https://sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js"></script>
   <script defer src="/mpay-shim.js"></script>
 </head>
@@ -22,7 +23,7 @@
       <aside class="sidebar" id="sidebar">
         <section class="panel hero-panel">
           <p class="eyebrow">WWSYNC</p><h1 data-i18n="syncTitle">Đồng bộ tiến độ</h1>
-          <p class="muted" data-i18n="syncIntro">Đăng nhập bằng cửa sổ chính thức của NetEase. WWSync không dùng mật khẩu, bridge hay relay bên thứ ba.</p>
+          <p class="muted"><span class="copy-vi">Đăng nhập bằng cửa sổ chính thức của NetEase. WWSync không dùng mật khẩu, bridge hay relay bên thứ ba.</span><span class="copy-en">Sign in through the official NetEase UI. WWSync does not use third-party passwords, bridges, or relays.</span></p>
           <div id="signedOutView" class="auth-block"><button id="loginButton" class="primary-button" type="button"><span>↗</span><span data-i18n="loginOfficial">Đăng nhập Where Winds Meet</span></button><p class="fineprint" data-i18n="loginPrivacy">Thông tin đăng nhập được nhập trong UI chính thức của NetEase; WWSync không có ô nhập mật khẩu.</p></div>
           <div id="signedInView" class="auth-block hidden"><div class="identity-card"><div><span class="label" data-i18n="character">Nhân vật</span><strong id="characterName">—</strong></div><button id="logoutButton" class="text-button" type="button" data-i18n="logout">Đăng xuất</button></div><button id="refreshButton" class="primary-button" type="button"><span>↻</span><span data-i18n="refreshProgress">Làm mới tiến độ</span></button></div>
           <div id="authStatus" class="status-line" role="status" aria-live="polite"></div>
