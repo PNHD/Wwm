@@ -1,30 +1,32 @@
-# WWSync
+# WWMSync
 
-WWSync is a fan-made Where Winds Meet companion focused on importing account-backed map progress without depending on the retired WWMMAP bridge.
+WWMSync is a fan-made Where Winds Meet companion map. The current production-safe build renders the public Official Where Winds Meet map catalog and exposes a character UID field without pretending that a browser can independently trigger in-game sync.
 
-## Architecture
+## Verified sync boundary
 
-- Brand: **WWSync**.
-- Map/catalog source: public Official Where Winds Meet map endpoints and raster map assets, loaded at runtime; no bulk mirror is stored in this repository.
-- Authentication UI: official NetEase Mpay web SDK. WWSync has no password field.
-- Account mapping: official `ursRoles` / `ursLogin` flow used by the Official Where Winds Meet map.
-- Progress diagnostic: reads the authenticated Official Map `finished` state. This is intentionally labelled as Official Map state until a real account field test proves that it mirrors in-game collectible progress.
-- No dependency on the old WWMMAP password, gameauth/client-method bridge, legacy relay servers, MapGenie, or 17173.
-- VI/EN shell; Official point names currently use the official English catalog.
+Public-client forensic testing of the legacy WWMMAP flow established this sequence:
 
-## Mpay CORS adapter
+1. The site identifies a character by UID and authenticates that character through its own backend.
+2. Its authenticated backend starts a game-sync request.
+3. The player approves the request inside the game.
+4. A separate relay WebSocket returns full game state and real-time player position to the web map.
 
-NetEase's public Mpay SDK is origin-restricted for two bootstrap requests when embedded on a third-party domain. WWSync contains exactly two same-origin Cloudflare Pages Functions:
+The in-game Allow prompt is therefore not produced by UID alone. It depends on a private game-side/backend transport that is not part of the public Official Map API. WWMSync does not bypass that authentication boundary and does not claim a successful sync when that transport is unavailable.
 
-- `POST /api/mpay/device-init` forwards only Mpay anonymous device initialization.
-- `GET /api/mpay/oauth-config` forwards only public login-method metadata with an explicit query allowlist.
+## Current architecture
 
-The adapter is deliberately not a generic proxy. It cannot forward arbitrary URLs or authentication routes. Password submission, OAuth provider navigation, and account credentials are not routed through these WWSync Functions; provider login stays on the official NetEase/provider flow.
+- Brand: **WWMSync**.
+- Map/catalog source: public Official Where Winds Meet map endpoints and raster assets loaded at runtime; no bulk mirror is stored in this repository.
+- UID: stored locally in the browser only.
+- No NetEase Mpay login SDK.
+- No password, PIN, cookie, session token, Discord permission, legacy relay, MapGenie, or 17173 dependency in the active sync flow.
+- VI/EN UI; Official point names currently use the official English catalog.
+- A Sync click validates and stores the UID, then reports the verified transport blocker rather than fabricating an in-game connection.
 
 ## Safety boundary
 
-WWSync does not inject code into the game process, patch memory, bypass anti-cheat, or install Lua hotfixes to extract progress.
+WWMSync does not inject code into the game process, patch or read process memory, bypass anti-cheat, steal account credentials, or bypass the legacy service's character-authentication requirement.
 
 ## Deployment
 
-WWSync uses a dedicated Cloudflare Pages project and production branch. `main` remains the unrelated City Flow history and must not be merged as part of WWSync deployment.
+WWMSync deploys to the dedicated Cloudflare Pages project `wwmsync` from `production/wwsync`. The repository `main` branch remains the unrelated City Flow history and must not be merged as part of WWMSync deployment.
