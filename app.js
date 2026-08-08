@@ -1,44 +1,222 @@
 const API_BASE='https://s2.easebar.com/39f12eda6b86452b';
-const MPAY_CONFIG={gameId:398,lang:'en_US',appChannel:'netease_global.h5activity',gv:'1.0.0',qrcodeAppId:'',debugMode:'0',packageName:''};
-const LOGIN_TYPES=[3,4,5,7,11,16,26,25];
 const MAP_ASSET_ROOT='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/';
-const TOKEN_KEY='wwsync:official-map-token',ROLE_KEY='wwsync:role',UDID_KEY='wwsync:udid',LANG_KEY='wwsync:lang',FILTER_KEY='wwsync:hide-completed';
-const MAP_CONFIG={1:{name:'Qinghe',mapName:'qinghe',minZoom:8,maxZoom:13,initialZoom:11,center:[-.8166,1.49071],bounds:[[-2.8,0],[0,2.8]]},2:{name:'Kaifeng',mapName:'kaifeng',minZoom:8,maxZoom:13,initialZoom:11,center:[-1.22119,1.49886],bounds:[[-2.8,0],[0,2.8]]},3:{name:'Hexi',mapName:'hexiqian',minZoom:8,maxZoom:12,initialZoom:11,center:[-1.82411,1.85605],bounds:[[-2.8,0],[0,2.8]]},4:{name:'Kaifeng Palace',mapName:'kaifenghuanggong',minZoom:1,maxZoom:12,initialZoom:11,center:[-1.41034,.64615],bounds:[[-2.8,0],[0,2.8]]}};
-const I18N={vi:{tagline:'Where Winds Meet companion',officialSource:'Dữ liệu Official WWM',syncTitle:'Đồng bộ tiến độ',syncIntro:'Đăng nhập bằng cửa sổ chính thức của NetEase. WWSync không dùng mật khẩu WWMMAP, bridge hay relay cũ.',loginOfficial:'Đăng nhập Where Winds Meet',loginPrivacy:'Thông tin đăng nhập được nhập trong UI chính thức của NetEase; WWSync không có ô nhập mật khẩu.',character:'Nhân vật',logout:'Đăng xuất',refreshProgress:'Làm mới tiến độ',chooseCharacter:'Chọn nhân vật',progress:'Tiến độ',notSignedIn:'Chưa đăng nhập',completed:'Đã hoàn thành',totalPoints:'Tổng điểm',progressNote:'Trước khi đăng nhập, các điểm từ Official Map được xem là chưa hoàn thành.',map:'Bản đồ',search:'Tìm kiếm',searchPlaceholder:'Tên địa điểm / loại điểm...',hideCompleted:'Ẩn điểm đã hoàn thành',categories:'Danh mục',all:'Tất cả',syncCheck:'Kiểm tra nguồn sync',diagnosticIntro:'WWSync sẽ so sánh trạng thái “finished” của Official Map sau khi đăng nhập. Chỉ khi dữ liệu tài khoản thực tế phản ánh tiến độ game, trạng thái này mới được coi là auto-sync đã xác minh.',loadingMap:'Đang tải bản đồ…',fanMade:'Companion do fan làm',officialMap:'Official Map',signingIn:'Đang mở đăng nhập chính thức…',loginFailed:'Đăng nhập thất bại',noRoles:'Không tìm thấy nhân vật cho tài khoản này.',chooseRoleHint:'Chọn đúng nhân vật bạn đang chơi.',roleLogin:'Đang liên kết nhân vật…',loadingProgress:'Đang đọc trạng thái Official Map…',signedIn:'Đã đăng nhập',officialFinished:'Official Map trả về {count} điểm finished cho nhân vật này.',officialZero:'Official Map hiện trả về 0 điểm finished. Đây chưa phải bằng chứng rằng tiến độ trong game đã được nhập.',diagnosticPositive:'Có dữ liệu tài khoản',diagnosticZero:'Chưa thấy tiến độ',sessionExpired:'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.',networkError:'Không thể kết nối dịch vụ Official WWM.',mapLoadError:'Không tải được dữ liệu bản đồ.',completedPopup:'Đã hoàn thành',openPopup:'Chưa hoàn thành',loginSdkMissing:'SDK đăng nhập chính thức chưa tải được. Hãy refresh và thử lại.',loggedOut:'Đã đăng xuất khỏi WWSync.',mapStateOnly:'Lưu ý: “finished” là trạng thái do Official Map API trả về. Chưa được gọi là game-save sync cho tới khi field-test xác nhận nó khớp tiến độ thực trong game.'},en:{tagline:'Where Winds Meet companion',officialSource:'Official WWM data',syncTitle:'Progress sync',syncIntro:'Sign in through the official NetEase UI. WWSync does not use a WWMMAP password, legacy bridge, or relay.',loginOfficial:'Sign in to Where Winds Meet',loginPrivacy:'Credentials are entered only in the official NetEase UI; WWSync has no password field.',character:'Character',logout:'Sign out',refreshProgress:'Refresh progress',chooseCharacter:'Choose character',progress:'Progress',notSignedIn:'Not signed in',completed:'Completed',totalPoints:'Total points',progressNote:'Before sign-in, Official Map points are treated as incomplete.',map:'Map',search:'Search',searchPlaceholder:'Place / point category...',hideCompleted:'Hide completed points',categories:'Categories',all:'All',syncCheck:'Sync source check',diagnosticIntro:'WWSync compares the Official Map “finished” state after sign-in. It is only considered verified auto-sync if account data actually reflects in-game progress.',loadingMap:'Loading map…',fanMade:'Fan-made companion',officialMap:'Official Map',signingIn:'Opening official sign-in…',loginFailed:'Sign-in failed',noRoles:'No characters were returned for this account.',chooseRoleHint:'Choose the character you actually play.',roleLogin:'Linking character…',loadingProgress:'Reading Official Map state…',signedIn:'Signed in',officialFinished:'Official Map returned {count} finished points for this character.',officialZero:'Official Map currently returns 0 finished points. This does not prove that in-game progress was imported.',diagnosticPositive:'Account state found',diagnosticZero:'No progress detected',sessionExpired:'Session expired. Please sign in again.',networkError:'Could not reach the Official WWM service.',mapLoadError:'Could not load map data.',completedPopup:'Completed',openPopup:'Incomplete',loginSdkMissing:'The official sign-in SDK did not load. Refresh and try again.',loggedOut:'Signed out of WWSync.',mapStateOnly:'Note: “finished” is the state returned by the Official Map API. It is not called game-save sync until a field test confirms it matches real in-game progress.'}};
-const safeJson=(v,f)=>{try{return v?JSON.parse(v):f}catch{return f}};
-const state={lang:localStorage.getItem(LANG_KEY)||'vi',token:sessionStorage.getItem(TOKEN_KEY)||'',role:safeJson(sessionStorage.getItem(ROLE_KEY),null),roles:[],maps:[],mapId:1,categories:[],points:[],activeCategories:new Set,hideCompleted:localStorage.getItem(FILTER_KEY)==='1',search:'',map:null,pointLayer:null,pointRenderer:null,sdk:null,loginUser:null,totals:{completed:0,total:0},pointCache:new Map};
-const ids=['languageSelect','signedOutView','signedInView','loginButton','logoutButton','refreshButton','characterName','authStatus','rolePanel','roleList','roleCount','completedCount','totalCount','progressFill','progressNote','syncStateBadge','mapSelect','searchInput','hideCompleted','categoryList','toggleCategories','diagnosticBadge','diagnosticText','mapLoading','sidebar','sidebarToggle','toast'];
+const LANG_KEY='wwmsync:lang';
+const UID_KEY='wwmsync:uid';
+const FILTER_KEY='wwmsync:hide-completed';
+
+const MAP_CONFIG={
+  1:{name:'Qinghe',mapName:'qinghe',minZoom:8,maxZoom:13,initialZoom:11,center:[-.8166,1.49071],bounds:[[-2.8,0],[0,2.8]]},
+  2:{name:'Kaifeng',mapName:'kaifeng',minZoom:8,maxZoom:13,initialZoom:11,center:[-1.22119,1.49886],bounds:[[-2.8,0],[0,2.8]]},
+  3:{name:'Hexi',mapName:'hexiqian',minZoom:8,maxZoom:12,initialZoom:11,center:[-1.82411,1.85605],bounds:[[-2.8,0],[0,2.8]]},
+  4:{name:'Kaifeng Palace',mapName:'kaifenghuanggong',minZoom:1,maxZoom:12,initialZoom:11,center:[-1.41034,.64615],bounds:[[-2.8,0],[0,2.8]]}
+};
+
+const I18N={
+  vi:{
+    tagline:'Where Winds Meet companion',officialSource:'Dữ liệu Official WWM',syncTitle:'Đồng bộ game',
+    syncIntro:'Nhập UID nhân vật để lưu cấu hình. WWMSync không giả lập nút Allow: luồng UID → Allow cần một dịch vụ game-side đã được game tin cậy, và chưa có API công khai đã xác minh để WWMSync tự thực hiện.',
+    uidLabel:'UID nhân vật',uidPlaceholder:'Nhập UID nhân vật',syncButton:'Sync',syncIdle:'Chưa kết nối game.',
+    invalidUid:'UID phải là chuỗi số hợp lệ.',
+    syncBlocked:'UID đã được lưu cục bộ. Chưa thể gửi yêu cầu Allow vào game một cách độc lập: cơ chế cũ cần backend/game-side transport riêng. WWMSync không gửi UID sang WWMMAP và không yêu cầu PIN hay mật khẩu.',
+    progress:'Tiến độ game',completed:'Đã hoàn thành',totalPoints:'Tổng điểm',progressNote:'Hiện chỉ hiển thị catalog Official Map. Completion trong game chưa được auto-sync.',
+    map:'Bản đồ',search:'Tìm kiếm',searchPlaceholder:'Tên địa điểm / loại điểm...',hideCompleted:'Ẩn điểm đã hoàn thành',categories:'Danh mục',all:'Tất cả',
+    syncCheck:'Trạng thái sync',diagnosticBlocked:'UID-only sync độc lập: chưa khả dụng',diagnosticIntro:'Forensic xác nhận flow cũ cần backend xác thực riêng để gửi yêu cầu vào game, sau đó mới nhận full state và vị trí qua relay WebSocket. Không có transport đó thì web thuần không thể làm game hiện Allow chỉ bằng UID.',
+    loadingMap:'Đang tải bản đồ…',fanMade:'Companion do fan làm',officialMap:'Official Map',mapLoadError:'Không tải được dữ liệu bản đồ.',openPopup:'Chưa đồng bộ trạng thái game',catalogLoaded:'Đã tải {count} điểm Official Map.'
+  },
+  en:{
+    tagline:'Where Winds Meet companion',officialSource:'Official WWM data',syncTitle:'Game sync',
+    syncIntro:'Enter a character UID to save the local profile. WWMSync does not fake an Allow prompt: UID → Allow requires a game-side service trusted by the game, and no verified public API is available for WWMSync to do this independently.',
+    uidLabel:'Character UID',uidPlaceholder:'Enter character UID',syncButton:'Sync',syncIdle:'Game not connected.',
+    invalidUid:'UID must be a valid numeric string.',
+    syncBlocked:'UID saved locally. WWMSync cannot independently send an Allow request into the game: the legacy flow depends on its own backend/game-side transport. WWMSync does not send your UID to WWMMAP and never asks for its PIN or password.',
+    progress:'Game progress',completed:'Completed',totalPoints:'Total points',progressNote:'Currently showing the Official Map catalog only. In-game completion is not auto-synced yet.',
+    map:'Map',search:'Search',searchPlaceholder:'Place / point category...',hideCompleted:'Hide completed points',categories:'Categories',all:'All',
+    syncCheck:'Sync status',diagnosticBlocked:'Independent UID-only sync: unavailable',diagnosticIntro:'Forensic verification shows the legacy flow requires a private authentication backend to send the in-game request, then receives full state and player position over a relay WebSocket. Without that transport, a pure web app cannot make the game show Allow from a UID alone.',
+    loadingMap:'Loading map…',fanMade:'Fan-made companion',officialMap:'Official Map',mapLoadError:'Could not load map data.',openPopup:'Game state not synced',catalogLoaded:'Loaded {count} Official Map points.'
+  }
+};
+
+const state={
+  lang:localStorage.getItem(LANG_KEY)||'vi',
+  uid:localStorage.getItem(UID_KEY)||'',
+  maps:[],mapId:1,categories:[],points:[],activeCategories:new Set(),
+  hideCompleted:localStorage.getItem(FILTER_KEY)==='1',search:'',
+  map:null,pointLayer:null,pointRenderer:null,pointCache:new Map(),catalogTotal:0
+};
+
+const ids=['languageSelect','characterUid','syncButton','syncStatus','completedCount','totalCount','progressFill','progressNote','syncStateBadge','mapSelect','searchInput','hideCompleted','categoryList','toggleCategories','diagnosticBadge','diagnosticText','mapLoading','sidebar','sidebarToggle','toast'];
 const el=Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
-function t(k,v={}){let s=I18N[state.lang]?.[k]||I18N.en[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll(`{${a}}`,String(b));return s}
-function applyI18n(){document.documentElement.lang=state.lang;document.querySelectorAll('[data-i18n]').forEach(n=>n.textContent=t(n.dataset.i18n));document.querySelectorAll('[data-i18n-placeholder]').forEach(n=>n.placeholder=t(n.dataset.i18nPlaceholder));el.languageSelect.value=state.lang;renderMapOptions();renderCategories();updateProgressUI()}
-function setStatus(m='',k=''){el.authStatus.textContent=m;el.authStatus.className=`status-line ${k}`.trim()}
-function toast(m){el.toast.textContent=m;el.toast.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.toast.classList.remove('show'),3200)}
-function setBusy(b,x){if(b)b.disabled=x}
-function randomHex(n=16){const a=new Uint8Array(n);crypto.getRandomValues(a);return[...a].map(x=>x.toString(16).padStart(2,'0')).join('')}
-function getUdid(){let v=localStorage.getItem(UDID_KEY);if(!v){v=randomHex();localStorage.setItem(UDID_KEY,v)}return v}
-async function officialApi(path,{method='GET',body=null,token=state.token,noLang=false,accessToken=false}={}){const url=new URL(API_BASE+path),headers={};if(!noLang){headers['Accept-Language']='en-US';url.searchParams.set('lang','en-US')}if(token)headers.h72_map_accessToken=token;let payload=body;if(accessToken&&method==='GET')url.searchParams.set('access_token',token||'');if(body!==null){headers['Content-Type']='application/json';if(accessToken)payload={...body,access_token:token||''}}let response;try{response=await fetch(url,{method,headers,credentials:'omit',body:payload===null?undefined:JSON.stringify(payload)})}catch(e){throw new Error(t('networkError'),{cause:e})}const json=await response.json().catch(()=>null);if(!response.ok||!json||!json.success){const e=new Error(json?.msg||`${response.status} ${response.statusText}`);e.code=json?.code;throw e}return json.data}
-async function ensureSdk(){if(state.sdk)return state.sdk;if(!window.MpayOSSDK)await new Promise(r=>setTimeout(r,800));if(!window.MpayOSSDK)throw new Error(t('loginSdkMissing'));state.sdk=new window.MpayOSSDK(MPAY_CONFIG);await state.sdk.init();return state.sdk}
-function makeSauth(u){return{gameid:'h72naxx2gb',loginChannel:'netease_global',appChannel:'netease_global.h5activity',platform:u.platform,sdkuid:String(u.userId),sessionid:u.accessToken,sdkVersion:'1.0.0',udid:getUdid(),deviceid:String(u.deviceId),clientLoginSn:randomHex()}}
-async function beginOfficialLogin(){setBusy(el.loginButton,true);setStatus(t('signingIn'));try{const sdk=await ensureSdk();const user=await sdk.showLogin({guestLogin:false,bindAccountInfo:'',loginMethod:'',loginPlatform:'',gameRedirectUrl:window.location.href,enableLoginType:LOGIN_TYPES});state.loginUser=user;const roles=await officialApi('/api/auth/ursRoles',{method:'POST',body:makeSauth(user),token:'',noLang:true,accessToken:true});state.roles=Array.isArray(roles)?roles:[];renderRoles();if(!state.roles.length)throw new Error(t('noRoles'));el.rolePanel.classList.remove('hidden');setStatus(t('chooseRoleHint'),'success');if(state.roles.length===1)await chooseRole(state.roles[0])}catch(e){console.error('[WWSync] login',e);setStatus(`${t('loginFailed')}: ${e.message||e}`,'error')}finally{setBusy(el.loginButton,false)}}
-async function chooseRole(role){if(!state.loginUser)return;setStatus(t('roleLogin'));[...el.roleList.querySelectorAll('button')].forEach(b=>b.disabled=true);try{const data=await officialApi('/api/auth/ursLogin',{method:'POST',body:{...makeSauth(state.loginUser),roleId:role.roleId},token:'',noLang:true,accessToken:true});if(!data?.token)throw new Error('Official API returned no map token');state.token=data.token;state.role={...role,nickName:data.nickName||role.roleName||role.name||''};sessionStorage.setItem(TOKEN_KEY,state.token);sessionStorage.setItem(ROLE_KEY,JSON.stringify(state.role));el.rolePanel.classList.add('hidden');updateAuthUI();await loadAccountProgress(true)}catch(e){console.error('[WWSync] role login',e);setStatus(e.message||String(e),'error');[...el.roleList.querySelectorAll('button')].forEach(b=>b.disabled=false)}}
-function escapeHtml(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function renderRoles(){el.roleCount.textContent=String(state.roles.length);el.roleList.innerHTML='';state.roles.forEach(r=>{const b=document.createElement('button');b.type='button';b.className='role-button';const n=r.roleName||r.nickName||r.name||`Role ${r.roleId||''}`,s=r.serverName||r.server||r.hostName||r.regionName||'';b.innerHTML=`<strong>${escapeHtml(n)}</strong><span>${escapeHtml(s||`ID ${r.roleId||'—'}`)}</span>`;b.onclick=()=>chooseRole(r);el.roleList.appendChild(b)})}
-function updateAuthUI(){const s=!!state.token;el.signedOutView.classList.toggle('hidden',s);el.signedInView.classList.toggle('hidden',!s);el.characterName.textContent=state.role?.nickName||state.role?.roleName||state.role?.name||'—';el.syncStateBadge.textContent=s?t('signedIn'):t('notSignedIn');el.syncStateBadge.className=`status-badge ${s?'good':'neutral'}`}
-function logout(){state.token='';state.role=null;state.roles=[];state.loginUser=null;state.totals={completed:0,total:0};state.pointCache.clear();sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(ROLE_KEY);updateAuthUI();updateProgressUI();loadActiveMapPoints();setStatus('');toast(t('loggedOut'))}
-async function loadMaps(){const d=await officialApi('/api/map/list');state.maps=(d?.maps||[]).filter(m=>MAP_CONFIG[m.id]);if(!state.maps.length)state.maps=Object.entries(MAP_CONFIG).map(([id,c])=>({id:+id,name:c.name}));renderMapOptions()}
-function renderMapOptions(){if(!el.mapSelect)return;const cur=String(state.mapId);el.mapSelect.innerHTML='';for(const m of state.maps){const o=document.createElement('option');o.value=String(m.id);o.textContent=m.name||MAP_CONFIG[m.id]?.name||`Map ${m.id}`;el.mapSelect.appendChild(o)}if([...el.mapSelect.options].some(o=>o.value===cur))el.mapSelect.value=cur}
-function flattenPoints(d){const points=[],categories=[];for(const g of d?.categories||[])for(const c of g.childCategories||[]){categories.push({id:c.id,name:c.name||g.name||`Category ${c.id}`,pointsNum:c.pointsNum||c.pointList?.length||0,finishPointsNum:c.finishPointsNum||0});for(const p of c.pointList||[])points.push({...p,categoryId:c.id,categoryName:c.name||g.name||''})}return{points,categories}}
-async function fetchMapPoints(mapId,token=state.token){const key=`${mapId}:${token?'auth':'anon'}`;if(state.pointCache.has(key))return state.pointCache.get(key);const d=await officialApi(`/api/map/points?mapId=${encodeURIComponent(mapId)}`,{token});const f=flattenPoints(d);state.pointCache.set(key,f);return f}
-async function loadActiveMapPoints(){el.mapLoading.classList.remove('done');try{const f=await fetchMapPoints(state.mapId);state.points=f.points;state.categories=f.categories;state.activeCategories=new Set(f.categories.map(c=>String(c.id)));renderCategories();renderPoints()}catch(e){console.error(e);toast(t('mapLoadError'))}finally{el.mapLoading.classList.add('done')}}
-async function loadAccountProgress(force=false){if(!state.token)return;setBusy(el.refreshButton,true);setStatus(t('loadingProgress'));try{if(force)state.pointCache.clear();let completed=0,total=0;for(const m of state.maps){const f=await fetchMapPoints(m.id,state.token);total+=f.points.length;completed+=f.points.filter(p=>p.finished).length}state.totals={completed,total};updateProgressUI();setStatus(t('officialFinished',{count:completed}),'success');el.diagnosticBadge.textContent=completed>0?t('diagnosticPositive'):t('diagnosticZero');el.diagnosticBadge.className=`status-badge ${completed>0?'warn':'neutral'}`;el.diagnosticText.textContent=`${completed>0?t('officialFinished',{count:completed}):t('officialZero')} ${t('mapStateOnly')}`;await loadActiveMapPoints()}catch(e){console.error('[WWSync] progress',e);if([-1,-3,-4].includes(e.code)){logout();setStatus(t('sessionExpired'),'error')}else setStatus(e.message||String(e),'error')}finally{setBusy(el.refreshButton,false)}}
-function updateProgressUI(){const{completed,total}=state.totals;el.completedCount.textContent=completed.toLocaleString();el.totalCount.textContent=total.toLocaleString();el.progressFill.style.width=`${total?Math.min(100,completed/total*100):0}%`;el.progressNote.textContent=state.token?t('mapStateOnly'):t('progressNote')}
-function renderCategories(){if(!el.categoryList)return;el.categoryList.innerHTML='';for(const c of state.categories){const id=String(c.id),active=state.activeCategories.has(id),b=document.createElement('button');b.type='button';b.className=`category-item ${active?'active':''}`;b.innerHTML=`<span>${escapeHtml(c.name)}</span><small>${Number(c.pointsNum||0).toLocaleString()}</small>`;b.onclick=()=>{active?state.activeCategories.delete(id):state.activeCategories.add(id);renderCategories();renderPoints()};el.categoryList.appendChild(b)}}
-function filteredPoints(){const q=state.search.trim().toLowerCase();return state.points.filter(p=>state.activeCategories.has(String(p.categoryId))&&(!state.hideCompleted||!p.finished)&&(!q||`${p.name||''} ${p.categoryName||''}`.toLowerCase().includes(q)))}
-function pointCoordinates(p){const parse=v=>Number.isFinite(Number(v))?parseInt(String(v),8)/1e5:0;return[parse(p.lng),parse(p.lat)]}
+
+function t(key,vars={}){
+  let text=I18N[state.lang]?.[key]||I18N.en[key]||key;
+  for(const [k,v] of Object.entries(vars))text=text.replaceAll(`{${k}}`,String(v));
+  return text;
+}
+function escapeHtml(value=''){return String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function toast(message){el.toast.textContent=message;el.toast.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.toast.classList.remove('show'),3200)}
+function setSyncStatus(message='',kind=''){el.syncStatus.textContent=message;el.syncStatus.className=`status-line ${kind}`.trim()}
+
+function applyI18n(){
+  document.documentElement.lang=state.lang;
+  document.querySelectorAll('[data-i18n]').forEach(node=>node.textContent=t(node.dataset.i18n));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(node=>node.placeholder=t(node.dataset.i18nPlaceholder));
+  el.languageSelect.value=state.lang;
+  el.syncStateBadge.textContent=t('syncIdle');
+  el.diagnosticBadge.textContent=t('diagnosticBlocked');
+  el.diagnosticText.textContent=t('diagnosticIntro');
+  el.progressNote.textContent=t('progressNote');
+  renderMapOptions();
+  renderCategories();
+  renderPoints();
+}
+
+async function officialApi(path){
+  const url=new URL(API_BASE+path);
+  url.searchParams.set('lang','en-US');
+  const response=await fetch(url,{headers:{'Accept-Language':'en-US'},credentials:'omit'});
+  const json=await response.json().catch(()=>null);
+  if(!response.ok||!json?.success)throw new Error(json?.msg||`${response.status} ${response.statusText}`);
+  return json.data;
+}
+
+async function loadMaps(){
+  const data=await officialApi('/api/map/list');
+  state.maps=(data?.maps||[]).filter(map=>MAP_CONFIG[map.id]);
+  if(!state.maps.length)state.maps=Object.entries(MAP_CONFIG).map(([id,cfg])=>({id:+id,name:cfg.name}));
+  if(!state.maps.some(map=>Number(map.id)===state.mapId))state.mapId=Number(state.maps[0]?.id||1);
+  renderMapOptions();
+}
+function renderMapOptions(){
+  if(!el.mapSelect)return;
+  const current=String(state.mapId);
+  el.mapSelect.innerHTML='';
+  for(const map of state.maps){
+    const option=document.createElement('option');
+    option.value=String(map.id);
+    option.textContent=map.name||MAP_CONFIG[map.id]?.name||`Map ${map.id}`;
+    el.mapSelect.appendChild(option);
+  }
+  if([...el.mapSelect.options].some(option=>option.value===current))el.mapSelect.value=current;
+}
+function flattenPoints(data){
+  const points=[],categories=[];
+  for(const group of data?.categories||[]){
+    for(const category of group.childCategories||[]){
+      categories.push({id:category.id,name:category.name||group.name||`Category ${category.id}`,pointsNum:category.pointsNum||category.pointList?.length||0});
+      for(const point of category.pointList||[])points.push({...point,finished:false,categoryId:category.id,categoryName:category.name||group.name||''});
+    }
+  }
+  return{points,categories};
+}
+async function fetchMapPoints(mapId){
+  const key=String(mapId);
+  if(state.pointCache.has(key))return state.pointCache.get(key);
+  const data=await officialApi(`/api/map/points?mapId=${encodeURIComponent(mapId)}`);
+  const result=flattenPoints(data);
+  state.pointCache.set(key,result);
+  return result;
+}
+async function loadCatalogTotal(){
+  const results=await Promise.all(state.maps.map(map=>fetchMapPoints(map.id)));
+  state.catalogTotal=results.reduce((sum,result)=>sum+result.points.length,0);
+  updateProgressUI();
+  setSyncStatus(t('catalogLoaded',{count:state.catalogTotal}));
+}
+async function loadActiveMapPoints(){
+  el.mapLoading.classList.remove('done');
+  try{
+    const result=await fetchMapPoints(state.mapId);
+    state.points=result.points;
+    state.categories=result.categories;
+    state.activeCategories=new Set(result.categories.map(category=>String(category.id)));
+    renderCategories();
+    renderPoints();
+  }finally{el.mapLoading.classList.add('done')}
+}
+function updateProgressUI(){
+  el.completedCount.textContent='0';
+  el.totalCount.textContent=Number(state.catalogTotal||0).toLocaleString();
+  el.progressFill.style.width='0%';
+  el.progressNote.textContent=t('progressNote');
+}
+function renderCategories(){
+  if(!el.categoryList)return;
+  el.categoryList.innerHTML='';
+  for(const category of state.categories){
+    const id=String(category.id),active=state.activeCategories.has(id);
+    const button=document.createElement('button');
+    button.type='button';button.className=`category-item ${active?'active':''}`;
+    button.innerHTML=`<span>${escapeHtml(category.name)}</span><small>${Number(category.pointsNum||0).toLocaleString()}</small>`;
+    button.onclick=()=>{active?state.activeCategories.delete(id):state.activeCategories.add(id);renderCategories();renderPoints()};
+    el.categoryList.appendChild(button);
+  }
+}
+function filteredPoints(){
+  const query=state.search.trim().toLowerCase();
+  return state.points.filter(point=>state.activeCategories.has(String(point.categoryId))&&(!query||`${point.name||''} ${point.categoryName||''}`.toLowerCase().includes(query)));
+}
+function pointCoordinates(point){
+  const parse=value=>Number.isFinite(Number(value))?parseInt(String(value),8)/1e5:0;
+  return[parse(point.lng),parse(point.lat)];
+}
 function leafletBounds(cfg){return window.L.latLngBounds([cfg.bounds[0][1],cfg.bounds[0][0]],[cfg.bounds[1][1],cfg.bounds[1][0]])}
-async function ensureMap(){const L=window.L;if(!L)throw new Error('Leaflet failed to load');const cfg=MAP_CONFIG[state.mapId]||MAP_CONFIG[1];if(state.map){state.map.remove();state.map=null}const bounds=leafletBounds(cfg);state.map=L.map('map',{center:[cfg.center[1],cfg.center[0]],zoom:cfg.initialZoom,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,maxBounds:bounds,maxBoundsViscosity:.85,zoomControl:true,attributionControl:false,preferCanvas:true});L.tileLayer(`${MAP_ASSET_ROOT}data/map/${cfg.mapName}/en/{z}/{y}_{x}.jpg`,{tileSize:256,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,noWrap:true,bounds,keepBuffer:3}).addTo(state.map);state.pointRenderer=L.canvas({padding:.5});state.pointLayer=L.layerGroup().addTo(state.map)}
-function renderPoints(){if(!state.map||!state.pointLayer)return;const L=window.L;state.pointLayer.clearLayers();for(const p of filteredPoints()){const [lng,lat]=pointCoordinates(p),done=!!p.finished;const marker=L.circleMarker([lat,lng],{renderer:state.pointRenderer,radius:done?4:5,color:'#101418',weight:1.2,fillColor:done?'#62d6a8':'#e4b55c',fillOpacity:done?.38:.92});marker.bindPopup(`<div class="popup-title">${escapeHtml(p.name||'')}</div><div class="popup-meta">${escapeHtml(p.categoryName||'')}</div><div class="${done?'popup-done':'popup-open'}">${done?t('completedPopup'):t('openPopup')}</div>`);marker.addTo(state.pointLayer)}}
-async function switchMap(id){state.mapId=+id;el.mapLoading.classList.remove('done');try{await ensureMap();await loadActiveMapPoints()}catch(e){console.error('[WWSync] map',e);toast(t('mapLoadError'));el.mapLoading.classList.add('done')}}
-function bindEvents(){el.languageSelect.onchange=()=>{state.lang=el.languageSelect.value;localStorage.setItem(LANG_KEY,state.lang);applyI18n();renderPoints()};el.loginButton.onclick=beginOfficialLogin;el.logoutButton.onclick=logout;el.refreshButton.onclick=()=>loadAccountProgress(true);el.mapSelect.onchange=()=>switchMap(el.mapSelect.value);el.searchInput.oninput=()=>{state.search=el.searchInput.value;renderPoints()};el.hideCompleted.checked=state.hideCompleted;el.hideCompleted.onchange=()=>{state.hideCompleted=el.hideCompleted.checked;localStorage.setItem(FILTER_KEY,state.hideCompleted?'1':'0');renderPoints()};el.toggleCategories.onclick=()=>{const all=state.activeCategories.size!==state.categories.length;state.activeCategories=new Set(all?state.categories.map(c=>String(c.id)):[]);renderCategories();renderPoints()};el.sidebarToggle.onclick=()=>el.sidebar.classList.toggle('open')}
-async function boot(){bindEvents();applyI18n();updateAuthUI();updateProgressUI();try{await loadMaps();await switchMap(state.maps[0]?.id||1);if(state.token)await loadAccountProgress(true)}catch(e){console.error('[WWSync] boot',e);toast(e.message||t('networkError'));el.mapLoading.classList.add('done')}if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+async function ensureMap(){
+  const L=window.L;
+  if(!L)throw new Error('Leaflet failed to load');
+  const cfg=MAP_CONFIG[state.mapId]||MAP_CONFIG[1];
+  if(state.map){state.map.remove();state.map=null}
+  const bounds=leafletBounds(cfg);
+  state.map=L.map('map',{center:[cfg.center[1],cfg.center[0]],zoom:cfg.initialZoom,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,maxBounds:bounds,maxBoundsViscosity:.85,zoomControl:true,attributionControl:false,preferCanvas:true});
+  L.tileLayer(`${MAP_ASSET_ROOT}data/map/${cfg.mapName}/en/{z}/{y}_{x}.jpg`,{tileSize:256,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,noWrap:true,bounds,keepBuffer:3}).addTo(state.map);
+  state.pointRenderer=L.canvas({padding:.5});
+  state.pointLayer=L.layerGroup().addTo(state.map);
+}
+function renderPoints(){
+  if(!state.map||!state.pointLayer)return;
+  const L=window.L;
+  state.pointLayer.clearLayers();
+  for(const point of filteredPoints()){
+    const [lng,lat]=pointCoordinates(point);
+    const marker=L.circleMarker([lat,lng],{renderer:state.pointRenderer,radius:5,color:'#101418',weight:1.2,fillColor:'#e4b55c',fillOpacity:.92});
+    marker.bindPopup(`<div class="popup-title">${escapeHtml(point.name||'')}</div><div class="popup-meta">${escapeHtml(point.categoryName||'')}</div><div class="popup-open">${t('openPopup')}</div>`);
+    marker.addTo(state.pointLayer);
+  }
+}
+async function switchMap(id){
+  state.mapId=Number(id);
+  el.mapLoading.classList.remove('done');
+  try{await ensureMap();await loadActiveMapPoints()}
+  catch(error){console.error('[WWMSync] map',error);toast(t('mapLoadError'));el.mapLoading.classList.add('done')}
+}
+function handleSync(){
+  const uid=el.characterUid.value.trim();
+  if(!/^\d{5,24}$/.test(uid)){setSyncStatus(t('invalidUid'),'error');return}
+  state.uid=uid;localStorage.setItem(UID_KEY,uid);
+  setSyncStatus(t('syncBlocked'),'error');
+  el.syncStateBadge.textContent=t('diagnosticBlocked');
+  el.syncStateBadge.className='status-badge warn';
+}
+function bindEvents(){
+  el.languageSelect.onchange=()=>{state.lang=el.languageSelect.value;localStorage.setItem(LANG_KEY,state.lang);applyI18n()};
+  el.syncButton.onclick=handleSync;
+  el.characterUid.onkeydown=event=>{if(event.key==='Enter')handleSync()};
+  el.mapSelect.onchange=()=>switchMap(el.mapSelect.value);
+  el.searchInput.oninput=()=>{state.search=el.searchInput.value;renderPoints()};
+  el.hideCompleted.checked=state.hideCompleted;
+  el.hideCompleted.onchange=()=>{state.hideCompleted=el.hideCompleted.checked;localStorage.setItem(FILTER_KEY,state.hideCompleted?'1':'0');renderPoints()};
+  el.toggleCategories.onclick=()=>{const all=state.activeCategories.size!==state.categories.length;state.activeCategories=new Set(all?state.categories.map(category=>String(category.id)):[]);renderCategories();renderPoints()};
+  el.sidebarToggle.onclick=()=>el.sidebar.classList.toggle('open');
+}
+async function boot(){
+  bindEvents();
+  el.characterUid.value=state.uid;
+  applyI18n();
+  updateProgressUI();
+  try{
+    await loadMaps();
+    await switchMap(state.mapId);
+    await loadCatalogTotal();
+  }catch(error){console.error('[WWMSync] boot',error);toast(t('mapLoadError'));el.mapLoading.classList.add('done')}
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
 boot();
