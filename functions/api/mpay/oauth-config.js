@@ -40,7 +40,3 @@ export async function onRequestGet({ request }) {
     },
   });
 }
-
-export function onRequest() {
-  return jsonError(405, 'method not allowed');
-}
