@@ -1,28 +1,31 @@
-name: Locate Official Data Tool Access Token
+name: Resolve Official Data Tool Token Persistence
 
 on:
   push:
     branches: [feature/wwm-native-sync-v2]
     paths: ['.github/workflows/forensic-cn-official-map.yml']
-
 permissions:
   contents: read
-
 jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Find token state implementation
+      - name: Resolve token persistence
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location 'https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/index-67f2100d.js' -o /tmp/i.js
+          root='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
+          curl -fsSL "$root/index-67f2100d.js" -o /tmp/i.js
+          curl -fsSL "$root/app-9b07739a.js" -o /tmp/a.js
           python - <<'PY'
           from pathlib import Path
           import re
-          t=Path('/tmp/i.js').read_text('utf-8',errors='ignore')
-          for pat in [r'updateToken\s*\([^)]*\)\s*\{',r'token\s*:\s*[^,]{1,250}',r'localStorage\.getItem\([^)]{0,120}\)',r'localStorage\.setItem\([^)]{0,180}\)',r'cookie\.get\([^)]{0,120}\)',r'cookie\.set\([^)]{0,180}\)']:
-              print('\nPATTERN',pat)
-              for m in list(re.finditer(pat,t))[:15]:
-                  i=m.start();print(t[max(0,i-500):min(len(t),i+1200)].replace('\n',' ')[:1700])
+          for fn in ['i.js','a.js']:
+            t=Path('/tmp/'+fn).read_text('utf8',errors='ignore')
+            print('\nFILE',fn)
+            pats=[r'state\s*:\s*\(\)\s*=>\s*\(\{[^}]{0,1200}token[^}]{0,1200}\}\)',r'updateToken[^,}]{0,800}',r'defineStore[^;]{0,2200}',r'persist[^;]{0,1800}',r'["\'][^"\']{0,50}token[^"\']{0,50}["\']']
+            for pat in pats:
+              ms=list(re.finditer(pat,t,re.I|re.S))
+              print('PAT',pat,'COUNT',len(ms))
+              for m in ms[:8]: print(t[max(0,m.start()-350):min(len(t),m.start()+1900)].replace('\n',' ')[:2250])
           PY
