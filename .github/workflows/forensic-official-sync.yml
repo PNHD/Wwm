@@ -1,4 +1,4 @@
-name: Forensic WWM Sync Protocol
+name: Forensic WWM Local Sync
 
 on:
   push:
@@ -14,55 +14,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fetch public legacy sync modules
+      - name: Inspect public Windows tool without executing it
         shell: bash
         run: |
           set -euo pipefail
-          root='https://wwmmap.pages.dev/js/map_2026'
-          for spec in \
-            'gamesync.js?v=4|gamesync.js' \
-            'auth_modal.js|auth_modal.js' \
-            'tracking.js|tracking.js' \
-            'map_config.js|map_config.js' \
-            'corellator.js|corellator.js'; do
-            url="${spec%%|*}"; out="${spec##*|}"
-            curl --fail --silent --show-error --location --compressed "$root/$url" -o "$out"
-          done
+          url='https://pub-ee98fd25126f446ea56002b8ed7ca418.r2.dev/VietHoaAIWhereWindsMeet336.zip'
+          curl --fail --silent --show-error --location --retry 3 "$url" -o tool.zip
+          unzip -l tool.zip > tool-files.txt
+          rm -rf extracted && mkdir extracted
+          unzip -q tool.zip -d extracted
+          {
+            echo '=== ZIP SHA256 ==='
+            sha256sum tool.zip
+            echo '=== FILE TYPES ==='
+            find extracted -type f -maxdepth 4 -print0 | xargs -0 file
+            echo '=== SYNC-RELATED STRINGS ==='
+            while IFS= read -r -d '' f; do
+              echo "--- $f ---"
+              strings -a -n 5 "$f" | grep -Ei -m 400 '63333|GET_GAME_STATE|game.?state|sync|localhost|127\.0\.0\.1|websocket|bridge|relay|wwmmap|map_2026|server_password|http.?server|TcpListener|HttpListener|Kestrel|Flask|FastAPI|aiohttp|lua|client.?method' || true
+            done < <(find extracted -type f -print0)
+          } > local-sync-evidence.txt
 
-          python - <<'PY' > legacy-sync-protocol.txt
-          from pathlib import Path
-          import re
-          files=[Path('gamesync.js'),Path('auth_modal.js'),Path('tracking.js')]
-          terms=['start_game_sync','invokeClientMethod','call_client_method','gameauth','WebSocket','relay','connectionKey','playerId','password','packet','chunk','full','museum','knowledge','beings','position','permission','server']
-          for p in files:
-              text=p.read_text('utf-8',errors='ignore')
-              print(f'=== {p.name} BYTES {len(text.encode())} ===')
-              for term in terms:
-                  start=0; n=0
-                  while True:
-                      i=text.lower().find(term.lower(),start)
-                      if i<0 or n>=30: break
-                      lo=max(0,i-2400); hi=min(len(text),i+6200)
-                      print(f'--- {term} @ {i} ---')
-                      print(text[lo:hi])
-                      start=i+len(term); n+=1
-              print('--- NETWORK / ROUTE LITERALS ---')
-              for q,s in re.findall(r'(["\'])(.{1,700}?)\1',text,re.S):
-                  low=s.lower()
-                  if any(k in low for k in ['/service/','/api/','wss://','ws://','game_sync','client_method','relay','websocket']):
-                      print(' '.join(s.split())[:1000])
-          PY
-
-      - name: Upload protocol artifact
+      - name: Upload textual evidence only
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-legacy-sync-protocol
+          name: wwm-local-sync-evidence
           path: |
-            legacy-sync-protocol.txt
-            gamesync.js
-            auth_modal.js
-            tracking.js
-            map_config.js
-            corellator.js
+            tool-files.txt
+            local-sync-evidence.txt
           if-no-files-found: error
           retention-days: 1
