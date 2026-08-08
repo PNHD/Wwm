@@ -18,57 +18,76 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location 'https://wwmmap.pages.dev/map' -o /tmp/map.html
+          for route in / /map /legacy-map; do
+            name="$(echo "$route" | sed 's#^/$#root#; s#^/##; s#/#-#g')"
+            status="$(curl --silent --show-error --location --output "/tmp/${name}.html" --write-out '%{http_code}' "https://wwmmap.pages.dev${route}" || true)"
+            echo "ROUTE ${route} HTTP ${status} BYTES $(wc -c < "/tmp/${name}.html" 2>/dev/null || echo 0)"
+            head -c 500 "/tmp/${name}.html" 2>/dev/null | tr '\n' ' ' || true
+            echo
+          done
+
           python - <<'PY'
           from pathlib import Path
-          import re, html
-          t=Path('/tmp/map.html').read_text('utf-8',errors='ignore')
-          print('HTML_BYTES',len(t.encode()))
-          print('SCRIPTS')
-          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
-          for s in srcs: print(s)
-          print('LINKS')
-          for h in re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I): print(h)
-          Path('/tmp/scripts.txt').write_text('\n'.join(srcs))
-          PY
-          mkdir -p /tmp/wwmmap-js
-          python - <<'PY'
-          from pathlib import Path
+          import re
           from urllib.parse import urljoin
-          import subprocess
-          base='https://wwmmap.pages.dev/map'
-          for i,s in enumerate(Path('/tmp/scripts.txt').read_text().splitlines()):
-              if not s: continue
-              u=urljoin(base,s)
-              out=f'/tmp/wwmmap-js/{i:02d}.js'
-              print('FETCH',u)
-              subprocess.run(['curl','--fail','--silent','--show-error','--location',u,'-o',out],check=True)
+          bases={'root':'https://wwmmap.pages.dev/','map':'https://wwmmap.pages.dev/map','legacy-map':'https://wwmmap.pages.dev/legacy-map'}
+          all_urls=[]
+          for name,base in bases.items():
+              p=Path('/tmp')/(name+'.html')
+              if not p.exists(): continue
+              t=p.read_text('utf-8',errors='ignore')
+              print('\nHTML',name,'BYTES',len(t.encode()))
+              srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
+              links=re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I)
+              for u in srcs+links:
+                  full=urljoin(base,u)
+                  print('ASSET',full)
+                  if any(x in full for x in ['.js','_next/static','assets/']): all_urls.append(full)
+              for u in re.findall(r'https?://[^"\'<>\\\s)]+',t):
+                  if any(k in u.lower() for k in ['wwm','sync','relay','api','game']): print('HTML_URL',u[:1200])
+          Path('/tmp/assets.txt').write_text('\n'.join(dict.fromkeys(all_urls)))
           PY
-          echo '=== JS FILES ==='
-          wc -c /tmp/wwmmap-js/* || true
+
+          mkdir -p /tmp/wwmmap-js
+          i=0
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            case "$url" in *.js*|*/_next/static/*|*/assets/*)
+              out="/tmp/wwmmap-js/$(printf '%03d' "$i").js"
+              status="$(curl --silent --show-error --location --output "$out" --write-out '%{http_code}' "$url" || true)"
+              echo "FETCH_JS HTTP ${status} ${url} BYTES $(wc -c < "$out" 2>/dev/null || echo 0)"
+              i=$((i+1))
+              ;;
+            esac
+          done < /tmp/assets.txt
+
           echo '=== SYNC/API EVIDENCE ==='
           python - <<'PY'
           from pathlib import Path
           import re
-          needles=['start_game_sync','gameauth','sync','relay','websocket','wss://','ws://','uid','allow','permission','confirm','player','position','coordinate','marker','completion','finished','signature','verify','discord']
+          needles=['start_game_sync','gameauth','game sync','realtime game sync','relay','websocket','wss://','ws://','uid','allow','permission','confirmation timed out','only receive messages from friends','character not linked','verification code','wwmmap password','player','position','coordinate','completion','finished','signature','verify & link','daily permission']
           for p in sorted(Path('/tmp/wwmmap-js').glob('*.js')):
               text=p.read_text('utf-8',errors='ignore')
-              print('\n###',p.name,'bytes',len(text.encode()))
+              if not text.strip(): continue
               lows=text.lower()
-              seen=[]
+              relevant=False
+              for n in needles:
+                  if n.lower() in lows: relevant=True; break
+              if not relevant: continue
+              print('\n###',p.name,'bytes',len(text.encode()))
               for n in needles:
                   pos=0; hits=0
-                  while hits<15:
+                  while hits<12:
                       i=lows.find(n.lower(),pos)
                       if i<0: break
-                      lo=max(0,i-900); hi=min(len(text),i+2200)
-                      chunk=text[lo:hi].replace('\n',' ')
-                      sig=(n,i)
+                      lo=max(0,i-1000); hi=min(len(text),i+2600)
                       print(f'--- {n} @ {i} ---')
-                      print(chunk[:3200])
+                      print(text[lo:hi].replace('\n',' ')[:3800])
                       pos=i+len(n); hits+=1
-              urls=sorted(set(re.findall(r'https?://[^"\'`<>\\\s)]+',text)))
+              urls=sorted(set(re.findall(r'(?:https?|wss?)://[^"\'`<>\\\s)]+',text)))
               for u in urls:
-                  if any(k in u.lower() for k in ['wwm','sync','relay','game','api','ws']):
-                      print('URL',u[:1500])
+                  if any(k in u.lower() for k in ['wwm','sync','relay','game','api','ws','cloudflare']): print('URL',u[:1500])
           PY
+
+          echo '=== NEXT/ROUTE MANIFEST HINTS ==='
+          grep -RhoE '/_next/static/[^"'"' ]+' /tmp/*.html 2>/dev/null | sort -u | head -100 || true
