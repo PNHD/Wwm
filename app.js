@@ -39,6 +39,7 @@ const state = {
   notes: '',
   regions: [],
   categories: [],
+  categoryRegistry: [],
   region: null,
   allFeatures: [],
   completed: new Set(),
@@ -87,6 +88,12 @@ const els = {
 };
 
 function t(key) { return i18n[state.lang]?.[key] || i18n.vi[key] || key; }
+
+function registryItems(value, key) {
+  const items = Array.isArray(value) ? value : value?.[key];
+  if (!Array.isArray(items)) throw new Error(`Invalid ${key} registry`);
+  return items;
+}
 
 async function loadJson(url) {
   const response = await fetch(url, { cache: 'no-store' });
@@ -190,9 +197,8 @@ function selectSource(sourceId) {
 
 function loadExternalSource(source) {
   els.frameLoading.hidden = false;
-  els.mapFrame.src = 'about:blank';
   els.openSource.href = source.url;
-  requestAnimationFrame(() => { els.mapFrame.src = source.url; });
+  els.mapFrame.src = source.url;
 }
 
 function isValidFeatureCollection(value) {
@@ -217,7 +223,7 @@ function normalizeImportedDataset(value) {
 function categoryById(id) { return state.categories.find((category) => category.id === id); }
 
 function effectiveCategories(features = state.allFeatures) {
-  const configured = new Map(state.categories.map((c) => [c.id, c]));
+  const configured = new Map(state.categoryRegistry.map((c) => [c.id, c]));
   const palette = ['#d6b57a', '#8ec5ff', '#c9a4ff', '#88d7a8', '#f39a91', '#ffd56c', '#9fd3c7', '#e3a7d6'];
   let colorIndex = 0;
   for (const feature of features) {
@@ -268,9 +274,8 @@ function updateMapData() {
 
 function renderCategories() {
   state.categories = effectiveCategories();
-  const current = new Set(state.enabledCategories);
-  if (!current.size) state.categories.forEach((c) => state.enabledCategories.add(c.id));
-  else state.categories.forEach((c) => { if (!current.has(c.id)) state.enabledCategories.add(c.id); });
+  const validIds = new Set(state.categories.map((category) => category.id));
+  state.enabledCategories = new Set([...state.enabledCategories].filter((id) => validIds.has(id)));
 
   els.categoryList.replaceChildren();
   for (const category of state.categories) {
@@ -306,6 +311,9 @@ function renderRegions() {
   if (state.importedDataset) {
     const option = document.createElement('option'); option.value = '__imported__'; option.textContent = state.lang === 'vi' ? 'Dataset đã nhập' : 'Imported dataset';
     els.regionSelect.prepend(option);
+  }
+  if (state.region?.id && [...els.regionSelect.options].some((option) => option.value === state.region.id)) {
+    els.regionSelect.value = state.region.id;
   }
 }
 
@@ -505,7 +513,10 @@ function wireUi() {
 async function boot() {
   loadPersistedState();
   const [sources, regions, categories] = await Promise.all([loadJson('/data/sources.json'), loadJson('/data/regions.json'), loadJson('/data/categories.json')]);
-  state.sources = sources; state.regions = regions; state.categories = categories;
+  state.sources = registryItems(sources, 'sources');
+  state.regions = registryItems(regions, 'regions');
+  state.categoryRegistry = registryItems(categories, 'categories');
+  state.categories = [...state.categoryRegistry];
   const requestedSource = new URLSearchParams(location.search).get('source');
   if (requestedSource && state.sources.some((s) => s.id === requestedSource)) state.activeSource = requestedSource;
   if (!state.sources.some((s) => s.id === state.activeSource)) state.activeSource = 'official';

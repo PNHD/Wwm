@@ -23,17 +23,18 @@ The project intentionally **does not copy or mirror third-party marker databases
 python -m http.server 8080
 ```
 
-Open `http://localhost:8080/index.html` (Cloudflare handles `/map` through `_redirects`).
+Open `http://localhost:8080/`. The `/map` rewrite is a Cloudflare Pages routing rule; Python's basic HTTP server does not interpret `_redirects`.
 
 ## Cloudflare Pages
 
 Static project. No build step is required.
 
-- Build command: *(empty)*
-- Build output directory: `/`
-- Production URL target: `https://<project>.pages.dev/map`
+- Canonical deployment: Wrangler direct upload from `.github/workflows/deploy-cloudflare-pages.yml`.
+- The workflow creates a clean `dist/` containing only public static files, then deploys `dist/`.
+- Do not publish the repository root as the production artifact.
+- Production URL target: `https://<project>.pages.dev/map`.
 
-For Wrangler direct-upload CI, see `.github/workflows/deploy-cloudflare-pages.yml`.
+The workflow requires repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` when no authenticated Cloudflare connector is available.
 
 ## Data contract
 
@@ -41,4 +42,4 @@ Personal datasets use GeoJSON `FeatureCollection` with `Point` features. See `do
 
 ## Status
 
-**Production shell complete.** Cloudflare deployment is automated when the repository exposes `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+**Production candidate.** Validation and deployment status are authoritative only after the GitHub Actions checks and live Cloudflare smoke test pass.
