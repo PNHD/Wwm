@@ -87,7 +87,8 @@ jobs:
           fetch /manifest.webmanifest /tmp/manifest.json
           grep -Fq 'WWSync — Where Winds Meet' /tmp/root.html
           grep -Fq 'WWSync — Where Winds Meet' /tmp/map.html
-          grep -Fq 'MpayOSSDK' /tmp/root.html
+          grep -Fq 'sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js' /tmp/root.html
+          grep -Fq 'MpayOSSDK' /tmp/app.js
           node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWSync') process.exit(1)"
           curl --fail --silent --show-error --location 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' -o /tmp/official.json
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/official.json','utf8')); if(!x.success||!Array.isArray(x.data?.maps)||x.data.maps.length<3) process.exit(1)"
