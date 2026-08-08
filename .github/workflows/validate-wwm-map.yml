@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/wwm-map-m0-foundation
+      - feature/wwm-auto-sync
       - production/wwm-atlas
   pull_request:
 
@@ -22,57 +23,37 @@ jobs:
           node --check app.js
           node --check sw.js
           node --check bootstrap.mjs
+          find functions -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
-      - name: Validate JSON and GeoJSON
+      - name: Validate JSON
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
-          files = list(Path('data').glob('*.json')) + list(Path('data').glob('*.geojson'))
-          for path in files:
-              with path.open(encoding='utf-8') as handle:
-                  doc = json.load(handle)
-              if path.suffix == '.geojson':
-                  assert doc.get('type') == 'FeatureCollection', f'{path}: expected FeatureCollection'
-                  ids = [str(feature.get('id') or feature.get('properties', {}).get('id')) for feature in doc.get('features', [])]
-                  assert len(ids) == len(set(ids)), f'{path}: duplicate POI ids'
+          for path in [Path('manifest.webmanifest'), Path('_routes.json')]:
+              json.loads(path.read_text(encoding='utf-8'))
               print('valid', path)
+          routes=json.loads(Path('_routes.json').read_text(encoding='utf-8'))
+          assert routes == {'version': 1, 'include': ['/api/*'], 'exclude': []}
           PY
 
-      - name: Validate source allowlist
+      - name: Validate sync architecture
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const sources = JSON.parse(fs.readFileSync('data/sources.json', 'utf8'));
-          const expected = new Map([
-            ['official', 'https://www.wherewindsmeetgame.com/map/en/'],
-            ['17173', 'https://map.17173.com/yysls/maps/qinghe'],
-            ['mapgenie', 'https://mapgenie.io/where-winds-meet/maps/world'],
-            ['personal', null],
-          ]);
-          if (!Array.isArray(sources) || sources.length !== expected.size) throw new Error('Unexpected source registry shape');
-          for (const source of sources) {
-            if (!expected.has(source.id)) throw new Error(`Unexpected source: ${source.id}`);
-            if (expected.get(source.id) !== (source.url || null)) throw new Error(`Unexpected URL for ${source.id}`);
-          }
-          NODE
-          if grep -RInF 'wwmmap.pages.dev' index.html app.js bootstrap.mjs sw.js data assets; then
-            echo 'Legacy WWM Map dependency detected.' >&2
+          grep -F "start_game_sync" app.js functions/api/sync/client-method.js
+          grep -F "/api/sync/gameauth" app.js
+          grep -F "/api/sync/relay-servers" app.js
+          grep -F "/api/map/markers" app.js
+          grep -F "wss://*.sangtacvietcdn.xyz" _headers
+          grep -F "wwmmap.pages.dev/service/gameauth" functions/api/sync/gameauth.js
+          grep -F "wwmmap.pages.dev/service/call_client_method" functions/api/sync/client-method.js
+          if grep -RInE 'mapgenie|map\.17173\.com|17173 CN' index.html app.js styles.css sw.js manifest.webmanifest _headers; then
+            echo 'Manual third-party provider leaked into runtime.' >&2
             exit 1
           fi
-
-      - name: Validate MapLibre v6 lazy ESM integration
-        run: |
-          set -euo pipefail
-          grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.mjs" app.js
-          if grep -F "maplibre-gl@6.2.0/dist/maplibre-gl.js" app.js index.html bootstrap.mjs; then
-            echo 'MapLibre v6 is ESM-only; UMD bundle reference is invalid.' >&2
-            exit 1
-          fi
-          if grep -F "maplibre-gl@6.2.0" index.html bootstrap.mjs; then
-            echo 'MapLibre must remain lazy-loaded from Personal Overlay only.' >&2
+          if grep -RInF 'wwmmap.pages.dev' index.html app.js styles.css sw.js manifest.webmanifest _headers; then
+            echo 'Frontend must not call the compatibility origin directly.' >&2
             exit 1
           fi
 
@@ -83,9 +64,19 @@ jobs:
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
-          class Parser(HTMLParser):
-              pass
-          parser = Parser()
-          parser.feed(Path('index.html').read_text(encoding='utf-8'))
+          class Parser(HTMLParser): pass
+          Parser().feed(Path('index.html').read_text(encoding='utf-8'))
+          html=Path('index.html').read_text(encoding='utf-8')
+          assert 'language-select' in html
+          assert 'sync-btn' in html
+          assert 'marker-canvas' in html
           print('valid index.html')
           PY
+
+      - name: Validate no secrets are committed
+        run: |
+          set -euo pipefail
+          if grep -RInE 'CLOUDFLARE_API_TOKEN=[^$]|X-WWM-PASS["'"']?:[[:space:]]*["'"'][^"'"']+' --exclude-dir=.git .; then
+            echo 'Potential committed secret detected.' >&2
+            exit 1
+          fi
