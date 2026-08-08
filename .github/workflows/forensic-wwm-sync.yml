@@ -12,61 +12,84 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect public WWM Map client
+      - name: Inspect public WWM Map client modules
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import html, re, urllib.parse, urllib.request
 
-          page = 'https://wwmmap.pages.dev/map'
-          req = urllib.request.Request(page, headers={'User-Agent': 'Mozilla/5.0 WWM-Atlas-Forensic/1.0'})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              body = r.read().decode('utf-8', 'replace')
-              print('PAGE_STATUS', r.status)
-              for k, v in r.headers.items():
-                  if k.lower() in {'content-security-policy','server','cf-ray','content-type'}:
-                      print('HEADER', k, v)
+          ROOT = 'https://wwmmap.pages.dev/map'
+          UA = {'User-Agent': 'Mozilla/5.0 WWM-Atlas-Forensic/1.0'}
 
-          scripts = []
-          for src in re.findall(r'<script[^>]+src=["\']([^"\']+)', body, re.I):
-              url = urllib.parse.urljoin(page, html.unescape(src))
-              if urllib.parse.urlparse(url).netloc == 'wwmmap.pages.dev':
-                  scripts.append(url)
-          print('FIRST_PARTY_SCRIPTS', len(scripts))
-          for url in scripts:
-              print('SCRIPT', url)
+          def get(url):
+              req = urllib.request.Request(url, headers=UA)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return r.status, r.headers, r.read().decode('utf-8', 'replace')
 
-          texts = [body]
-          for url in scripts:
+          status, headers, body = get(ROOT)
+          print('PAGE_STATUS', status)
+          seeds = [urllib.parse.urljoin(ROOT, html.unescape(src)) for src in re.findall(r'<script[^>]+src=["\']([^"\']+)', body, re.I)]
+          seeds = [u for u in seeds if urllib.parse.urlparse(u).netloc == 'wwmmap.pages.dev']
+
+          fetched = {ROOT: body}
+          queue = list(seeds)
+          while queue and len(fetched) < 30:
+              url = queue.pop(0)
+              if url in fetched: continue
               try:
-                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 WWM-Atlas-Forensic/1.0'})
-                  with urllib.request.urlopen(req, timeout=30) as r:
-                      text = r.read().decode('utf-8', 'replace')
-                      texts.append(text)
-                      print('FETCHED_SCRIPT', url, len(text))
+                  st, _, text = get(url)
+                  fetched[url] = text
+                  print('FETCHED', st, url, len(text))
               except Exception as e:
-                  print('SCRIPT_FETCH_ERROR', url, type(e).__name__)
+                  print('FETCH_ERROR', url, type(e).__name__)
+                  continue
+              base = url
+              imports = []
+              imports += re.findall(r'\bfrom\s*["\']([^"\']+)["\']', text)
+              imports += re.findall(r'\bimport\s*["\']([^"\']+)["\']', text)
+              imports += re.findall(r'\bimport\(\s*["\']([^"\']+)["\']\s*\)', text)
+              for spec in imports:
+                  child = urllib.parse.urljoin(base, spec)
+                  p = urllib.parse.urlparse(child)
+                  if p.netloc == 'wwmmap.pages.dev' and p.path.endswith('.js') and child not in fetched and child not in queue:
+                      queue.append(child)
 
-          corpus = '\n'.join(texts)
-          hosts = sorted(set(re.findall(r'https?://([A-Za-z0-9._-]+)', corpus)))
-          print('HOSTS_BEGIN')
-          for host in hosts:
-              print(host)
-          print('HOSTS_END')
+          print('MODULES_BEGIN')
+          for url in fetched:
+              if url != ROOT: print(url)
+          print('MODULES_END')
 
-          route_patterns = [
-              r'(?i)["\']([^"\']{0,120}(?:sync|verify|verification|character|player|uid|discord|permission)[^"\']{0,120})["\']',
-              r'(?i)["\']((?:/api/|/v1/|/v2/|/auth/|/game/)[^"\']{1,180})["\']',
-          ]
-          matches = set()
-          for pattern in route_patterns:
-              for m in re.findall(pattern, corpus):
-                  value = re.sub(r'\s+', ' ', m).strip()
-                  if len(value) <= 240 and not any(x in value.lower() for x in ['password=', 'token=', 'authorization']):
-                      matches.add(value)
-          print('ROUTE_HINTS_BEGIN')
-          for value in sorted(matches)[:500]:
-              print(value)
-          print('ROUTE_HINTS_END')
+          for url, text in fetched.items():
+              if 'GameSyncer' in text or re.search(r'(?i)verify|verification|game.?sync|player.?position|discord.?permission', text):
+                  print('TARGET_MODULE', url)
+                  lines = text.splitlines()
+                  for i, line in enumerate(lines):
+                      if re.search(r'GameSyncer|(?i:verify|verification|game.?sync|player.?position|discord.?permission)', line):
+                          lo, hi = max(0, i-2), min(len(lines), i+3)
+                          for j in range(lo, hi):
+                              safe = lines[j]
+                              safe = re.sub(r'(?i)(authorization\s*[:=]\s*["\'])[^"\']+', r'\1[redacted]', safe)
+                              if len(safe) > 1000: safe = safe[:1000] + '…'
+                              print(f'CTX {j+1}: {safe}')
+
+          corpus = '\n'.join(fetched.values())
+          print('URL_LITERALS_BEGIN')
+          urls = sorted(set(re.findall(r'https?://[^"\'`\\\s)]+', corpus)))
+          for u in urls:
+              if any(k in u.lower() for k in ['sync','api','game','player','discord','wwm','yysl','netease','163.com','easebar']):
+                  print(u[:500])
+          print('URL_LITERALS_END')
+
+          print('ROUTE_LITERALS_BEGIN')
+          strings = re.findall(r'["\']([^"\'\n]{1,300})["\']', corpus)
+          wanted = []
+          for s in strings:
+              sl = s.lower()
+              if any(k in sl for k in ['/api/','/sync','/verify','/verification','/character','/player','/permission','/auth','uid','game-sync','gamesync']):
+                  if not any(k in sl for k in ['password=', 'authorization=', 'token=']):
+                      wanted.append(s)
+          for s in sorted(set(wanted))[:1000]:
+              print(s)
+          print('ROUTE_LITERALS_END')
           PY
