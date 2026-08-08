@@ -1,4 +1,4 @@
-name: Forensic WWM Local Sync
+name: Probe Official WWM API
 
 on:
   push:
@@ -10,60 +10,54 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
-      - name: Decompile public Windows tool without executing it
+      - name: Probe public official map API and CORS
         shell: bash
         run: |
           set -euo pipefail
-          url='https://pub-ee98fd25126f446ea56002b8ed7ca418.r2.dev/VietHoaAIWhereWindsMeet336.zip'
-          curl --fail --silent --show-error --location --retry 3 "$url" -o tool.zip
-          rm -rf extracted decompiled && mkdir extracted decompiled
-          unzip -q tool.zip -d extracted
-          exe='extracted/VietHoaAIWhereWindsMeet.exe'
-          sha256sum tool.zip > hashes.txt
-          sha256sum "$exe" >> hashes.txt
+          base='https://s2.easebar.com/39f12eda6b86452b'
+          origin='https://wwm-atlas-pnhd.pages.dev'
+          : > probe.txt
+          probe_get() {
+            local path="$1"
+            echo "=== GET $path ===" >> probe.txt
+            curl --silent --show-error --location --compressed -D - "$base$path" -o /tmp/body >> probe.txt || true
+            echo '--- BODY ---' >> probe.txt
+            head -c 12000 /tmp/body >> probe.txt || true
+            echo >> probe.txt
+          }
+          probe_options() {
+            local path="$1" method="$2" headers="$3"
+            echo "=== OPTIONS $path ===" >> probe.txt
+            curl --silent --show-error -X OPTIONS -D - \
+              -H "Origin: $origin" \
+              -H "Access-Control-Request-Method: $method" \
+              -H "Access-Control-Request-Headers: $headers" \
+              "$base$path" -o /tmp/options >> probe.txt || true
+            echo '--- BODY ---' >> probe.txt
+            head -c 4000 /tmp/options >> probe.txt || true
+            echo >> probe.txt
+          }
+          probe_get '/api/map/list?lang=en-US'
+          probe_get '/api/map/points?mapId=1&lang=en-US'
+          probe_options '/api/map/list' GET 'accept-language'
+          probe_options '/api/auth/ursRoles' POST 'content-type'
+          echo '=== POST ursRoles invalid fixture ===' >> probe.txt
+          curl --silent --show-error --location --compressed -D - \
+            -H 'content-type: application/json' \
+            --data '{"loginChannel":"netease_global","appChannel":"netease_global.h5activity","platform":"web","sdkuid":"0","sessionid":"invalid","sdkVersion":"1.0.0","udid":"00000000-0000-4000-8000-000000000000","deviceid":"0","access_token":""}' \
+            "$base/api/auth/ursRoles" -o /tmp/roles >> probe.txt || true
+          echo '--- BODY ---' >> probe.txt
+          head -c 8000 /tmp/roles >> probe.txt || true
+          echo >> probe.txt
 
-          dotnet tool install --global ilspycmd >/tmp/ilspy-install.log 2>&1 || dotnet tool update --global ilspycmd >/tmp/ilspy-install.log 2>&1
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          ilspycmd -p -o decompiled "$exe" >/tmp/ilspy.log 2>&1
-
-          python - <<'PY' > local-sync-decompile-evidence.txt
-          from pathlib import Path
-          terms=['63333','GET_GAME_STATE','AddLuaText2','ExtraLuaFeature','UnlockFPSLua','HttpListener','TcpListener','localhost','Lua','game state','GameState','server_password']
-          files=[p for p in Path('decompiled').rglob('*.cs')]
-          print('CS_FILES',len(files))
-          for p in files:
-              text=p.read_text('utf-8',errors='ignore')
-              low=text.lower()
-              hits=[]
-              for term in terms:
-                  start=0
-                  while True:
-                      i=low.find(term.lower(),start)
-                      if i<0: break
-                      hits.append((i,term)); start=i+len(term)
-              if not hits: continue
-              print(f'\n=== {p} ===')
-              emitted=[]
-              for i,term in sorted(hits):
-                  lo=max(0,i-1800); hi=min(len(text),i+5000)
-                  chunk=text[lo:hi]
-                  key=(lo,hi)
-                  if any(abs(lo-x[0])<500 for x in emitted): continue
-                  emitted.append(key)
-                  print(f'--- {term} @ {i} ---')
-                  print(chunk)
-          PY
-
-      - name: Upload textual evidence only
+      - name: Upload probe
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-local-sync-decompile-evidence
-          path: |
-            hashes.txt
-            local-sync-decompile-evidence.txt
+          name: official-api-probe
+          path: probe.txt
           if-no-files-found: error
           retention-days: 1
