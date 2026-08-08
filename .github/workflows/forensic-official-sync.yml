@@ -14,60 +14,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Extract public official map API route strings
+      - name: Trace public official map store endpoints
         shell: bash
         run: |
           set -euo pipefail
-          page='https://www.wherewindsmeetgame.com/map/en/'
-          bundle='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js'
-          curl --fail --silent --show-error --location --compressed "$page" -o /tmp/page.html
-          curl --fail --silent --show-error --location --compressed "$bundle" -o /tmp/app.js
+          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
+          for f in common-a15f2132.js pc-d3f0a0d4.js index-1d9774f9.js index-be137abf.js; do
+            curl --fail --silent --show-error --location --compressed "$root/$f" -o "/tmp/$f"
+          done
 
-          python - <<'PY' > official-sync-routes.txt
+          python - <<'PY' > official-sync-store.txt
           from pathlib import Path
           import re
-          text=Path('/tmp/app.js').read_text('utf-8',errors='ignore')
-          print('BUNDLE_BYTES',len(text.encode()))
-
-          # Public string literals likely to describe API routes, login/binding, roles or map point state.
-          strings=[]
-          for m in re.finditer(r'(["\'])(.{1,500}?)\1', text, re.S):
-              s=m.group(2)
-              low=s.lower()
-              if any(k in low for k in ['api','login','bind','role','point','map','token','user','uuid','collect','complete','progress','signin','silent']) and ('/' in s or len(s)<120):
-                  strings.append((m.start(),s))
-          seen=set()
-          print('=== RELEVANT STRING LITERALS ===')
-          for pos,s in strings:
-              clean=' '.join(s.split())
-              if clean in seen: continue
-              seen.add(clean)
-              print(f'{pos}: {clean[:500]}')
-
-          print('\n=== FUNCTION CONTEXTS ===')
-          for term in ['silentLogin','loginWithRole','mapPoints','roleList','updateToken','userinfo','showBind','isLogin']:
-              start=0; n=0
-              while True:
-                  i=text.find(term,start)
-                  if i<0 or n>=12: break
-                  lo=max(0,i-900); hi=min(len(text),i+1800)
-                  print(f'--- {term} @ {i} ---')
-                  print(' '.join(text[lo:hi].split())[:4000])
-                  start=i+len(term); n+=1
-
-          print('\n=== RELATIVE ROUTE CANDIDATES ===')
-          routes=sorted(set(re.findall(r'["\'](\/[A-Za-z0-9_?=&.%:{}${}\-\/+]{3,220})["\']',text)))
-          for r in routes:
-              if any(k in r.lower() for k in ['api','login','role','map','point','user','bind','token','data','collect','progress']):
-                  print(r)
+          files=[Path('/tmp/common-a15f2132.js'),Path('/tmp/pc-d3f0a0d4.js'),Path('/tmp/index-1d9774f9.js'),Path('/tmp/index-be137abf.js')]
+          terms=['silentLogin','loginWithRole','mapPoints','mapList','roleList','updateToken','userinfo','uuid','nickName','token','role_id','roleId','point','collect','complete','login','bind']
+          for p in files:
+              text=p.read_text('utf-8',errors='ignore')
+              print(f'=== {p.name} BYTES {len(text.encode())} ===')
+              for term in terms:
+                  start=0; n=0
+                  while True:
+                      i=text.find(term,start)
+                      if i<0 or n>=8: break
+                      lo=max(0,i-1400); hi=min(len(text),i+3000)
+                      print(f'--- {term} @ {i} ---')
+                      print(' '.join(text[lo:hi].split())[:6200])
+                      start=i+len(term); n+=1
+              print('--- URL/ROUTE LITERALS ---')
+              lits=[]
+              for m in re.finditer(r'(["\'])(.{1,420}?)\1',text,re.S):
+                  s=' '.join(m.group(2).split()); low=s.lower()
+                  if ('/' in s or 'http' in low) and any(k in low for k in ['api','map','role','login','user','point','collect','token','bind','server','sdk']):
+                      lits.append(s)
+              for s in sorted(set(lits))[:500]: print(s[:900])
           PY
-
-          echo "SUMMARY_BYTES $(wc -c < official-sync-routes.txt)"
+          echo "SUMMARY_BYTES $(wc -c < official-sync-store.txt)"
 
       - name: Upload compact forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: official-wwm-sync-routes
-          path: official-sync-routes.txt
+          name: official-wwm-sync-store
+          path: official-sync-store.txt
           if-no-files-found: error
           retention-days: 1
