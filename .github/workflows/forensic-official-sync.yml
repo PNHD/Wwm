@@ -14,89 +14,60 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect public official map assets
+      - name: Extract public official map API route strings
         shell: bash
         run: |
           set -euo pipefail
-          base='https://www.wherewindsmeetgame.com'
           page='https://www.wherewindsmeetgame.com/map/en/'
-          curl --fail --silent --show-error --location --compressed "$page" -o /tmp/official-map.html
+          bundle='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js'
+          curl --fail --silent --show-error --location --compressed "$page" -o /tmp/page.html
+          curl --fail --silent --show-error --location --compressed "$bundle" -o /tmp/app.js
 
-          python - <<'PY'
-          from html.parser import HTMLParser
-          from urllib.parse import urljoin
+          python - <<'PY' > official-sync-routes.txt
           from pathlib import Path
-          import re, json
+          import re
+          text=Path('/tmp/app.js').read_text('utf-8',errors='ignore')
+          print('BUNDLE_BYTES',len(text.encode()))
 
-          page='https://www.wherewindsmeetgame.com/map/en/'
-          html=Path('/tmp/official-map.html').read_text('utf-8', errors='ignore')
-          class P(HTMLParser):
-              def __init__(self): super().__init__(); self.s=[]
-              def handle_starttag(self, tag, attrs):
-                  if tag=='script':
-                      d=dict(attrs); src=d.get('src')
-                      if src: self.s.append(urljoin(page,src))
-          p=P(); p.feed(html)
-          scripts=[]
-          for s in p.s:
-              if s not in scripts: scripts.append(s)
-          Path('/tmp/scripts.json').write_text(json.dumps(scripts,indent=2),encoding='utf-8')
-          print('HTML_BYTES',len(html.encode()))
-          print('SCRIPT_COUNT',len(scripts))
-          for s in scripts[:40]: print('SCRIPT',s)
-          urls=sorted(set(re.findall(r'https?://[^\"\'<>\\\s]+', html)))
-          for u in urls[:100]: print('HTML_URL',u[:500])
+          # Public string literals likely to describe API routes, login/binding, roles or map point state.
+          strings=[]
+          for m in re.finditer(r'(["\'])(.{1,500}?)\1', text, re.S):
+              s=m.group(2)
+              low=s.lower()
+              if any(k in low for k in ['api','login','bind','role','point','map','token','user','uuid','collect','complete','progress','signin','silent']) and ('/' in s or len(s)<120):
+                  strings.append((m.start(),s))
+          seen=set()
+          print('=== RELEVANT STRING LITERALS ===')
+          for pos,s in strings:
+              clean=' '.join(s.split())
+              if clean in seen: continue
+              seen.add(clean)
+              print(f'{pos}: {clean[:500]}')
+
+          print('\n=== FUNCTION CONTEXTS ===')
+          for term in ['silentLogin','loginWithRole','mapPoints','roleList','updateToken','userinfo','showBind','isLogin']:
+              start=0; n=0
+              while True:
+                  i=text.find(term,start)
+                  if i<0 or n>=12: break
+                  lo=max(0,i-900); hi=min(len(text),i+1800)
+                  print(f'--- {term} @ {i} ---')
+                  print(' '.join(text[lo:hi].split())[:4000])
+                  start=i+len(term); n+=1
+
+          print('\n=== RELATIVE ROUTE CANDIDATES ===')
+          routes=sorted(set(re.findall(r'["\'](\/[A-Za-z0-9_?=&.%:{}${}\-\/+]{3,220})["\']',text)))
+          for r in routes:
+              if any(k in r.lower() for k in ['api','login','role','map','point','user','bind','token','data','collect','progress']):
+                  print(r)
           PY
 
-          mkdir -p /tmp/js
-          python - <<'PY'
-          import json, subprocess, os
-          from urllib.parse import urlparse
-          scripts=json.load(open('/tmp/scripts.json'))[:40]
-          for i,u in enumerate(scripts):
-              try:
-                  subprocess.run(['curl','--fail','--silent','--show-error','--location','--compressed',u,'-o',f'/tmp/js/{i:02d}.js'],check=True,timeout=30)
-              except Exception as e:
-                  print('FETCH_FAIL',u,type(e).__name__)
-          PY
-
-          python - <<'PY' > official-sync-summary.txt
-          from pathlib import Path
-          import re, json
-          html=Path('/tmp/official-map.html').read_text('utf-8',errors='ignore')
-          terms=['sync','bind','role','character','player','uid','login','passport','account','progress','complete','collect','treasure','map','api','token','auth','oauth','usercenter','user_center']
-          print('=== PAGE ===')
-          print('TITLE', re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S).group(1).strip() if re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S) else '')
-          print('SCRIPTS',Path('/tmp/scripts.json').read_text())
-          print('\n=== PUBLIC URLS / HOSTS ===')
-          alltext=html+'\n'+''.join(p.read_text('utf-8',errors='ignore') for p in sorted(Path('/tmp/js').glob('*.js')))
-          urls=sorted(set(re.findall(r'https?://[^\"\'<>\\\s)]+',alltext)))
-          for u in urls[:500]: print(u[:1000])
-          print('\n=== RELEVANT STRING WINDOWS ===')
-          for p in [Path('/tmp/official-map.html'),*sorted(Path('/tmp/js').glob('*.js'))]:
-              text=p.read_text('utf-8',errors='ignore')
-              low=text.lower(); hits=[]
-              for term in terms:
-                  start=0
-                  while True:
-                      i=low.find(term,start)
-                      if i<0: break
-                      hits.append((i,term)); start=i+len(term)
-              seen=[]
-              for i,term in sorted(hits)[:240]:
-                  lo=max(0,i-220); hi=min(len(text),i+480)
-                  chunk=' '.join(text[lo:hi].split())
-                  if chunk in seen: continue
-                  seen.append(chunk)
-                  print(f'[{p.name}] {term}: {chunk[:900]}')
-          PY
-
-          echo "SUMMARY_BYTES $(wc -c < official-sync-summary.txt)"
+          echo "SUMMARY_BYTES $(wc -c < official-sync-routes.txt)"
 
       - name: Upload compact forensic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: official-wwm-sync-summary
-          path: official-sync-summary.txt
+          name: official-wwm-sync-routes
+          path: official-sync-routes.txt
           if-no-files-found: error
           retention-days: 1
