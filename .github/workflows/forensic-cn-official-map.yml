@@ -1,4 +1,4 @@
-name: Forensic Official Global Data Tool
+name: Forensic Official Global Data API
 
 on:
   push:
@@ -12,64 +12,31 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Inspect Global Official Data Tool without submitting credentials
+      - name: Extract first-party API routes and map linkage
         shell: bash
         run: |
           set -euo pipefail
-          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
-          test -n "$CHROME_PATH"
-          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
-          cat > /tmp/probe.cjs <<'NODE'
-          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
-          const fs=require('fs');
-          const TARGET='https://www.wherewindsmeetgame.com/m/2025h5sjgj/en/';
-          const interesting=/(api|auth|login|role|player|character|account|map|point|finish|collect|progress|position|rating|stat|bind|token|device|user|mine)/i;
-          (async()=>{
-            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage({viewport:{width:430,height:932},isMobile:true});
-            const reqs=[]; const resps=[]; const js=[];
-            page.on('request',r=>{const u=r.url();if(['xhr','fetch','websocket'].includes(r.resourceType())||interesting.test(u))reqs.push(`${r.method()} ${r.resourceType()} ${u}`)});
-            page.on('response',async r=>{const u=r.url();if(['xhr','fetch'].includes(r.request().resourceType()))resps.push(`${r.status()} ${r.request().resourceType()} ${u}`);if(/\.(?:m?js)(?:\?|$)/i.test(u)){try{const body=await r.text();if(body.length>500&&!/^\s*<!doctype html/i.test(body))js.push({u,body})}catch{}}});
-            const nav=await page.goto(TARGET,{waitUntil:'domcontentloaded',timeout:60000});
-            await page.waitForTimeout(10000);
-            console.log(`PAGE HTTP=${nav.status()} FINAL=${page.url()} TITLE=${JSON.stringify(await page.title())}`);
-            console.log('BODY',JSON.stringify((await page.locator('body').innerText().catch(()=>'' )).replace(/\s+/g,' ').slice(0,2500)));
-            const controls=await page.locator('button,a,[role=button]').evaluateAll(xs=>xs.map((x,i)=>({i,t:(x.innerText||x.textContent||'').trim().replace(/\s+/g,' ').slice(0,100),tag:x.tagName,href:x.href||''})).filter(x=>x.t||x.href));
-            for(const x of controls.slice(0,80))console.log('CONTROL',JSON.stringify(x));
-            console.log('REQUESTS_INITIAL');for(const x of [...new Set(reqs)].filter(x=>interesting.test(x)).slice(0,80))console.log(x);
-            const login=page.getByText(/^Log In$/i).first();
-            if(await login.count()){
-              console.log('LOGIN_CLICK target found');
-              const before=reqs.length;
-              await login.click({timeout:10000}).catch(e=>console.log('LOGIN_CLICK_ERR',e.message));
-              await page.waitForTimeout(8000);
-              console.log(`AFTER_LOGIN URL=${page.url()} BODY=${JSON.stringify((await page.locator('body').innerText().catch(()=>'' )).replace(/\s+/g,' ').slice(0,1800))}`);
-              for(const x of [...new Set(reqs.slice(before))].filter(x=>interesting.test(x)).slice(0,60))console.log('REQ_AFTER_LOGIN',x);
-            }
-            const unique=new Map();for(const x of js)if(!unique.has(x.u))unique.set(x.u,x.body);
-            console.log('JS_COUNT',unique.size);
-            let n=0;
-            const terms=['api/','/api','s2.easebar.com','h72_map_accessToken','ursRoles','ursLogin','finished','finishPointsNum','pointList','mapId','roleId','serverId','gameId','playerId','character','bind','progress','position','combat','rating','access_token','session','login'];
-            for(const [u,body] of unique){
-              const low=body.toLowerCase();
-              const hits=[];
-              for(const term of terms){const i=low.indexOf(term.toLowerCase());if(i>=0)hits.push([term,i])}
-              if(!hits.length)continue;
-              console.log('JS',u,'BYTES',body.length,'TERMS',hits.map(x=>x[0]).join(','));
-              for(const [term,i] of hits.slice(0,8)){
-                const s=body.slice(Math.max(0,i-250),Math.min(body.length,i+600)).replace(/\s+/g,' ').slice(0,850);
-                console.log(`HIT ${term} :: ${s}`); if(++n>=60)break;
-              }
-              if(n>=60)break;
-              const urls=[...new Set(body.match(/https?:\/\/[^\s"'<>\\)]+/g)||[])].filter(x=>interesting.test(x));
-              for(const x of urls.slice(0,20))console.log('URL',x);
-            }
-            console.log('XHR_RESPONSES');for(const x of [...new Set(resps)].slice(0,80))console.log(x);
-            await browser.close();
-          })().catch(e=>{console.error('FATAL',e);process.exit(1)});
-          NODE
-          CHROME_PATH="$CHROME_PATH" node /tmp/probe.cjs | tee /tmp/report.txt
-          echo REPORT_BYTES=$(wc -c </tmp/report.txt)
-          test $(wc -c </tmp/report.txt) -lt 70000
+          base='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
+          curl --fail --silent --show-error --location "$base/index-67f2100d.js" -o /tmp/index.js
+          curl --fail --silent --show-error --location "$base/app-9b07739a.js" -o /tmp/app.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          for name in ['index','app']:
+              t=Path('/tmp/'+name+'.js').read_text('utf-8',errors='ignore')
+              print('FILE',name,'BYTES',len(t.encode()))
+              routes=set()
+              for pat in [r'url:\s*["\'`]([^"\'`]+)["\'`]',r'["\'`](/(?:login|logout|role|rank|map|point|progress|explore|exploration|record|data|profile|battle|combat|score|user|player|character|collect|finish)[^"\'`]*)["\'`]']:
+                  for m in re.finditer(pat,t,re.I):
+                      v=m.group(1)
+                      if len(v)<220: routes.add(v)
+              print('ROUTES_BEGIN')
+              for x in sorted(routes): print(x)
+              print('ROUTES_END')
+              for term in ['https://s2.easebar.com/78ae9d90792a3e9b','/login/roleList','/login/roleLogin','qinghe','hexi','kaifeng','exploration','map/${','wherewindsmeetgame.com/map','access_token','roleInfo','score','rank','play_time','martial','elegance']:
+                  i=t.lower().find(term.lower())
+                  if i>=0:
+                      print('CTX',term,'::',t[max(0,i-500):min(len(t),i+1600)].replace('\n',' ')[:2100])
+          PY
