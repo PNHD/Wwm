@@ -1,0 +1,102 @@
+name: Forensic Official WWM Sync Surface
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/forensic-official-sync.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect public official map assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.wherewindsmeetgame.com'
+          page='https://www.wherewindsmeetgame.com/map/en/'
+          curl --fail --silent --show-error --location --compressed "$page" -o /tmp/official-map.html
+
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          from pathlib import Path
+          import re, json
+
+          page='https://www.wherewindsmeetgame.com/map/en/'
+          html=Path('/tmp/official-map.html').read_text('utf-8', errors='ignore')
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.s=[]
+              def handle_starttag(self, tag, attrs):
+                  if tag=='script':
+                      d=dict(attrs); src=d.get('src')
+                      if src: self.s.append(urljoin(page,src))
+          p=P(); p.feed(html)
+          scripts=[]
+          for s in p.s:
+              if s not in scripts: scripts.append(s)
+          Path('/tmp/scripts.json').write_text(json.dumps(scripts,indent=2),encoding='utf-8')
+          print('HTML_BYTES',len(html.encode()))
+          print('SCRIPT_COUNT',len(scripts))
+          for s in scripts[:40]: print('SCRIPT',s)
+          urls=sorted(set(re.findall(r'https?://[^\"\'<>\\\s]+', html)))
+          for u in urls[:100]: print('HTML_URL',u[:500])
+          PY
+
+          mkdir -p /tmp/js
+          python - <<'PY'
+          import json, subprocess, os
+          from urllib.parse import urlparse
+          scripts=json.load(open('/tmp/scripts.json'))[:40]
+          for i,u in enumerate(scripts):
+              try:
+                  subprocess.run(['curl','--fail','--silent','--show-error','--location','--compressed',u,'-o',f'/tmp/js/{i:02d}.js'],check=True,timeout=30)
+              except Exception as e:
+                  print('FETCH_FAIL',u,type(e).__name__)
+          PY
+
+          python - <<'PY' > official-sync-summary.txt
+          from pathlib import Path
+          import re, json
+          html=Path('/tmp/official-map.html').read_text('utf-8',errors='ignore')
+          terms=['sync','bind','role','character','player','uid','login','passport','account','progress','complete','collect','treasure','map','api','token','auth','oauth','usercenter','user_center']
+          print('=== PAGE ===')
+          print('TITLE', re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S).group(1).strip() if re.search(r'<title[^>]*>(.*?)</title>',html,re.I|re.S) else '')
+          print('SCRIPTS',Path('/tmp/scripts.json').read_text())
+          print('\n=== PUBLIC URLS / HOSTS ===')
+          alltext=html+'\n'+''.join(p.read_text('utf-8',errors='ignore') for p in sorted(Path('/tmp/js').glob('*.js')))
+          urls=sorted(set(re.findall(r'https?://[^\"\'<>\\\s)]+',alltext)))
+          for u in urls[:500]: print(u[:1000])
+          print('\n=== RELEVANT STRING WINDOWS ===')
+          for p in [Path('/tmp/official-map.html'),*sorted(Path('/tmp/js').glob('*.js'))]:
+              text=p.read_text('utf-8',errors='ignore')
+              low=text.lower(); hits=[]
+              for term in terms:
+                  start=0
+                  while True:
+                      i=low.find(term,start)
+                      if i<0: break
+                      hits.append((i,term)); start=i+len(term)
+              seen=[]
+              for i,term in sorted(hits)[:240]:
+                  lo=max(0,i-220); hi=min(len(text),i+480)
+                  chunk=' '.join(text[lo:hi].split())
+                  if chunk in seen: continue
+                  seen.append(chunk)
+                  print(f'[{p.name}] {term}: {chunk[:900]}')
+          PY
+
+          echo "SUMMARY_BYTES $(wc -c < official-sync-summary.txt)"
+
+      - name: Upload compact forensic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-wwm-sync-summary
+          path: official-sync-summary.txt
+          if-no-files-found: error
+          retention-days: 1
