@@ -12,35 +12,58 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      - name: Inspect public Windows tool without executing it
+      - name: Decompile public Windows tool without executing it
         shell: bash
         run: |
           set -euo pipefail
           url='https://pub-ee98fd25126f446ea56002b8ed7ca418.r2.dev/VietHoaAIWhereWindsMeet336.zip'
           curl --fail --silent --show-error --location --retry 3 "$url" -o tool.zip
-          unzip -l tool.zip > tool-files.txt
-          rm -rf extracted && mkdir extracted
+          rm -rf extracted decompiled && mkdir extracted decompiled
           unzip -q tool.zip -d extracted
-          {
-            echo '=== ZIP SHA256 ==='
-            sha256sum tool.zip
-            echo '=== FILE TYPES ==='
-            find extracted -type f -maxdepth 4 -print0 | xargs -0 file
-            echo '=== SYNC-RELATED STRINGS ==='
-            while IFS= read -r -d '' f; do
-              echo "--- $f ---"
-              strings -a -n 5 "$f" | grep -Ei -m 400 '63333|GET_GAME_STATE|game.?state|sync|localhost|127\.0\.0\.1|websocket|bridge|relay|wwmmap|map_2026|server_password|http.?server|TcpListener|HttpListener|Kestrel|Flask|FastAPI|aiohttp|lua|client.?method' || true
-            done < <(find extracted -type f -print0)
-          } > local-sync-evidence.txt
+          exe='extracted/VietHoaAIWhereWindsMeet.exe'
+          sha256sum tool.zip > hashes.txt
+          sha256sum "$exe" >> hashes.txt
+
+          dotnet tool install --global ilspycmd >/tmp/ilspy-install.log 2>&1 || dotnet tool update --global ilspycmd >/tmp/ilspy-install.log 2>&1
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          ilspycmd -p -o decompiled "$exe" >/tmp/ilspy.log 2>&1
+
+          python - <<'PY' > local-sync-decompile-evidence.txt
+          from pathlib import Path
+          terms=['63333','GET_GAME_STATE','AddLuaText2','ExtraLuaFeature','UnlockFPSLua','HttpListener','TcpListener','localhost','Lua','game state','GameState','server_password']
+          files=[p for p in Path('decompiled').rglob('*.cs')]
+          print('CS_FILES',len(files))
+          for p in files:
+              text=p.read_text('utf-8',errors='ignore')
+              low=text.lower()
+              hits=[]
+              for term in terms:
+                  start=0
+                  while True:
+                      i=low.find(term.lower(),start)
+                      if i<0: break
+                      hits.append((i,term)); start=i+len(term)
+              if not hits: continue
+              print(f'\n=== {p} ===')
+              emitted=[]
+              for i,term in sorted(hits):
+                  lo=max(0,i-1800); hi=min(len(text),i+5000)
+                  chunk=text[lo:hi]
+                  key=(lo,hi)
+                  if any(abs(lo-x[0])<500 for x in emitted): continue
+                  emitted.append(key)
+                  print(f'--- {term} @ {i} ---')
+                  print(chunk)
+          PY
 
       - name: Upload textual evidence only
         uses: actions/upload-artifact@v4
         with:
-          name: wwm-local-sync-evidence
+          name: wwm-local-sync-decompile-evidence
           path: |
-            tool-files.txt
-            local-sync-evidence.txt
+            hashes.txt
+            local-sync-decompile-evidence.txt
           if-no-files-found: error
           retention-days: 1
