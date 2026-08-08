@@ -1,0 +1,50 @@
+name: Diagnose WWSync Login UI
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/wwsync-login-diagnostic.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trace Mpay showLogin
+        env:
+          URL: https://preview.wwsync-pnhd.pages.dev
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/diag.cjs <<'NODE'
+          const { chromium }=require(process.cwd()+'/node_modules/playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:1440,height:900}});
+            const bad=[];
+            page.on('response',async r=>{if(r.status()>=400){let body='';try{body=(await r.text()).slice(0,500)}catch{};const x={status:r.status(),url:r.url(),body};bad.push(x);console.log('HTTP_ERROR',JSON.stringify(x));}});
+            page.on('request',r=>{const u=r.url();if(/mpsdk|mpay|oauth|login|device|urs/i.test(u))console.log('AUTH_REQUEST',r.method(),u,(r.postData()||'').slice(0,1200));});
+            page.on('pageerror',e=>console.log('PAGEERROR_DETAIL',JSON.stringify({name:e?.name,message:e?.message,stack:e?.stack,string:String(e)})));
+            page.on('console',m=>console.log('CONSOLE',m.type(),m.text()));
+            const r=await page.goto(process.env.URL,{waitUntil:'domcontentloaded',timeout:60000});
+            console.log('NAV',r.status(),r.url());
+            await page.waitForFunction(()=>document.querySelectorAll('#categoryList button').length>0,null,{timeout:30000});
+            console.log('PRECLICK',JSON.stringify(await page.evaluate(()=>({sdk:typeof MpayOSSDK,shim:!!MpayOSSDK?.prototype?.__wwsyncCorsShim,mosdkIds:[...document.querySelectorAll('[id*="mosdk"],[class*="mosdk"]')].slice(0,30).map(x=>({tag:x.tagName,id:x.id,cls:x.className}))}))));
+            await page.click('#loginButton');
+            for(const wait of [1000,3000,8000,15000]){
+              await page.waitForTimeout(wait===1000?1000:wait-([1000,3000,8000,15000][[1000,3000,8000,15000].indexOf(wait)-1]||0));
+              console.log('DOM_AFTER',wait,JSON.stringify(await page.evaluate(()=>({status:document.querySelector('#authStatus')?.textContent||'',ids:[...document.querySelectorAll('[id*="mosdk"],[class*="mosdk"],iframe')].slice(0,80).map(x=>({tag:x.tagName,id:x.id,cls:typeof x.className==='string'?x.className:'',src:x.src||'',text:(x.textContent||'').trim().slice(0,100)})),bodyText:document.body.innerText.slice(0,1500)}))));
+            }
+            console.log('BAD_RESPONSES',JSON.stringify(bad));
+            await page.screenshot({path:'/tmp/login-diagnostic.png',fullPage:true});
+            await browser.close();
+          })().catch(e=>{console.error('FATAL',e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/diag.cjs
