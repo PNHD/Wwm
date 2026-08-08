@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Verify official map geometry CORS and locate semantics
+      - name: Resolve official map renderer and account-link handlers
         shell: bash
         run: |
           python - <<'PY'
@@ -23,96 +23,93 @@ jobs:
           from pathlib import Path
 
           UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
-          BASE='https://s2.easebar.com/39f12eda6b86452b'
           JS='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js'
           ctx=ssl.create_default_context()
 
-          def request(url, origin=None, method='GET'):
-              h={'User-Agent':UA,'Accept':'application/json,text/plain,*/*','Accept-Language':'en-US'}
-              if origin: h['Origin']=origin
-              req=urllib.request.Request(url,headers=h,method=method)
-              try:
-                  with urllib.request.urlopen(req,timeout=30,context=ctx) as r:
-                      b=r.read(5_000_000)
-                      return {'status':getattr(r,'status',200),'headers':dict(r.headers.items()),'text':b.decode('utf-8','replace')}
-              except urllib.error.HTTPError as e:
-                  return {'status':e.code,'headers':dict(e.headers.items()),'text':e.read(1_000_000).decode('utf-8','replace')}
+          def fetch(url):
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'*/*'},method='GET')
+              with urllib.request.urlopen(req,timeout=30,context=ctx) as r:
+                  return r.read(12_000_000).decode('utf-8','replace')
 
-          out={'map_list':None,'cors':{},'point_shape':{},'contexts':{}}
-          ml=request(BASE+'/api/map/list')
-          try: out['map_list']=json.loads(ml['text'])
-          except: out['map_list']={'raw':ml['text'][:20000]}
+          text=fetch(JS)
+          out={'contexts':{},'string_assets':[],'coord_candidates':[],'handler_candidates':[]}
 
-          # Explicit CORS tests with non-official origins and preflight.
-          for origin in ('https://example.com','https://wwm-atlas-pnhd.pages.dev'):
-              r=request(BASE+'/api/map/list',origin)
-              out['cors'][origin]={'status':r['status'],'allow_origin':r['headers'].get('Access-Control-Allow-Origin'),'allow_credentials':r['headers'].get('Access-Control-Allow-Credentials'),'vary':r['headers'].get('Vary')}
-          pre=request(BASE+'/api/map/list','https://example.com','OPTIONS')
-          out['cors']['preflight']={'status':pre['status'],'allow_origin':pre['headers'].get('Access-Control-Allow-Origin'),'allow_methods':pre['headers'].get('Access-Control-Allow-Methods'),'allow_headers':pre['headers'].get('Access-Control-Allow-Headers'),'allow_credentials':pre['headers'].get('Access-Control-Allow-Credentials')}
-
-          maps=[]
-          if isinstance(out['map_list'],dict):
-              d=out['map_list'].get('data')
-              if isinstance(d,dict): maps=d.get('maps') or []
-          for m in maps:
-              mid=m.get('id')
-              r=request(BASE+f'/api/map/points?mapId={mid}')
-              try: j=json.loads(r['text'])
-              except: continue
-              d=j.get('data') if isinstance(j,dict) else None
-              cats=d.get('categories',[]) if isinstance(d,dict) else []
-              sample=[]; count=0; cat_summary=[]
-              for cat in cats:
-                  if not isinstance(cat,dict): continue
-                  children=cat.get('childCategories') or []
-                  ccount=0
-                  for child in children:
-                      pts=child.get('pointList') or [] if isinstance(child,dict) else []
-                      count += len(pts); ccount += len(pts)
-                      for p in pts[:2]:
-                          if len(sample)<8: sample.append(p)
-                  cat_summary.append({'id':cat.get('id'),'name':cat.get('name'),'point_count':ccount,'child_count':len(children)})
-              out['point_shape'][str(mid)]={'total':count,'categories':cat_summary,'sample':sample}
-
-          js=request(JS)['text']
-          needles=['quickLocate','showPosition','map_pos_ok','map_pos_fail','find_self_pos','personalLink','officialAssistant','pcEntry','/personal.html#/link','tiles:','raster','imageUrl','mapPic','mapImage','bounds','maxBounds','worldRange']
-          for n in needles:
-              hits=[]; pos=0
-              while len(hits)<12:
-                  i=js.find(n,pos)
+          # Search around terms that are much closer to app code than library-only MapLibre symbols.
+          needles=[
+            '/api/map/list','/api/map/points','categoryId','markerType','data/icon/big/',
+            'maxBounds:', 'raster-dem', 'type:"raster"', "type:'raster'", 'tiles:[', 'tileSize:',
+            'fitBounds(', 'jumpTo(', 'flyTo(', 'setCenter(', 'LngLat(',
+            '.lat)', '.lng)', '.lat,', '.lng,', 'parseInt(', 'Number(', '/1e6', '/1000000', '1e6', '1000000',
+            'personalLink', '/personal.html#/link', 'officialAssistant', 'pcEntry',
+            'window.open(', 'location.href=', 'location.assign(', 'copyPcSuccess', 'copy URL',
+            'h72_map_accessToken', 'point_finished'
+          ]
+          for needle in needles:
+              arr=[]; pos=0
+              while len(arr)<20:
+                  i=text.find(needle,pos)
                   if i<0: break
-                  hits.append(js[max(0,i-1800):min(len(js),i+len(n)+3000)].replace('\n',' '))
-                  pos=i+len(n)
-              if hits: out['contexts'][n]=hits
+                  arr.append({'index':i,'context':text[max(0,i-2200):min(len(text),i+len(needle)+4200)].replace('\n',' ')})
+                  pos=i+len(needle)
+              if arr: out['contexts'][needle]=arr
 
-          # Extract likely image/tile URLs from bundle.
-          urls=sorted(set(re.findall(r'https?://[^"\'<>\\\s]{5,400}',js)))
-          out['map_asset_urls']=[u for u in urls if any(k in u.lower() for k in ('tile','map','pbf','png','jpg','webp'))][:400]
-          Path('official-map-geometry.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          # Static/templated relative assets: map art often is not an absolute URL.
+          string_pattern=re.compile(r'(["\'`])([^"\'`]{1,300}\.(?:png|jpg|jpeg|webp|avif|pbf)(?:\?[^"\'`]*)?)\1',re.I)
+          assets=[]
+          for _,s in string_pattern.findall(text):
+              low=s.lower()
+              if any(k in low for k in ('map','tile','background','bg','region','world','qing','kaifeng','hexi','palace','icon')):
+                  assets.append(s)
+          out['string_assets']=sorted(set(assets))[:1200]
 
-          print('=== MAP LIST ===')
-          print(json.dumps(out['map_list'],ensure_ascii=False))
-          print('=== CORS ===')
-          print(json.dumps(out['cors'],ensure_ascii=False))
-          print('=== POINT SHAPES ===')
-          print(json.dumps(out['point_shape'],ensure_ascii=False))
-          print('=== LOCATE/PERSONAL CONTEXTS ===')
-          for n in ('quickLocate','showPosition','map_pos_ok','map_pos_fail','find_self_pos','personalLink','officialAssistant','pcEntry','/personal.html#/link'):
+          # Find direct property access patterns involving API point coordinate fields.
+          coord_patterns=[
+            r'.{0,500}\.(?:lat|lng).{0,900}',
+            r'.{0,500}(?:lat|lng):.{0,900}',
+          ]
+          coord=[]
+          for pat in coord_patterns:
+              for m in re.finditer(pat,text,re.I|re.S):
+                  s=m.group(0).replace('\n',' ')
+                  if any(k in s for k in ('categoryId','marker','point','lng','lat')):
+                      coord.append(s)
+                      if len(coord)>=300: break
+              if len(coord)>=300: break
+          out['coord_candidates']=coord
+
+          # Search for functional code around high-value labels/routes, not just localization definitions.
+          for term in ('personalLink','officialAssistant','pcEntry','/personal.html#/link'):
+              for m in re.finditer(re.escape(term),text):
+                  s=text[max(0,m.start()-5000):min(len(text),m.end()+8000)].replace('\n',' ')
+                  if any(k in s for k in ('onClick','click','window.open','href','router','push','personalLink','location')):
+                      out['handler_candidates'].append({'term':term,'index':m.start(),'context':s})
+          out['handler_candidates']=out['handler_candidates'][:100]
+
+          Path('renderer-link-trace.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          print('=== HIGH VALUE CONTEXTS ===')
+          order=['/api/map/list','/api/map/points','categoryId','markerType','data/icon/big/','type:"raster"','tiles:[','tileSize:','maxBounds:','fitBounds(','.lat)', '.lng)', '.lat,', '.lng,','/1e6','1000000','personalLink','/personal.html#/link','officialAssistant','pcEntry','window.open(','location.href=']
+          for n in order:
               arr=out['contexts'].get(n,[])
-              if arr:
-                  print('---',n,'::',len(arr))
-                  for s in arr[:5]: print(s)
-          print('=== MAP RENDER CONTEXT INDEX ===')
-          for n in ('tiles:','raster','imageUrl','mapPic','mapImage','bounds','maxBounds','worldRange'):
-              print(n,len(out['contexts'].get(n,[])))
-          print('=== MAP ASSET URLS ===')
-          for u in out['map_asset_urls']: print(u)
+              if not arr: continue
+              print(f'--- {n} :: {len(arr)}')
+              for h in arr[:10]:
+                  print('INDEX',h['index'])
+                  print(h['context'])
+          print('=== RELATIVE MAP ASSETS ===')
+          for s in out['string_assets']: print(s)
+          print('=== COORD CANDIDATES ===')
+          for s in out['coord_candidates'][:100]: print(s)
+          print('=== HANDLER CANDIDATES ===')
+          for h in out['handler_candidates'][:30]:
+              print('---',h['term'],h['index'])
+              print(h['context'])
           PY
 
-      - name: Upload geometry report
+      - name: Upload renderer/link trace
         uses: actions/upload-artifact@v4
         with:
-          name: official-map-geometry
-          path: official-map-geometry.json
+          name: renderer-link-trace
+          path: renderer-link-trace.json
           if-no-files-found: error
           retention-days: 7
