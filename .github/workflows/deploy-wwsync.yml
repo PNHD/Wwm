@@ -35,9 +35,12 @@ jobs:
         run: |
           set -euo pipefail
           node --check app.js
+          node --check mpay-shim.js
           node --check sw.js
+          node --check functions/api/mpay/device-init.js
+          node --check functions/api/mpay/oauth-config.js
           rm -rf dist && mkdir dist
-          cp index.html styles.css app.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css app.js mpay-shim.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           test ! -d dist/.github
           test ! -d dist/functions
 
@@ -84,12 +87,16 @@ jobs:
           fetch / /tmp/root.html
           fetch /map /tmp/map.html
           fetch /app.js /tmp/app.js
+          fetch /mpay-shim.js /tmp/mpay-shim.js
           fetch /manifest.webmanifest /tmp/manifest.json
           grep -Fq 'WWSync — Where Winds Meet' /tmp/root.html
           grep -Fq 'WWSync — Where Winds Meet' /tmp/map.html
           grep -Fq 'leaflet@1.9.4' /tmp/root.html
+          grep -Fq '/mpay-shim.js' /tmp/root.html
           grep -Fq 'sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js' /tmp/root.html
           grep -Fq 'MpayOSSDK' /tmp/app.js
+          grep -Fq '/api/mpay/device-init' /tmp/mpay-shim.js
+          grep -Fq '/api/mpay/oauth-config' /tmp/mpay-shim.js
           node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWSync') process.exit(1)"
           curl --fail --silent --show-error --location 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' -o /tmp/official.json
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/official.json','utf8')); if(!x.success||!Array.isArray(x.data?.maps)||x.data.maps.length<3) process.exit(1)"
@@ -100,6 +107,10 @@ jobs:
             'https://s2.easebar.com/39f12eda6b86452b/api/auth/ursRoles'
           grep -qi '^access-control-allow-origin:' /tmp/cors.headers
           grep -qi '^access-control-allow-methods:.*POST' /tmp/cors.headers
+          status="$(curl --silent --show-error --output /tmp/device-method.json --write-out '%{http_code}' "$base/api/mpay/device-init")"
+          test "$status" = '405'
+          status="$(curl --silent --show-error --output /tmp/config-forbidden.json --write-out '%{http_code}' "$base/api/mpay/oauth-config")"
+          test "$status" = '403'
           echo "WWSync HTTP smoke passed: $base"
 
       - name: Browser smoke official map and login shell
@@ -132,6 +143,7 @@ jobs:
               return {
                 title: document.title,
                 sdk: typeof window.MpayOSSDK,
+                shim: Boolean(window.MpayOSSDK?.prototype?.__wwsyncCorsShim),
                 leaflet: typeof window.L,
                 mapOptions: document.querySelectorAll('#mapSelect option').length,
                 categories: document.querySelectorAll('#categoryList button').length,
@@ -145,6 +157,7 @@ jobs:
             console.log('BROWSER_STATE', JSON.stringify(state));
             const fatal=[];
             if(state.sdk!=='function')fatal.push(`MpayOSSDK=${state.sdk}`);
+            if(!state.shim)fatal.push('Mpay CORS shim not installed');
             if(state.leaflet!=='object')fatal.push(`Leaflet=${state.leaflet}`);
             if(!state.listProbe.ok||state.listProbe.status!==200)fatal.push(`map/list=${JSON.stringify(state.listProbe)}`);
             if(!state.pointsProbe.ok||state.pointsProbe.status!==200)fatal.push(`map/points=${JSON.stringify(state.pointsProbe)}`);
@@ -154,9 +167,11 @@ jobs:
             if(state.pointCanvases<1)fatal.push(`point canvases=${state.pointCanvases}`);
             if(!fatal.length){
               await page.click('#loginButton');
-              await page.waitForFunction(() => { const n=document.querySelector('#mosdk__container'); return !!n && (n.childElementCount>0||n.innerHTML.length>0); }, null, {timeout:15000}).catch(async e=>fatal.push(`official login UI did not open: ${e.message}; status=${await page.locator('#authStatus').textContent().catch(()=> '')}`));
+              await page.waitForSelector('#mosdk__dialog-container', {state:'visible', timeout:20000}).catch(async e=>fatal.push(`official login UI did not open: ${e.message}; status=${await page.locator('#authStatus').textContent().catch(()=> '')}`));
             }
+            const directBlocked = events.filter(x => /Access to XMLHttpRequest at 'https:\/\/sdk-os\.mpsdk\.easebar\.com\/api\/(devices\/init|users\/login\/v2\/oauth\/config)/i.test(x));
             const csp=events.filter(x=>/content security policy|refused to.*content security policy|violates.*directive/i.test(x));
+            if(directBlocked.length)fatal.push(`Mpay bootstrap bypassed shim: ${directBlocked.join(' | ')}`);
             console.log('CSP_EVENTS',JSON.stringify(csp));
             console.log('FATAL_EVENTS',JSON.stringify(fatal));
             await page.screenshot({path:'/tmp/wwsync-browser.png',fullPage:true}).catch(()=>{});
