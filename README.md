@@ -19,7 +19,7 @@ NetEase's public Mpay SDK is origin-restricted for two bootstrap requests when e
 - `POST /api/mpay/device-init` forwards only Mpay anonymous device initialization.
 - `GET /api/mpay/oauth-config` forwards only public login-method metadata with an explicit query allowlist.
 
-The adapter is deliberately **not** a generic proxy. It cannot forward arbitrary URLs or authentication routes. Password submission, OAuth provider navigation, and account credentials are not routed through these WWSync Functions; provider login stays on the official NetEase/provider flow.
+The adapter is deliberately not a generic proxy. It cannot forward arbitrary URLs or authentication routes. Password submission, OAuth provider navigation, and account credentials are not routed through these WWSync Functions; provider login stays on the official NetEase/provider flow.
 
 ## Safety boundary
 
