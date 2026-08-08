@@ -87,6 +87,7 @@ jobs:
           fetch /manifest.webmanifest /tmp/manifest.json
           grep -Fq 'WWSync — Where Winds Meet' /tmp/root.html
           grep -Fq 'WWSync — Where Winds Meet' /tmp/map.html
+          grep -Fq 'leaflet@1.9.4' /tmp/root.html
           grep -Fq 'sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js' /tmp/root.html
           grep -Fq 'MpayOSSDK' /tmp/app.js
           node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWSync') process.exit(1)"
@@ -118,45 +119,50 @@ jobs:
             const page = await browser.newPage({viewport:{width:1440,height:900}});
             const events = [];
             page.on('pageerror', e => { events.push(`PAGEERROR ${e.message}`); console.log('PAGEERROR', e.message); });
-            page.on('console', msg => { events.push(`CONSOLE ${msg.type()} ${msg.text()}`); console.log('PAGE_CONSOLE', msg.type(), msg.text()); });
+            page.on('console', msg => { const s=`CONSOLE ${msg.type()} ${msg.text()}`; events.push(s); console.log('PAGE_CONSOLE', msg.type(), msg.text()); });
             page.on('requestfailed', req => { const x=`REQUEST_FAILED ${req.url()} ${req.failure()?.errorText||''}`; events.push(x); console.log(x); });
             const response = await page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
             if (!response || !response.ok()) throw new Error(`navigation HTTP ${response?.status()}`);
-            await page.waitForTimeout(10000);
+            await page.waitForFunction(() => document.querySelectorAll('#mapSelect option').length >= 3, null, {timeout:30000});
+            await page.waitForFunction(() => document.querySelectorAll('#categoryList button').length > 0, null, {timeout:30000});
+            await page.waitForSelector('.leaflet-container', {state:'visible', timeout:30000});
+            await page.waitForFunction(() => document.querySelectorAll('img.leaflet-tile-loaded').length > 0, null, {timeout:30000});
             const state = await page.evaluate(async () => {
-              const probe = async u => { try { const r=await fetch(u); return {ok:r.ok,status:r.status,text:(await r.text()).slice(0,300)}; } catch(e){ return {ok:false,error:String(e)}; } };
+              const probe = async u => { try { const r=await fetch(u); return {ok:r.ok,status:r.status}; } catch(e){ return {ok:false,error:String(e)}; } };
               return {
                 title: document.title,
                 sdk: typeof window.MpayOSSDK,
-                mapOptions: [...document.querySelectorAll('#mapSelect option')].map(o=>({value:o.value,text:o.textContent})),
+                leaflet: typeof window.L,
+                mapOptions: document.querySelectorAll('#mapSelect option').length,
                 categories: document.querySelectorAll('#categoryList button').length,
-                canvases: document.querySelectorAll('.maplibregl-canvas').length,
-                authStatus: document.querySelector('#authStatus')?.textContent||'',
-                toast: document.querySelector('#toast')?.textContent||'',
+                tileCount: document.querySelectorAll('img.leaflet-tile-loaded').length,
+                pointCanvases: document.querySelectorAll('.leaflet-overlay-pane canvas').length,
                 loading: document.querySelector('#mapLoading')?.className||'',
                 listProbe: await probe('https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US'),
                 pointsProbe: await probe('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US')
               };
             });
             console.log('BROWSER_STATE', JSON.stringify(state));
-            const fatal = [];
-            if (state.sdk !== 'function') fatal.push(`MpayOSSDK type=${state.sdk}`);
-            if (!state.listProbe.ok || state.listProbe.status !== 200) fatal.push(`browser map/list=${JSON.stringify(state.listProbe)}`);
-            if (!state.pointsProbe.ok || state.pointsProbe.status !== 200) fatal.push(`browser map/points=${JSON.stringify(state.pointsProbe)}`);
-            if (state.mapOptions.length < 3) fatal.push(`map options=${state.mapOptions.length}`);
-            if (state.categories < 1) fatal.push(`categories=${state.categories}`);
-            if (state.canvases < 1) fatal.push(`map canvases=${state.canvases}`);
-            if (!fatal.length) {
+            const fatal=[];
+            if(state.sdk!=='function')fatal.push(`MpayOSSDK=${state.sdk}`);
+            if(state.leaflet!=='object')fatal.push(`Leaflet=${state.leaflet}`);
+            if(!state.listProbe.ok||state.listProbe.status!==200)fatal.push(`map/list=${JSON.stringify(state.listProbe)}`);
+            if(!state.pointsProbe.ok||state.pointsProbe.status!==200)fatal.push(`map/points=${JSON.stringify(state.pointsProbe)}`);
+            if(state.mapOptions<3)fatal.push(`map options=${state.mapOptions}`);
+            if(state.categories<1)fatal.push(`categories=${state.categories}`);
+            if(state.tileCount<1)fatal.push(`tiles=${state.tileCount}`);
+            if(state.pointCanvases<1)fatal.push(`point canvases=${state.pointCanvases}`);
+            if(!fatal.length){
               await page.click('#loginButton');
-              await page.waitForFunction(() => { const n=document.querySelector('#mosdk__container'); return !!n && (n.childElementCount>0 || n.innerHTML.length>0); }, null, {timeout:15000}).catch(async e => fatal.push(`official login UI did not open: ${e.message}; status=${await page.locator('#authStatus').textContent().catch(()=> '')}`));
+              await page.waitForFunction(() => { const n=document.querySelector('#mosdk__container'); return !!n && (n.childElementCount>0||n.innerHTML.length>0); }, null, {timeout:15000}).catch(async e=>fatal.push(`official login UI did not open: ${e.message}; status=${await page.locator('#authStatus').textContent().catch(()=> '')}`));
             }
-            const csp = events.filter(x => /content security policy|refused to|violates.*directive/i.test(x));
-            console.log('CSP_EVENTS', JSON.stringify(csp));
-            console.log('FATAL_EVENTS', JSON.stringify(fatal));
-            await page.screenshot({path:'/tmp/wwsync-browser.png', fullPage:true}).catch(()=>{});
+            const csp=events.filter(x=>/content security policy|refused to.*content security policy|violates.*directive/i.test(x));
+            console.log('CSP_EVENTS',JSON.stringify(csp));
+            console.log('FATAL_EVENTS',JSON.stringify(fatal));
+            await page.screenshot({path:'/tmp/wwsync-browser.png',fullPage:true}).catch(()=>{});
             await browser.close();
-            if (csp.length || fatal.length) process.exit(1);
-          })().catch(e => { console.error('BROWSER_FATAL',e); process.exit(1); });
+            if(csp.length||fatal.length)process.exit(1);
+          })().catch(e=>{console.error('BROWSER_FATAL',e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/wwsync-browser-smoke.cjs
           echo "WWSync browser smoke passed: $DEPLOYMENT_URL"
