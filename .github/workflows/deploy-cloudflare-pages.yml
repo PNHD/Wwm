@@ -63,16 +63,25 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@latest pages project list --json > /tmp/pages.json
-          if ! node <<'NODE'
-          const fs = require('fs');
-          const raw = JSON.parse(fs.readFileSync('/tmp/pages.json', 'utf8'));
-          const projects = Array.isArray(raw) ? raw : (raw.result || raw.projects || []);
-          process.exit(projects.some((project) => project.name === process.env.CLOUDFLARE_PROJECT_NAME) ? 0 : 1);
-          NODE
-          then
-            npx --yes wrangler@latest pages project create "$CLOUDFLARE_PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH"
-          fi
+          project_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PROJECT_NAME}"
+          status="$(curl --silent --show-error --output /tmp/cloudflare-project.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "$project_url")"
+
+          case "$status" in
+            200)
+              echo "Cloudflare Pages project exists: ${CLOUDFLARE_PROJECT_NAME}"
+              ;;
+            404)
+              echo "Cloudflare Pages project not found; creating ${CLOUDFLARE_PROJECT_NAME}"
+              npx --yes wrangler@latest pages project create "$CLOUDFLARE_PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH"
+              ;;
+            *)
+              echo "Cloudflare project lookup failed with HTTP ${status}" >&2
+              cat /tmp/cloudflare-project.json >&2
+              exit 1
+              ;;
+          esac
 
       - name: Deploy production
         env:
