@@ -1,538 +1,235 @@
-const APP_STATE_KEY = 'wwm-atlas-state:v2';
-const DATASET_KEY = 'wwm-atlas-dataset:v1';
-const PROGRESS_SCHEMA_VERSION = 2;
-const BASE_BOUNDS = [[-120, -70], [120, 70]];
+const $ = (id) => document.getElementById(id);
 
-const i18n = {
+const STORE = {
+  lang: 'wwm-atlas-lang:v2',
+  creds: 'wwm-atlas-sync-creds:v1',
+  completed: 'wwm-atlas-sync-completed:v1',
+  settings: 'wwm-atlas-settings:v3',
+};
+
+const MAPS = {
+  '1': { id:'1', names:{vi:'Bản đồ lớn Yến Nam',en:'Yannan Open World'}, worldRange:12288, gridSize:12, gameTileSize:1024, tileUrl:'https://wwmmapimgs.sangtacvietcdn.xyz/images/tiles/1/{s}{y}_{x}.png', minZoom:2, maxZoom:8 },
+  '6': { id:'6', names:{vi:'Đại bản đồ Hà Tây',en:'Hexi Open World'}, worldRange:8192, gridSize:8, gameTileSize:1024, tileUrl:'https://wwmmapimgs.sangtacvietcdn.xyz/images/tiles/6/{s}{y}_{x}.png', minZoom:2, maxZoom:7 },
+  '2': { id:'2', names:{vi:'Thế giới trong mơ',en:'Dream in Flames'}, worldRange:2544, gridSize:4, gameTileSize:636, tileUrl:'https://wwmmapimgs.sangtacvietcdn.xyz/images/tiles/2/{s}{y}_{x}.png', minZoom:1, maxZoom:6 },
+  '14': { id:'14', names:{vi:'Hoàng cung Khai Phong',en:'Kaifeng Imperial Palace'}, worldRange:2048, gridSize:1, gameTileSize:2048, tileUrl:'https://wwmmapimgs.sangtacvietcdn.xyz/images/tiles/14/{s}{y}_{x}.png', minZoom:0, maxZoom:5 },
+};
+
+const I18N = {
   vi: {
-    brandTag: 'Independent map hub', mapSource: 'Nguồn bản đồ', reload: 'Tải lại', openNewTab: 'Mở tab mới',
-    externalNoticeTitle: 'Không mirror dữ liệu bên thứ ba',
-    externalNoticeBody: 'Trang này giữ UI và dữ liệu cá nhân của bạn độc lập. Nội dung bản đồ thật được tải trực tiếp từ nhà cung cấp đã chọn.',
-    notes: 'Ghi chú nhanh', notesPlaceholder: 'Ghi vị trí, nhiệm vụ hoặc thứ cần quay lại…', notesSaved: 'Ghi chú được lưu chỉ trên trình duyệt này.',
-    region: 'Khu vực', searchPoi: 'Tìm POI', searchPlaceholder: 'Tên hoặc mô tả…', categories: 'Danh mục', hideAll: 'Ẩn hết', showAll: 'Hiện hết',
-    completed: 'Đã xong', hideCompleted: 'Ẩn đã xong', importData: 'Nhập POI', exportState: 'Xuất dữ liệu', importState: 'Nhập dữ liệu', resetView: 'Reset view',
-    personalHint: 'Personal Overlay dùng dataset của bạn. Dataset mẫu đi kèm chỉ để test giao diện, không phải vị trí thật trong game.',
-    localFirst: 'Local-first · Không tài khoản', loadingMap: 'Đang tải bản đồ…', iframeFallback: 'Nếu nguồn chặn iframe, dùng nút “Mở tab mới”.',
-    visiblePoi: 'POI đang hiện', noPoi: 'Không có POI phù hợp bộ lọc.', markDone: 'Đánh dấu đã xong', markUndone: 'Bỏ đánh dấu',
-    datasetImported: 'Đã nhập dataset POI.', datasetInvalid: 'Dataset không hợp lệ. Cần GeoJSON FeatureCollection với Point features.',
-    stateImported: 'Đã nhập dữ liệu cá nhân.', stateInvalid: 'File dữ liệu không hợp lệ.', demo: 'Demo', imported: 'Imported',
+    brandTag:'Auto-sync companion map', disconnected:'Chưa kết nối', waiting:'Đang chờ game', synced:'Đã đồng bộ', officialMap:'Bản đồ chính thức', autoSync:'AUTO SYNC', syncTitle:'Đồng bộ tiến độ game', syncIntro:'Nhập UID một lần. Sau khi xác nhận trong game, các điểm đã hoàn thành sẽ tự được đánh dấu — không cần mark lại thủ công.', linkedUid:'UID đã liên kết', unlink:'Gỡ liên kết', uidLabel:'UID nhân vật', checkUid:'Kiểm tra', boundAccount:'UID này đã từng liên kết với dịch vụ sync. Nhập mật khẩu sync đã tạo trước đây.', syncPassword:'Mật khẩu sync', rememberDevice:'Nhớ trên thiết bị này', link:'Liên kết', forgot:'Quên mật khẩu', verifyInGame:'Xác nhận trong game', verifyHelp:'Giữ game đang mở và chấp nhận yêu cầu xác nhận có mã bên dưới. Sau đó bấm “Tôi đã xác nhận”.', verificationCode:'Mã xác nhận', confirmed:'Tôi đã xác nhận', resetInGame:'Reset mật khẩu trong game', resetHelp:'Xác nhận yêu cầu reset có mã bên dưới trong game, rồi bấm hoàn tất.', finishReset:'Hoàn tất reset', gameSync:'Game Sync', relay:'Máy chủ relay', syncNow:'Đồng bộ ngay', stopSync:'Dừng sync', syncPrivacy:'Mật khẩu sync chỉ được giữ trong trình duyệt của bạn và chuyển qua adapter Cloudflare để gọi dịch vụ tương thích. WWM Atlas không lưu mật khẩu ở server.', autoCompleted:'Đã tự nhận diện', hideCompleted:'Ẩn đã xong', map:'Bản đồ', search:'Tìm địa điểm', searchPlaceholder:'Tên địa điểm…', compatTitle:'Compatibility mode', compatBody:'Auto-sync hiện tương thích với bridge công khai của WWM Map. Dữ liệu marker và tile được tải lúc chạy; WWM Atlas không mirror database hoặc artwork vào repository.', loadingData:'Đang tải dữ liệu bản đồ…', loadingNote:'Lần đầu có thể tải khoảng 15 MB dữ liệu marker.', mapLoadFailed:'Không tải được dữ liệu bản đồ.', retry:'Thử lại', fitMap:'Vừa bản đồ', checking:'Đang kiểm tra UID…', enterUid:'Nhập UID hợp lệ.', enterPassword:'Nhập mật khẩu sync.', accountBound:'UID đã liên kết. Nhập mật khẩu sync để tiếp tục.', accountUnbound:'UID chưa liên kết. Hãy xác nhận mã trong game.', authSuccess:'Liên kết thành công. Bạn có thể đồng bộ ngay.', authFailed:'Không xác thực được.', resetStarted:'Yêu cầu reset đã gửi. Xác nhận mã trong game.', serviceUnavailable:'Dịch vụ sync hiện không phản hồi.', startingSync:'Đang yêu cầu game gửi dữ liệu…', websocketConnecting:'Đã gửi yêu cầu. Đang kết nối relay…', waitApproval:'Chờ bạn chấp nhận yêu cầu trong game…', syncReceived:'Đã nhận tiến độ từ game.', syncTimeout:'Chưa nhận được dữ liệu. Kiểm tra game đang mở và đã chấp nhận yêu cầu, rồi thử lại.', syncDisconnected:'Relay đã ngắt kết nối.', unauthorized:'Phiên sync hết hạn. Hãy liên kết lại.', permissionDenied:'Tài khoản chưa đủ quyền sync theo dịch vụ tương thích.', markers:'điểm', completed:'Đã xong', notCompleted:'Chưa xong', noResults:'Không có kết quả.', noMapMarkers:'Không có marker trên bản đồ này.', lastSync:'Lần cuối', justNow:'vừa xong', dataSourceError:'Không tải được marker compatibility data.', close:'Đóng'
   },
   en: {
-    brandTag: 'Independent map hub', mapSource: 'Map source', reload: 'Reload', openNewTab: 'Open in new tab',
-    externalNoticeTitle: 'No third-party data mirroring',
-    externalNoticeBody: 'This site keeps its UI and your personal data independent. Real map content loads directly from the selected provider.',
-    notes: 'Quick notes', notesPlaceholder: 'Write locations, quests or things to revisit…', notesSaved: 'Notes are stored only in this browser.',
-    region: 'Region', searchPoi: 'Search POI', searchPlaceholder: 'Name or description…', categories: 'Categories', hideAll: 'Hide all', showAll: 'Show all',
-    completed: 'Completed', hideCompleted: 'Hide completed', importData: 'Import POI', exportState: 'Export data', importState: 'Import data', resetView: 'Reset view',
-    personalHint: 'Personal Overlay uses your own dataset. The bundled sample only tests the UI and is not real in-game location data.',
-    localFirst: 'Local-first · No account', loadingMap: 'Loading map…', iframeFallback: 'If the provider blocks embedding, use “Open in new tab”.',
-    visiblePoi: 'visible POIs', noPoi: 'No POIs match the current filters.', markDone: 'Mark completed', markUndone: 'Mark incomplete',
-    datasetImported: 'POI dataset imported.', datasetInvalid: 'Invalid dataset. Use a GeoJSON FeatureCollection containing Point features.',
-    stateImported: 'Personal data imported.', stateInvalid: 'Invalid personal data file.', demo: 'Demo', imported: 'Imported',
-  },
+    brandTag:'Auto-sync companion map', disconnected:'Disconnected', waiting:'Waiting for game', synced:'Synced', officialMap:'Official map', autoSync:'AUTO SYNC', syncTitle:'Sync game progress', syncIntro:'Enter your UID once. After confirming in game, completed locations are marked automatically — no manual re-marking.', linkedUid:'Linked UID', unlink:'Unlink', uidLabel:'Character UID', checkUid:'Check', boundAccount:'This UID is already linked to the sync service. Enter the sync password created previously.', syncPassword:'Sync password', rememberDevice:'Remember on this device', link:'Link', forgot:'Forgot password', verifyInGame:'Confirm in game', verifyHelp:'Keep the game open and approve the confirmation request matching the code below. Then click “I confirmed”.', verificationCode:'Verification code', confirmed:'I confirmed', resetInGame:'Reset password in game', resetHelp:'Approve the reset request matching the code below in game, then finish the reset.', finishReset:'Finish reset', gameSync:'Game Sync', relay:'Relay server', syncNow:'Sync now', stopSync:'Stop sync', syncPrivacy:'Your sync password stays in your browser and only passes through the Cloudflare adapter to the compatibility service. WWM Atlas does not store it server-side.', autoCompleted:'Auto-detected', hideCompleted:'Hide completed', map:'Map', search:'Search locations', searchPlaceholder:'Location name…', compatTitle:'Compatibility mode', compatBody:'Auto-sync currently interoperates with WWM Map’s public bridge. Marker data and tiles are loaded at runtime; WWM Atlas does not mirror their database or artwork into this repository.', loadingData:'Loading map data…', loadingNote:'The first load may download about 15 MB of marker data.', mapLoadFailed:'Map data could not be loaded.', retry:'Retry', fitMap:'Fit map', checking:'Checking UID…', enterUid:'Enter a valid UID.', enterPassword:'Enter your sync password.', accountBound:'UID is linked. Enter the sync password to continue.', accountUnbound:'UID is not linked yet. Confirm the code in game.', authSuccess:'Linked successfully. You can sync now.', authFailed:'Authentication failed.', resetStarted:'Reset request sent. Confirm the code in game.', serviceUnavailable:'The sync service is not responding.', startingSync:'Requesting game data…', websocketConnecting:'Request sent. Connecting to relay…', waitApproval:'Waiting for you to approve the request in game…', syncReceived:'Game progress received.', syncTimeout:'No game data received. Make sure the game is open and the request was approved, then try again.', syncDisconnected:'Relay disconnected.', unauthorized:'Sync session expired. Link again.', permissionDenied:'This account does not currently have sync permission in the compatibility service.', markers:'markers', completed:'Completed', notCompleted:'Not completed', noResults:'No results.', noMapMarkers:'No markers on this map.', lastSync:'Last sync', justNow:'just now', dataSourceError:'Could not load compatibility marker data.', close:'Close'
+  }
 };
+
+let lang = localStorage.getItem(STORE.lang) === 'en' ? 'en' : 'vi';
+const t = (key) => I18N[lang][key] || key;
 
 const state = {
-  lang: 'vi',
-  sources: [],
-  activeSource: 'official',
-  notes: '',
-  regions: [],
-  categories: [],
-  categoryRegistry: [],
-  region: null,
-  allFeatures: [],
-  completed: new Set(),
-  enabledCategories: new Set(),
-  hideCompleted: false,
-  query: '',
-  map: null,
-  maplibrePromise: null,
-  sourceReady: false,
-  popup: null,
-  importedDataset: null,
+  markers: [], markersByMap: new Map(), syncableIds: new Map(), completedIds: new Set(),
+  mapId: '1', hideCompleted: false, query: '', relays: [], creds: null,
+  pendingPassword: null, currentUid: null, websocket: null, connectionKey: null,
+  pingTimer: null, timeoutTimer: null, chunkSessions: new Map(), lastSyncAt: null,
 };
 
-const els = {
-  sourceTabs: document.querySelector('#source-tabs'),
-  activeSourceName: document.querySelector('#active-source-name'),
-  activeSourceDescription: document.querySelector('#active-source-description'),
-  sourceBadge: document.querySelector('#source-badge'),
-  mapFrame: document.querySelector('#map-frame'),
-  frameLoading: document.querySelector('#frame-loading'),
-  reloadSource: document.querySelector('#reload-source'),
-  openSource: document.querySelector('#open-source'),
-  externalPanel: document.querySelector('#external-panel'),
-  personalPanel: document.querySelector('#personal-panel'),
-  externalStage: document.querySelector('#external-stage'),
-  personalStage: document.querySelector('#personal-stage'),
-  quickNotes: document.querySelector('#quick-notes'),
-  languageSelect: document.querySelector('#language-select'),
-  toggleSidebar: document.querySelector('#toggle-sidebar'),
-  sidebar: document.querySelector('#sidebar'),
-  regionSelect: document.querySelector('#region-select'),
-  searchInput: document.querySelector('#search-input'),
-  categoryList: document.querySelector('#category-list'),
-  toggleAll: document.querySelector('#toggle-all'),
-  hideCompleted: document.querySelector('#hide-completed'),
-  progressCount: document.querySelector('#progress-count'),
-  visibleCount: document.querySelector('#visible-count'),
-  emptyState: document.querySelector('#empty-state'),
-  exportProgress: document.querySelector('#export-progress'),
-  importProgress: document.querySelector('#import-progress'),
-  importFile: document.querySelector('#import-file'),
-  importDataset: document.querySelector('#import-dataset'),
-  datasetFile: document.querySelector('#dataset-file'),
-  resetView: document.querySelector('#reset-view'),
-  dataStatus: document.querySelector('#data-status'),
-};
-
-function t(key) { return i18n[state.lang]?.[key] || i18n.vi[key] || key; }
-
-function registryItems(value, key) {
-  const items = Array.isArray(value) ? value : value?.[key];
-  if (!Array.isArray(items)) throw new Error(`Invalid ${key} registry`);
-  return items;
+function setText() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach((el) => { const key = el.dataset.i18n; if (I18N[lang][key]) el.textContent = I18N[lang][key]; });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { const key = el.dataset.i18nPlaceholder; if (I18N[lang][key]) el.placeholder = I18N[lang][key]; });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => { const key = el.dataset.i18nTitle; if (I18N[lang][key]) el.title = I18N[lang][key]; });
+  $('language-select').value = lang;
+  renderMapSelect(); renderProgress(); renderSearchResults(); renderMapHud();
 }
 
-async function loadJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Failed to load ${url}: ${response.status}`);
-  return response.json();
+function message(text, kind='') { const el=$('auth-message'); el.textContent=text||''; el.className='inline-message'+(kind?` is-${kind}`:''); }
+function setSyncStatus(mode, label) { const dot=$('sync-status-dot'); dot.className=`health-dot ${mode==='live'?'is-live':mode==='waiting'?'is-waiting':mode==='error'?'is-error':'is-idle'}`; $('sync-status-label').textContent=label||t(mode==='live'?'synced':mode==='waiting'?'waiting':'disconnected'); }
+function showStep(id) { ['password-step','verify-step','reset-step'].forEach((x)=>$(x).hidden=x!==id); }
+function sanitizeUid(v){ return String(v||'').replace(/\D/g,'').slice(0,20); }
+function randomKey(){ const chars='abcdefghijklmnopqrstuvwxyz0123456789'; let out=''; crypto.getRandomValues(new Uint8Array(8)).forEach((n)=>out+=chars[n%chars.length]); return out; }
+
+function getStoredCreds(){
+  for (const storage of [sessionStorage, localStorage]) { try { const raw=storage.getItem(STORE.creds); if(raw){ const c=JSON.parse(raw); if(/^\d{4,20}$/.test(c.uid||'')&&c.password) return c; } } catch {} }
+  return null;
+}
+function saveCreds(creds, remember){ sessionStorage.setItem(STORE.creds,JSON.stringify(creds)); if(remember) localStorage.setItem(STORE.creds,JSON.stringify(creds)); else localStorage.removeItem(STORE.creds); state.creds=creds; renderAuthReady(); }
+function clearCreds(){ sessionStorage.removeItem(STORE.creds); localStorage.removeItem(STORE.creds); state.creds=null; stopSync(); renderAuthReady(); }
+function renderAuthReady(){ const ready=!!state.creds; $('auth-ready').hidden=!ready; $('auth-form').hidden=ready; $('sync-btn').disabled=!ready; if(ready){ $('linked-uid').textContent=state.creds.uid; showStep(''); message(''); } }
+
+async function apiJson(url, options={}){
+  const res=await fetch(url,options); let data={}; try{data=await res.json();}catch{}
+  if(!res.ok && !data.error && !data.message) data.error=`HTTP ${res.status}`;
+  return {res,data};
 }
 
-function loadPersistedState() {
-  try {
-    const raw = localStorage.getItem(APP_STATE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed.lang === 'vi' || parsed.lang === 'en') state.lang = parsed.lang;
-    if (typeof parsed.activeSource === 'string') state.activeSource = parsed.activeSource;
-    if (typeof parsed.notes === 'string') state.notes = parsed.notes;
-    if (Array.isArray(parsed.completedIds)) state.completed = new Set(parsed.completedIds.filter((v) => typeof v === 'string'));
-    state.hideCompleted = Boolean(parsed.hideCompleted);
-  } catch { /* ignore corrupt local state */ }
-
-  try {
-    const datasetRaw = localStorage.getItem(DATASET_KEY);
-    if (datasetRaw) {
-      const parsed = JSON.parse(datasetRaw);
-      if (isValidFeatureCollection(parsed)) state.importedDataset = parsed;
-    }
-  } catch { /* ignore */ }
+async function checkUid(){
+  const uid=sanitizeUid($('uid-input').value); $('uid-input').value=uid;
+  if(!/^\d{4,20}$/.test(uid)){message(t('enterUid'),'error');return;}
+  state.currentUid=uid; state.pendingPassword=null; showStep(''); message(t('checking'));
+  $('check-uid-btn').disabled=true;
+  try{
+    const {data}=await apiJson('/api/sync/gameauth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({playerId:uid})});
+    if(data.status==='bound'){ showStep('password-step'); message(t('accountBound')); $('password-input').focus(); }
+    else if(data.status==='unbound' && data.verificationHash && data.generatedPassword){ state.pendingPassword=String(data.generatedPassword); $('verification-hash').textContent=String(data.verificationHash); showStep('verify-step'); message(t('accountUnbound')); }
+    else message(data.message||data.error||t('authFailed'),'error');
+  } catch { message(t('serviceUnavailable'),'error'); }
+  finally{$('check-uid-btn').disabled=false;}
 }
 
-function persistState() {
-  localStorage.setItem(APP_STATE_KEY, JSON.stringify({
-    schemaVersion: PROGRESS_SCHEMA_VERSION,
-    lang: state.lang,
-    activeSource: state.activeSource,
-    notes: state.notes,
-    completedIds: [...state.completed].sort(),
-    hideCompleted: state.hideCompleted,
-  }));
+async function finishAuth(password, action=null){
+  if(!state.currentUid||!password){message(t('enterPassword'),'error');return false;}
+  const payload={playerId:state.currentUid,password}; if(action)payload.action=action;
+  try{
+    const {data}=await apiJson('/api/sync/gameauth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    if(data.status==='success'){ saveCreds({uid:state.currentUid,password},$('remember-credential').checked); message(t('authSuccess'),'success'); return true; }
+    message(data.message||data.error||t('authFailed'),'error'); return false;
+  } catch { message(t('serviceUnavailable'),'error'); return false; }
 }
 
-function applyTranslations() {
-  document.documentElement.lang = state.lang;
-  document.querySelectorAll('[data-i18n]').forEach((node) => {
-    node.textContent = t(node.dataset.i18n);
-  });
-  document.querySelectorAll('[data-i18n-placeholder]').forEach((node) => {
-    node.placeholder = t(node.dataset.i18nPlaceholder);
-  });
-  syncToggleAllLabel();
-  updateSourceSummary();
-  if (state.popup) state.popup.remove();
+async function login(){ const password=$('password-input').value; if(!password){message(t('enterPassword'),'error');return;} $('login-btn').disabled=true; await finishAuth(password); $('login-btn').disabled=false; }
+async function confirmBind(){ if(!state.pendingPassword){message(t('authFailed'),'error');return;} $('confirm-bind-btn').disabled=true; await finishAuth(state.pendingPassword); $('confirm-bind-btn').disabled=false; }
+async function forgot(){ if(!state.currentUid)return; $('forgot-btn').disabled=true; try{ const {data}=await apiJson('/api/sync/gameauth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({playerId:state.currentUid,action:'forgot'})}); if(data.status==='reset_initiated'&&data.verificationHash&&data.generatedPassword){state.pendingPassword=String(data.generatedPassword);$('reset-hash').textContent=String(data.verificationHash);showStep('reset-step');message(t('resetStarted'));}else message(data.message||data.error||t('authFailed'),'error'); }catch{message(t('serviceUnavailable'),'error');} finally{$('forgot-btn').disabled=false;} }
+async function confirmReset(){ if(!state.pendingPassword)return; $('confirm-reset-btn').disabled=true; await finishAuth(state.pendingPassword,'reset_confirm'); $('confirm-reset-btn').disabled=false; }
+
+function loadCompleted(){ try{ const a=JSON.parse(localStorage.getItem(STORE.completed)||'[]'); if(Array.isArray(a)) state.completedIds=new Set(a.map(String)); }catch{} }
+function saveCompleted(){ try{ localStorage.setItem(STORE.completed,JSON.stringify([...state.completedIds])); }catch{} }
+function addCompleted(ids){ let changed=false; for(const id of ids){ const s=String(id); if(!state.completedIds.has(s)){state.completedIds.add(s);changed=true;} } if(changed){saveCompleted();renderProgress();mapView.renderMarkers();renderSearchResults();} return changed; }
+
+function buildCompletedFromFull(full){
+  const out=new Set(); if(!Array.isArray(full)) return out;
+  const [, beings, knowledge, myriad, dark, beings2, beings3, museum] = full;
+  if(beings&&typeof beings==='object') for(const [wType,typeData] of Object.entries(beings)){ if(!typeData||typeof typeData!=='object')continue; for(const [subtype,ids] of Object.entries(typeData)){ if(!Array.isArray(ids))continue; for(const id of ids) out.add(subtype==='default'?`cs_${wType}_${id}`:`cs_${wType}_${id}_${subtype}`); } }
+  if(Array.isArray(knowledge)) for(const id of knowledge) out.add(`kv_${id}`);
+  if(Array.isArray(dark)) for(const id of dark) out.add(`ma_${id}`);
+  if(Array.isArray(myriad)) for(const id of myriad) out.add(`vst_${id}`);
+  if(beings2&&typeof beings2==='object') for(const [wType,ids] of Object.entries(beings2)){ if(String(wType)==='1'||!Array.isArray(ids))continue; for(const id of ids) out.add(`cs_${wType}_${id}`); }
+  if(beings3&&typeof beings3==='object') for(const [compound,ids] of Object.entries(beings3)){ if(!Array.isArray(ids))continue; const [wType,wSub]=compound.split('_'); for(const id of ids) out.add(`cs_${wType}_${id}_${wSub}`); }
+  if(Array.isArray(museum)) for(const id of museum) out.add(`bv_${id}`);
+  return out;
+}
+function unpackLoose(value){
+  const ids=[]; const visit=(v)=>{ if(v==null)return; if(Array.isArray(v)){for(const x of v)visit(x);return;} if(typeof v==='number'||typeof v==='bigint'){ids.push(String(v));return;} if(typeof v==='string'){if(/^\d+$/.test(v))ids.push(v);return;} if(typeof v==='object'){for(const [k,val] of Object.entries(v)){if(/^\d+$/.test(k)&&val)ids.push(k);else visit(val);}} }; visit(value); return [...new Set(ids)];
+}
+function buildCompletedFromPacked(packed){ const out=new Set(); if(!Array.isArray(packed))return out; for(const id of unpackLoose(packed[0]))out.add(`t_${id}`); for(const id of unpackLoose(packed[1]))out.add(`rw_${id}`); return out; }
+
+function reassembleChunk(packet){
+  if(!packet||packet.t!=='c')return packet; const id=String(packet.id||''); const n=Number(packet.n); const i=Number(packet.i); if(!id||!Number.isInteger(n)||n<1||n>1000||!Number.isInteger(i)||i<0||i>=n||typeof packet.d!=='string')return null;
+  let s=state.chunkSessions.get(id); if(!s||s.n!==n){s={n,parts:new Array(n),count:0};state.chunkSessions.set(id,s);} if(s.parts[i]===undefined){s.parts[i]=packet.d;s.count++;} if(s.count<n)return null; state.chunkSessions.delete(id); try{return JSON.parse(s.parts.join(''));}catch{return null;}
 }
 
-function renderSourceTabs() {
-  els.sourceTabs.replaceChildren();
-  for (const source of state.sources) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'source-tab';
-    button.dataset.source = source.id;
-    button.textContent = source.name;
-    button.addEventListener('click', () => selectSource(source.id));
-    els.sourceTabs.append(button);
-  }
+async function loadRelays(){
+  try{ const {data}=await apiJson('/api/sync/relay-servers'); state.relays=Array.isArray(data.servers)?data.servers:[]; }catch{state.relays=[];}
+  if(!state.relays.length) state.relays=[{id:'default',name:'Vietnam Main Server',location:'SG',webSocketDomain:'wwmmapsync-sg1.sangtacvietcdn.xyz',alternateDomains:['wwmsync-sg1.stv-appdomain-00000001.org']}];
+  const select=$('relay-select'); const prev=select.value; select.innerHTML=''; for(const r of state.relays){const o=document.createElement('option');o.value=r.id;o.textContent=`${r.name}${r.location?` · ${r.location}`:''}`;select.append(o);} if([...select.options].some(o=>o.value===prev))select.value=prev;
 }
+function stopTimers(){ if(state.pingTimer)clearInterval(state.pingTimer); if(state.timeoutTimer)clearTimeout(state.timeoutTimer); state.pingTimer=state.timeoutTimer=null; }
+function stopSync(){ stopTimers(); if(state.websocket){try{state.websocket.close(1000,'user');}catch{} state.websocket=null;} state.connectionKey=null; state.chunkSessions.clear(); $('sync-btn').lastElementChild.textContent=t('syncNow'); setSyncStatus('idle'); }
+function scheduleTimeout(){ if(state.timeoutTimer)clearTimeout(state.timeoutTimer); state.timeoutTimer=setTimeout(()=>{ if(state.websocket){ message(t('syncTimeout'),'error'); setSyncStatus('error',t('syncTimeout')); stopSync(); } },22000); }
 
-function updateSourceSummary() {
-  const source = state.sources.find((s) => s.id === state.activeSource);
-  if (!source) return;
-  els.activeSourceName.textContent = source.name;
-  els.activeSourceDescription.textContent = state.lang === 'vi' ? source.descriptionVi : source.descriptionEn;
-  els.sourceBadge.textContent = source.badge;
-  document.querySelectorAll('.source-tab').forEach((node) => {
-    node.classList.toggle('is-active', node.dataset.source === source.id);
-  });
-}
-
-function selectSource(sourceId) {
-  const source = state.sources.find((s) => s.id === sourceId);
-  if (!source) return;
-  state.activeSource = sourceId;
-  const url = new URL(location.href);
-  url.searchParams.set('source', sourceId);
-  history.replaceState(null, '', url);
-  persistState();
-  updateSourceSummary();
-  const personal = sourceId === 'personal';
-  els.externalPanel.hidden = personal;
-  els.personalPanel.hidden = !personal;
-  els.externalStage.hidden = personal;
-  els.personalStage.hidden = !personal;
-  els.openSource.hidden = personal;
-  els.reloadSource.hidden = personal;
-
-  if (personal) {
-    ensurePersonalMap().then(() => requestAnimationFrame(() => state.map?.resize()));
-  } else {
-    loadExternalSource(source);
-  }
-  if (window.innerWidth <= 820) els.sidebar.classList.remove('is-open');
-}
-
-function loadExternalSource(source) {
-  els.frameLoading.hidden = false;
-  els.openSource.href = source.url;
-  els.mapFrame.src = source.url;
-}
-
-function isValidFeatureCollection(value) {
-  if (!value || value.type !== 'FeatureCollection' || !Array.isArray(value.features)) return false;
-  return value.features.every((feature) => feature && feature.type === 'Feature' && feature.geometry?.type === 'Point' && Array.isArray(feature.geometry.coordinates) && feature.geometry.coordinates.length >= 2);
-}
-
-function normalizeImportedDataset(value) {
-  if (!isValidFeatureCollection(value)) return null;
-  const features = value.features.map((feature, index) => {
-    const properties = { ...(feature.properties || {}) };
-    const id = String(feature.id ?? properties.id ?? `custom-${index + 1}`);
-    properties.id = id;
-    properties.name = String(properties.name || properties.title || `POI ${index + 1}`);
-    properties.description = String(properties.description || '');
-    properties.category = String(properties.category || 'custom');
-    return { ...feature, id, properties };
-  });
-  return { type: 'FeatureCollection', features };
-}
-
-function categoryById(id) { return state.categories.find((category) => category.id === id); }
-
-function effectiveCategories(features = state.allFeatures) {
-  const configured = new Map(state.categoryRegistry.map((c) => [c.id, c]));
-  const palette = ['#d6b57a', '#8ec5ff', '#c9a4ff', '#88d7a8', '#f39a91', '#ffd56c', '#9fd3c7', '#e3a7d6'];
-  let colorIndex = 0;
-  for (const feature of features) {
-    const id = String(feature.properties?.category || 'custom');
-    if (!configured.has(id)) {
-      configured.set(id, { id, name: id.replace(/[-_]/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()), color: palette[colorIndex++ % palette.length] });
-    }
-  }
-  return [...configured.values()];
-}
-
-function featureMatches(feature) {
-  const props = feature.properties || {};
-  const category = String(props.category || 'custom');
-  if (!state.enabledCategories.has(category)) return false;
-  if (state.hideCompleted && state.completed.has(String(feature.id))) return false;
-  if (!state.query) return true;
-  const haystack = `${props.name || ''} ${props.description || ''}`.toLocaleLowerCase();
-  return haystack.includes(state.query);
-}
-
-function filteredCollection() {
-  return {
-    type: 'FeatureCollection',
-    features: state.allFeatures.filter(featureMatches).map((feature) => ({
-      ...feature,
-      properties: { ...feature.properties, done: state.completed.has(String(feature.id)) },
-    })),
+function connectRelay(relay, domains, index=0){
+  if(index>=domains.length){ message(t('serviceUnavailable'),'error'); setSyncStatus('error'); return; }
+  const host=domains[index]; const ws=new WebSocket(`wss://${host}/ws/game?uid=${encodeURIComponent(state.creds.uid)}-${state.connectionKey}`); state.websocket=ws; setSyncStatus('waiting',t('waitApproval')); scheduleTimeout();
+  ws.onopen=()=>{ try{ws.send('ACTIVE');}catch{} stopTimers(); state.pingTimer=setInterval(()=>{if(ws.readyState===WebSocket.OPEN)try{ws.send('ACTIVE');}catch{}},4500); scheduleTimeout(); };
+  ws.onmessage=(event)=>{
+    try{
+      let packet=JSON.parse(typeof event.data==='string'&&event.data[0]==='b'?event.data.slice(1):event.data); packet=reassembleChunk(packet); if(!packet)return; scheduleTimeout();
+      let got=false;
+      if(packet.t==='f'){ const ids=buildCompletedFromFull(packet.d); addCompleted(ids); got=true; }
+      else if(packet.t==='tr'){ const ids=buildCompletedFromPacked(packet.d); addCompleted(ids); got=true; }
+      else if(packet.t==='p'){ got=true; }
+      if(got){state.lastSyncAt=new Date(); $('last-sync').textContent=`${t('lastSync')}: ${t('justNow')}`; setSyncStatus('live',t('synced')); message(t('syncReceived'),'success');}
+    }catch{}
   };
+  ws.onerror=()=>{};
+  ws.onclose=(ev)=>{ if(state.websocket!==ws)return; stopTimers(); if(ev.code===1006&&index+1<domains.length){state.websocket=null;connectRelay(relay,domains,index+1);return;} state.websocket=null; if(ev.code!==1000){setSyncStatus('error',t('syncDisconnected'));message(t('syncDisconnected'),'error');} $('sync-btn').lastElementChild.textContent=t('syncNow'); };
 }
 
-function refreshCounts(collection = filteredCollection()) {
-  const regionIds = new Set(state.allFeatures.map((feature) => String(feature.id)));
-  const done = [...state.completed].filter((id) => regionIds.has(id)).length;
-  els.progressCount.textContent = `${done} / ${state.allFeatures.length}`;
-  els.visibleCount.textContent = String(collection.features.length);
-  els.emptyState.hidden = collection.features.length !== 0;
-  document.querySelectorAll('[data-category-count]').forEach((node) => {
-    node.textContent = String(state.allFeatures.filter((feature) => String(feature.properties?.category || 'custom') === node.dataset.categoryCount).length);
-  });
-}
-
-function updateMapData() {
-  const collection = filteredCollection();
-  refreshCounts(collection);
-  if (state.sourceReady) state.map.getSource('poi')?.setData(collection);
-}
-
-function renderCategories() {
-  state.categories = effectiveCategories();
-  const validIds = new Set(state.categories.map((category) => category.id));
-  state.enabledCategories = new Set([...state.enabledCategories].filter((id) => validIds.has(id)));
-
-  els.categoryList.replaceChildren();
-  for (const category of state.categories) {
-    const label = document.createElement('label');
-    label.className = 'category-row';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = state.enabledCategories.has(category.id);
-    checkbox.addEventListener('change', () => {
-      if (checkbox.checked) state.enabledCategories.add(category.id); else state.enabledCategories.delete(category.id);
-      syncToggleAllLabel(); updateMapData();
-    });
-    const dot = document.createElement('span'); dot.className = 'category-dot'; dot.style.setProperty('--category-color', category.color);
-    const name = document.createElement('span'); name.textContent = category.name;
-    const count = document.createElement('span'); count.className = 'category-count'; count.dataset.categoryCount = category.id;
-    label.append(checkbox, dot, name, count); els.categoryList.append(label);
-  }
-  syncToggleAllLabel(); refreshCounts();
-}
-
-function syncToggleAllLabel() {
-  if (!els.toggleAll) return;
-  els.toggleAll.textContent = state.enabledCategories.size === 0 ? t('showAll') : t('hideAll');
-}
-
-function renderRegions() {
-  els.regionSelect.replaceChildren();
-  for (const region of state.regions) {
-    const option = document.createElement('option');
-    option.value = region.id; option.textContent = region.name;
-    els.regionSelect.append(option);
-  }
-  if (state.importedDataset) {
-    const option = document.createElement('option'); option.value = '__imported__'; option.textContent = state.lang === 'vi' ? 'Dataset đã nhập' : 'Imported dataset';
-    els.regionSelect.prepend(option);
-  }
-  if (state.region?.id && [...els.regionSelect.options].some((option) => option.value === state.region.id)) {
-    els.regionSelect.value = state.region.id;
-  }
-}
-
-async function selectRegion(regionId) {
-  let region;
-  let geojson;
-  if (regionId === '__imported__' && state.importedDataset) {
-    region = { id: '__imported__', name: 'Imported Dataset', demo: false, status: t('imported'), bounds: calculateBounds(state.importedDataset.features) };
-    geojson = state.importedDataset;
-  } else {
-    region = state.regions.find((item) => item.id === regionId);
-    if (!region) return;
-    geojson = await loadJson(region.geojson);
-  }
-  state.region = region;
-  state.allFeatures = Array.isArray(geojson.features) ? geojson.features : [];
-  state.enabledCategories.clear();
-  state.categories = effectiveCategories(state.allFeatures);
-  state.categories.forEach((c) => state.enabledCategories.add(c.id));
-  els.dataStatus.textContent = region.demo ? t('demo') : (region.status || t('imported'));
-  renderCategories();
-
-  if (state.map && state.sourceReady) {
-    const base = state.map.getSource('base-map');
-    if (base?.updateImage && region.mapImage) await base.updateImage({ url: region.mapImage, coordinates: region.mapCoordinates });
-    if (state.map.getLayer('base-map')) state.map.setLayoutProperty('base-map', 'visibility', region.mapImage ? 'visible' : 'none');
-    const bounds = region.bounds || BASE_BOUNDS;
-    state.map.fitBounds(bounds, { padding: 42, duration: 0 });
-  }
-  updateMapData(); focusHashPoi();
-}
-
-function calculateBounds(features) {
-  if (!features.length) return BASE_BOUNDS;
-  const xs = [], ys = [];
-  for (const feature of features) {
-    const [x, y] = feature.geometry.coordinates;
-    if (Number.isFinite(x) && Number.isFinite(y)) { xs.push(x); ys.push(y); }
-  }
-  if (!xs.length) return BASE_BOUNDS;
-  const padX = Math.max((Math.max(...xs) - Math.min(...xs)) * .08, .01);
-  const padY = Math.max((Math.max(...ys) - Math.min(...ys)) * .08, .01);
-  return [[Math.min(...xs) - padX, Math.min(...ys) - padY], [Math.max(...xs) + padX, Math.max(...ys) + padY]];
-}
-
-function colorExpression() {
-  const expression = ['match', ['get', 'category']];
-  for (const category of state.categories) expression.push(category.id, category.color);
-  expression.push('#d6b57a');
-  return expression;
-}
-
-async function loadMapLibre() {
-  if (window.maplibregl) return window.maplibregl;
-  if (!state.maplibrePromise) {
-    const cssId = 'maplibre-css';
-    if (!document.getElementById(cssId)) {
-      const link = document.createElement('link');
-      link.id = cssId;
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.css';
-      document.head.append(link);
+async function startSync(){
+  if(state.websocket){stopSync();return;} if(!state.creds)return;
+  $('sync-btn').disabled=true; message(t('startingSync')); setSyncStatus('waiting',t('startingSync'));
+  try{
+    if(!state.relays.length)await loadRelays(); const relay=state.relays.find(r=>r.id===$('relay-select').value)||state.relays[0]; state.connectionKey=randomKey();
+    const {data}=await apiJson('/api/sync/client-method',{method:'POST',headers:{'content-type':'application/json','X-WWM-UID':state.creds.uid,'X-WWM-PASS':state.creds.password,'Client-Lang':lang},body:JSON.stringify({method:'start_game_sync',args:{connectionKey:state.connectionKey,relayServerId:relay.id||'default'}})});
+    if(data.status!=='success'){
+      if(data.error==='Unauthorized'){clearCreds();message(t('unauthorized'),'error');} else if(data.controlCode==='show_bind_status')message(data.message||t('permissionDenied'),'error'); else message(data.message||data.error||t('serviceUnavailable'),'error'); setSyncStatus('error'); return;
     }
-    state.maplibrePromise = import('https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.mjs')
-      .then((module) => { window.maplibregl = module; return module; })
-      .catch((error) => { state.maplibrePromise = null; throw error; });
+    message(t('websocketConnecting')); const domains=[relay.webSocketDomain,...(relay.alternateDomains||[])].filter(Boolean); connectRelay(relay,[...new Set(domains)]); $('sync-btn').lastElementChild.textContent=t('stopSync');
+  }catch{message(t('serviceUnavailable'),'error');setSyncStatus('error');}
+  finally{$('sync-btn').disabled=!state.creds;}
+}
+
+function nameFor(marker){ const n=marker?.name||{}; return String(n[lang]||n.en||n.vi||n.zh||marker.id||'POI'); }
+function descriptionFor(marker){ const d=marker?.description; if(!d)return''; if(typeof d==='string')return d; return String(d[lang]||d.en||d.vi||d.zh||''); }
+function isCompleted(marker){ return state.completedIds.has(String(marker.id)) || (marker.alId!=null&&state.completedIds.has(String(marker.alId))); }
+function isSyncable(marker){ const id=String(marker.id||''); return /^(?:cs|kv|ma|vst|bv|t|rw)_/.test(id)||(marker.alId&&/^(?:cs|kv|ma|vst|bv|t|rw)_/.test(String(marker.alId))); }
+
+async function loadMarkers(){
+  $('map-loading').hidden=false; $('map-error').hidden=true;
+  try{
+    const res=await fetch('/api/map/markers',{headers:{accept:'application/json'}}); if(!res.ok)throw new Error('markers'); const data=await res.json(); const raw=Array.isArray(data?.markers)?data.markers:[];
+    state.markers=raw.map((m)=>({id:String(m.id),alId:m.alId==null?null:String(m.alId),mapId:String(m.mapId),category:String(m.category||''),name:m.name||{},description:m.description||{},x:Number(m.x),y:Number(m.y),canNotComplete:!!m.canNotComplete})).filter(m=>Number.isFinite(m.x)&&Number.isFinite(m.y));
+    state.markersByMap.clear(); state.syncableIds.clear();
+    for(const m of state.markers){if(!state.markersByMap.has(m.mapId))state.markersByMap.set(m.mapId,[]);state.markersByMap.get(m.mapId).push(m);if(isSyncable(m)){state.syncableIds.set(m.id,m);if(m.alId)state.syncableIds.set(m.alId,m);}}
+    if(!state.markersByMap.has(state.mapId))state.mapId=state.markersByMap.has('1')?'1':state.markers[0]?.mapId||'1'; renderMapSelect(); renderProgress(); mapView.setMap(state.mapId,true); $('map-loading').hidden=true;
+  }catch(e){$('map-loading').hidden=true;$('map-error').hidden=false;message(t('dataSourceError'),'error');}
+}
+
+function renderProgress(){
+  let matched=0; const seen=new Set(); for(const [,m] of state.syncableIds){if(seen.has(m.id))continue;seen.add(m.id);if(isCompleted(m))matched++;}
+  $('progress-count').textContent=`${matched.toLocaleString()} / ${seen.size?seen.size.toLocaleString():'—'}`;
+}
+function renderMapSelect(){
+  const select=$('map-select'); if(!select)return; const current=state.mapId; const ids=[...new Set([...Object.keys(MAPS),...state.markersByMap.keys()])]; ids.sort((a,b)=>{const aa=MAPS[a]?0:1,bb=MAPS[b]?0:1;return aa-bb||Number(a)-Number(b)}); select.innerHTML=''; for(const id of ids){const count=state.markersByMap.get(id)?.length||0;if(!count&&!MAPS[id])continue;const o=document.createElement('option');o.value=id;o.textContent=MAPS[id]?.names[lang]||`${lang==='vi'?'Bản đồ':'Map'} ${id}`;select.append(o);} if([...select.options].some(o=>o.value===current))select.value=current;
+}
+function renderMapHud(){ if(!$('map-name'))return; $('map-name').textContent=MAPS[state.mapId]?.names[lang]||`${lang==='vi'?'Bản đồ':'Map'} ${state.mapId}`; }
+function currentFiltered(){ const q=state.query.trim().toLocaleLowerCase(); return (state.markersByMap.get(state.mapId)||[]).filter(m=>!state.hideCompleted||!isCompleted(m)).filter(m=>!q||nameFor(m).toLocaleLowerCase().includes(q)||descriptionFor(m).toLocaleLowerCase().includes(q)); }
+function renderSearchResults(){
+  const box=$('search-results'); if(!box)return; const q=state.query.trim(); if(!q){box.hidden=true;box.innerHTML='';return;} const results=currentFiltered().slice(0,30); box.hidden=false; box.innerHTML=''; if(!results.length){const d=document.createElement('div');d.className='search-result';d.textContent=t('noResults');box.append(d);return;} for(const m of results){const b=document.createElement('button');b.type='button';b.className='search-result';const strong=document.createElement('strong');strong.textContent=nameFor(m);const small=document.createElement('small');small.textContent=`${isCompleted(m)?'✓ ':''}${m.id}`;b.append(strong,small);b.onclick=()=>{mapView.focusMarker(m);box.hidden=true;};box.append(b);} }
+
+class FlatMapView {
+  constructor(){this.el=$('map-viewport');this.tiles=$('tile-layer');this.canvas=$('marker-canvas');this.ctx=this.canvas.getContext('2d');this.map=null;this.center=[0,0];this.zoom=2;this.tileNodes=new Map();this.drag=null;this.dpr=1;this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(this.el);this.bind();}
+  bind(){
+    this.el.addEventListener('pointerdown',(e)=>{if(e.button!==0)return;this.el.setPointerCapture(e.pointerId);this.drag={x:e.clientX,y:e.clientY};this.el.classList.add('is-dragging');$('poi-popover').hidden=true;});
+    this.el.addEventListener('pointermove',(e)=>{if(!this.drag)return;const dx=e.clientX-this.drag.x,dy=e.clientY-this.drag.y;this.drag={x:e.clientX,y:e.clientY};this.panPixels(dx,dy);});
+    const end=()=>{this.drag=null;this.el.classList.remove('is-dragging');}; this.el.addEventListener('pointerup',end);this.el.addEventListener('pointercancel',end);
+    this.el.addEventListener('wheel',(e)=>{e.preventDefault();this.zoomAt(e.offsetX,e.offsetY,e.deltaY<0?.35:-.35);},{passive:false});
+    this.canvas.addEventListener('click',(e)=>{this.pick(e.offsetX,e.offsetY);});
   }
-  return state.maplibrePromise;
+  resize(){const r=this.el.getBoundingClientRect();this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.max(1,Math.round(r.width*this.dpr));this.canvas.height=Math.max(1,Math.round(r.height*this.dpr));this.canvas.style.width=`${r.width}px`;this.canvas.style.height=`${r.height}px`;this.render();}
+  config(){return MAPS[state.mapId]||{id:state.mapId,names:{vi:`Bản đồ ${state.mapId}`,en:`Map ${state.mapId}`},worldRange:4096,gridSize:0,gameTileSize:1024,tileUrl:null,minZoom:1,maxZoom:7};}
+  ws(z=this.zoom){return 256*Math.pow(2,z)}
+  toWorld(x,y,z=this.zoom){const wr=this.config().worldRange,ws=this.ws(z);return [((x+wr/2)/wr)*ws,((wr/2-y)/wr)*ws];}
+  fromWorld(px,py,z=this.zoom){const wr=this.config().worldRange,ws=this.ws(z);return [(px/ws)*wr-wr/2,wr/2-(py/ws)*wr];}
+  toScreen(x,y){const [px,py]=this.toWorld(x,y),[cx,cy]=this.toWorld(this.center[0],this.center[1]);return [px-cx+this.el.clientWidth/2,py-cy+this.el.clientHeight/2];}
+  setMap(id,fit=false){state.mapId=String(id);$('map-select').value=state.mapId;this.map=this.config();this.zoom=Math.max(this.map.minZoom,Math.min(this.zoom,this.map.maxZoom));if(fit)this.fit();else this.render();renderMapHud();renderSearchResults();}
+  fit(){const ms=state.markersByMap.get(state.mapId)||[];if(!ms.length){this.center=[0,0];this.zoom=this.config().minZoom;this.render();return;}let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const m of ms){minX=Math.min(minX,m.x);maxX=Math.max(maxX,m.x);minY=Math.min(minY,m.y);maxY=Math.max(maxY,m.y);}this.center=[(minX+maxX)/2,(minY+maxY)/2];const wr=this.config().worldRange,dx=Math.max(100,maxX-minX),dy=Math.max(100,maxY-minY),w=Math.max(320,this.el.clientWidth-80),h=Math.max(240,this.el.clientHeight-80);const zx=Math.log2((w*wr)/(dx*256)),zy=Math.log2((h*wr)/(dy*256));this.zoom=Math.max(this.config().minZoom,Math.min(this.config().maxZoom,Math.min(zx,zy)));this.render();}
+  panPixels(dx,dy){const [cx,cy]=this.toWorld(this.center[0],this.center[1]);this.center=this.fromWorld(cx-dx,cy-dy);this.clampCenter();this.render();}
+  clampCenter(){const wr=this.config().worldRange;this.center[0]=Math.max(-wr/2,Math.min(wr/2,this.center[0]));this.center[1]=Math.max(-wr/2,Math.min(wr/2,this.center[1]));}
+  zoomAt(sx,sy,dz){const c=this.config(),old=this.zoom,nz=Math.max(c.minZoom,Math.min(c.maxZoom,old+dz));if(Math.abs(nz-old)<.001)return;const [cx,cy]=this.toWorld(this.center[0],this.center[1],old);const wx=cx+(sx-this.el.clientWidth/2),wy=cy+(sy-this.el.clientHeight/2);const coord=this.fromWorld(wx,wy,old);this.zoom=nz;const [nwx,nwy]=this.toWorld(coord[0],coord[1],nz);const ncx=nwx-(sx-this.el.clientWidth/2),ncy=nwy-(sy-this.el.clientHeight/2);this.center=this.fromWorld(ncx,ncy,nz);this.clampCenter();this.render();}
+  render(){this.renderTiles();this.renderMarkers();renderMapHud();}
+  renderTiles(){const c=this.config(),layer=this.tiles;if(!c.tileUrl||!c.gridSize){for(const n of this.tileNodes.values())n.remove();this.tileNodes.clear();layer.style.background='radial-gradient(circle at 50% 35%,#17212b,#070a0f 68%)';return;}layer.style.background='#080b0f';const ws=this.ws(),N=c.gridSize,tw=ws/N,T=c.gameTileSize||1024,ideal=Math.max(1,T/tw),lod=Math.min(8,Math.pow(2,Math.floor(Math.log2(ideal)))),prefix=lod<=1?'':`${lod}/`,[cx,cy]=this.toWorld(this.center[0],this.center[1]),w=this.el.clientWidth,h=this.el.clientHeight,minCol=Math.max(0,Math.floor((cx-w/2)/tw)),maxCol=Math.min(N-1,Math.floor((cx+w/2)/tw)),minRow=Math.max(0,Math.floor((cy-h/2)/tw)),maxRow=Math.min(N-1,Math.floor((cy+h/2)/tw)),keep=new Set();for(let row=minRow;row<=maxRow;row++)for(let col=minCol;col<=maxCol;col++){const url=c.tileUrl.replace('{s}',prefix).replace('{y}',row).replace('{x}',col),key=`${row}:${col}:${prefix}`;keep.add(key);let img=this.tileNodes.get(key);if(!img){img=new Image();img.className='map-tile';img.alt='';img.decoding='async';img.referrerPolicy='no-referrer';img.src=url;img.onerror=()=>img.classList.add('is-error');layer.append(img);this.tileNodes.set(key,img);}img.style.left=`${col*tw-cx+w/2}px`;img.style.top=`${row*tw-cy+h/2}px`;img.style.width=`${tw+1}px`;img.style.height=`${tw+1}px`;}for(const [k,n] of this.tileNodes)if(!keep.has(k)){n.remove();this.tileNodes.delete(k);}}
+  renderMarkers(){const ctx=this.ctx;if(!ctx)return;const w=this.el.clientWidth,h=this.el.clientHeight;ctx.setTransform(this.dpr,0,0,this.dpr,0,0);ctx.clearRect(0,0,w,h);const list=currentFiltered();let visible=0;for(const m of list){const [x,y]=this.toScreen(m.x,m.y);if(x<-12||y<-12||x>w+12||y>h+12)continue;visible++;const done=isCompleted(m),r=this.zoom>=5?4.2:this.zoom>=3?3.2:2.4;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=done?'rgba(125,139,151,.48)':'rgba(236,196,119,.92)';ctx.fill();if(!done&&this.zoom>=4){ctx.strokeStyle='rgba(255,239,203,.65)';ctx.lineWidth=1;ctx.stroke();}}$('visible-count').textContent=`${visible.toLocaleString()} ${t('markers')}`;}
+  pick(x,y){const list=currentFiltered();let best=null,bestD=14*14;for(const m of list){const [sx,sy]=this.toScreen(m.x,m.y),d=(sx-x)**2+(sy-y)**2;if(d<bestD){best=m;bestD=d;}}if(best)this.showPopover(best,x,y);else $('poi-popover').hidden=true;}
+  showPopover(m,x,y){const p=$('poi-popover');p.className=`poi-popover${isCompleted(m)?' is-completed':''}`;p.innerHTML='';const close=document.createElement('button');close.className='close-popover';close.type='button';close.textContent='×';close.ariaLabel=t('close');close.onclick=()=>p.hidden=true;const h=document.createElement('h3');h.textContent=nameFor(m);const d=document.createElement('p');d.textContent=descriptionFor(m)||m.id;const meta=document.createElement('div');meta.className='poi-meta';const s=document.createElement('span');s.textContent=isCompleted(m)?`✓ ${t('completed')}`:t('notCompleted');const id=document.createElement('span');id.textContent=m.id;meta.append(s,id);p.append(close,h,d,meta);const maxX=this.el.clientWidth-Math.min(280,this.el.clientWidth-24)-12,maxY=this.el.clientHeight-150;p.style.left=`${Math.max(12,Math.min(maxX,x+12))}px`;p.style.top=`${Math.max(12,Math.min(maxY,y+12))}px`;p.hidden=false;}
+  focusMarker(m){if(m.mapId!==state.mapId){this.setMap(m.mapId,false);renderMapSelect();}this.center=[m.x,m.y];this.zoom=Math.min(this.config().maxZoom,Math.max(this.zoom,5));this.render();const [x,y]=this.toScreen(m.x,m.y);this.showPopover(m,x,y);}
 }
 
-async function ensurePersonalMap() {
-  if (state.map) return state.map;
-  try { await loadMapLibre(); } catch (error) {
-    console.error(error);
-    els.emptyState.hidden = false;
-    els.emptyState.textContent = state.lang === 'vi'
-      ? 'Không tải được MapLibre cho Personal Overlay. Các nguồn bản đồ thật vẫn hoạt động.'
-      : 'MapLibre could not load for Personal Overlay. External map sources remain available.';
-    return null;
-  }
-  const initialRegion = state.region || state.regions[0];
-  state.map = new window.maplibregl.Map({
-    container: 'map', attributionControl: false, renderWorldCopies: false, center: [0, 0], zoom: 1,
-    minZoom: 0, maxZoom: 12, style: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#080c10' } }] },
-  });
-  state.map.addControl(new window.maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-  state.map.addControl(new window.maplibregl.AttributionControl({ compact: true, customAttribution: 'WWM Atlas personal overlay' }));
-  state.map.on('load', () => {
-    state.map.addSource('base-map', { type: 'image', url: initialRegion?.mapImage || '/assets/map-placeholder.svg', coordinates: initialRegion?.mapCoordinates || [[-120,70],[120,70],[120,-70],[-120,-70]] });
-    state.map.addLayer({ id: 'base-map', type: 'raster', source: 'base-map', paint: { 'raster-opacity': .96 } });
-    state.map.addSource('poi', { type: 'geojson', data: filteredCollection(), cluster: true, clusterMaxZoom: 7, clusterRadius: 46, promoteId: 'id' });
-    state.map.addLayer({ id: 'clusters', type: 'circle', source: 'poi', filter: ['has','point_count'], paint: { 'circle-color':'#d6b57a','circle-radius':['step',['get','point_count'],17,50,21,250,27],'circle-stroke-color':'#1a1410','circle-stroke-width':2 } });
-    state.map.addLayer({ id: 'cluster-count', type: 'symbol', source: 'poi', filter:['has','point_count'], layout:{'text-field':['get','point_count_abbreviated'],'text-size':11}, paint:{'text-color':'#15100a'} });
-    state.map.addLayer({ id: 'poi-points', type:'circle', source:'poi', filter:['!', ['has','point_count']], paint:{'circle-color':colorExpression(),'circle-radius':['interpolate',['linear'],['zoom'],0,5,6,9,10,12],'circle-opacity':['case',['boolean',['get','done'],false],.35,.96],'circle-stroke-color':'#0a0d12','circle-stroke-width':1.5} });
-    state.sourceReady = true;
-    wireMapEvents(); updateMapData();
-    const bounds = state.region?.bounds || BASE_BOUNDS; state.map.fitBounds(bounds, { padding: 42, duration: 0 });
-    focusHashPoi();
-  });
+let mapView;
+function bindUi(){
+  $('language-select').onchange=()=>{lang=$('language-select').value==='en'?'en':'vi';localStorage.setItem(STORE.lang,lang);setText();mapView.render();};
+  $('toggle-sidebar').onclick=()=>$('sidebar').classList.toggle('is-open');
+  $('uid-input').oninput=()=>{$('uid-input').value=sanitizeUid($('uid-input').value);}; $('uid-input').onkeydown=(e)=>{if(e.key==='Enter')checkUid();};
+  $('check-uid-btn').onclick=checkUid; $('login-btn').onclick=login; $('confirm-bind-btn').onclick=confirmBind; $('forgot-btn').onclick=forgot; $('confirm-reset-btn').onclick=confirmReset; $('logout-btn').onclick=clearCreds; $('sync-btn').onclick=startSync;
+  $('hide-completed').onchange=()=>{state.hideCompleted=$('hide-completed').checked;localStorage.setItem(STORE.settings,JSON.stringify({hideCompleted:state.hideCompleted,mapId:state.mapId}));mapView.renderMarkers();renderSearchResults();};
+  $('map-select').onchange=()=>{state.mapId=$('map-select').value;localStorage.setItem(STORE.settings,JSON.stringify({hideCompleted:state.hideCompleted,mapId:state.mapId}));state.query='';$('search-input').value='';mapView.setMap(state.mapId,true);};
+  $('search-input').oninput=()=>{state.query=$('search-input').value;renderSearchResults();mapView.renderMarkers();};
+  $('zoom-in').onclick=()=>mapView.zoomAt(mapView.el.clientWidth/2,mapView.el.clientHeight/2,.5);$('zoom-out').onclick=()=>mapView.zoomAt(mapView.el.clientWidth/2,mapView.el.clientHeight/2,-.5);$('fit-map').onclick=()=>mapView.fit();$('retry-map').onclick=loadMarkers;
 }
 
-function wireMapEvents() {
-  state.map.on('click', 'clusters', async (event) => {
-    const feature = state.map.queryRenderedFeatures(event.point, { layers:['clusters'] })[0];
-    if (!feature) return;
-    const zoom = await state.map.getSource('poi').getClusterExpansionZoom(feature.properties.cluster_id);
-    state.map.easeTo({ center: feature.geometry.coordinates, zoom });
-  });
-  state.map.on('click', 'poi-points', (event) => {
-    const feature = event.features?.[0]; if (feature) openPoi(feature);
-  });
-  for (const layer of ['clusters','poi-points']) {
-    state.map.on('mouseenter', layer, () => { state.map.getCanvas().style.cursor = 'pointer'; });
-    state.map.on('mouseleave', layer, () => { state.map.getCanvas().style.cursor = ''; });
-  }
+async function init(){
+  try{const s=JSON.parse(localStorage.getItem(STORE.settings)||'{}');state.hideCompleted=!!s.hideCompleted;if(s.mapId)state.mapId=String(s.mapId);}catch{}
+  $('hide-completed').checked=state.hideCompleted; loadCompleted(); state.creds=getStoredCreds(); mapView=new FlatMapView(); bindUi(); setText(); renderAuthReady(); await Promise.all([loadRelays(),loadMarkers()]);
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 
-function openPoi(feature) {
-  const id = String(feature.id ?? feature.properties?.id ?? '');
-  const props = feature.properties || {};
-  const category = categoryById(String(props.category || 'custom'));
-  const wrapper = document.createElement('article'); wrapper.className = 'poi-card';
-  const meta = document.createElement('p'); meta.className='poi-meta'; meta.textContent=category?.name || props.category || 'POI';
-  const title = document.createElement('h2'); title.className='poi-title'; title.textContent=props.name || id;
-  const desc = document.createElement('p'); desc.className='poi-description'; desc.textContent=props.description || '';
-  const button = document.createElement('button'); button.className='poi-done-button'; button.type='button';
-  const syncButton = () => { const done = state.completed.has(id); button.dataset.done=String(done); button.textContent=done ? t('markUndone') : t('markDone'); };
-  syncButton();
-  button.addEventListener('click', () => { if (state.completed.has(id)) state.completed.delete(id); else state.completed.add(id); persistState(); syncButton(); updateMapData(); });
-  wrapper.append(meta,title); if (desc.textContent) wrapper.append(desc); wrapper.append(button);
-  state.popup?.remove(); state.popup = new window.maplibregl.Popup({ closeButton:true, maxWidth:'320px' }).setLngLat(feature.geometry.coordinates).setDOMContent(wrapper).addTo(state.map);
-  if (id) history.replaceState(null,'',`#poi=${encodeURIComponent(id)}`);
-}
-
-function focusHashPoi() {
-  if (!state.map || !state.sourceReady) return;
-  const match = location.hash.match(/(?:^#|&)poi=([^&]+)/); if (!match) return;
-  const id = decodeURIComponent(match[1]);
-  const feature = state.allFeatures.find((f) => String(f.id) === id || String(f.properties?.id) === id); if (!feature) return;
-  state.map.easeTo({ center: feature.geometry.coordinates, zoom: Math.max(state.map.getZoom(), 5), duration: 0 }); openPoi(feature);
-}
-
-function downloadJson(filename, value) {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
-}
-
-function exportPersonalState() {
-  downloadJson(`wwm-atlas-backup-${new Date().toISOString().slice(0,10)}.json`, {
-    schemaVersion: PROGRESS_SCHEMA_VERSION, exportedAt: new Date().toISOString(), lang: state.lang, notes: state.notes,
-    completedIds: [...state.completed].sort(), hideCompleted: state.hideCompleted, dataset: state.importedDataset,
-  });
-}
-
-async function importPersonalState(file) {
-  try {
-    const value = JSON.parse(await file.text());
-    if (!value || !Array.isArray(value.completedIds)) throw new Error('invalid');
-    state.completed = new Set(value.completedIds.filter((v) => typeof v === 'string'));
-    if (typeof value.notes === 'string') state.notes = value.notes;
-    if (value.lang === 'vi' || value.lang === 'en') state.lang = value.lang;
-    state.hideCompleted = Boolean(value.hideCompleted);
-    if (value.dataset) {
-      const normalized = normalizeImportedDataset(value.dataset); if (normalized) { state.importedDataset = normalized; localStorage.setItem(DATASET_KEY, JSON.stringify(normalized)); }
-    }
-    els.quickNotes.value = state.notes; els.hideCompleted.checked = state.hideCompleted; els.languageSelect.value = state.lang;
-    persistState(); applyTranslations(); renderRegions(); updateMapData(); alert(t('stateImported'));
-  } catch { alert(t('stateInvalid')); }
-}
-
-async function importDatasetFile(file) {
-  try {
-    const value = JSON.parse(await file.text()); const normalized = normalizeImportedDataset(value); if (!normalized) throw new Error('invalid');
-    state.importedDataset = normalized; localStorage.setItem(DATASET_KEY, JSON.stringify(normalized)); renderRegions(); els.regionSelect.value='__imported__'; await selectRegion('__imported__'); alert(t('datasetImported'));
-  } catch { alert(t('datasetInvalid')); }
-}
-
-function wireUi() {
-  els.mapFrame.addEventListener('load', () => { setTimeout(() => { els.frameLoading.hidden = true; }, 350); });
-  els.reloadSource.addEventListener('click', () => { const source = state.sources.find((s) => s.id === state.activeSource); if (source) loadExternalSource(source); });
-  els.quickNotes.addEventListener('input', () => { state.notes = els.quickNotes.value; persistState(); });
-  els.languageSelect.addEventListener('change', () => { state.lang = els.languageSelect.value; persistState(); applyTranslations(); renderRegions(); });
-  els.toggleSidebar.addEventListener('click', () => els.sidebar.classList.toggle('is-open'));
-  els.regionSelect.addEventListener('change', () => selectRegion(els.regionSelect.value));
-  els.searchInput.addEventListener('input', () => { state.query = els.searchInput.value.trim().toLocaleLowerCase(); updateMapData(); });
-  els.toggleAll.addEventListener('click', () => { if (state.enabledCategories.size) state.enabledCategories.clear(); else state.categories.forEach((c) => state.enabledCategories.add(c.id)); renderCategories(); updateMapData(); });
-  els.hideCompleted.addEventListener('change', () => { state.hideCompleted = els.hideCompleted.checked; persistState(); updateMapData(); });
-  els.resetView.addEventListener('click', () => { state.map?.fitBounds(state.region?.bounds || BASE_BOUNDS, { padding:42, duration:450 }); });
-  els.exportProgress.addEventListener('click', exportPersonalState);
-  els.importProgress.addEventListener('click', () => els.importFile.click());
-  els.importFile.addEventListener('change', () => { const [file] = els.importFile.files; if (file) importPersonalState(file); els.importFile.value=''; });
-  els.importDataset.addEventListener('click', () => els.datasetFile.click());
-  els.datasetFile.addEventListener('change', () => { const [file] = els.datasetFile.files; if (file) importDatasetFile(file); els.datasetFile.value=''; });
-  window.addEventListener('hashchange', focusHashPoi);
-}
-
-async function boot() {
-  loadPersistedState();
-  const [sources, regions, categories] = await Promise.all([loadJson('/data/sources.json'), loadJson('/data/regions.json'), loadJson('/data/categories.json')]);
-  state.sources = registryItems(sources, 'sources');
-  state.regions = registryItems(regions, 'regions');
-  state.categoryRegistry = registryItems(categories, 'categories');
-  state.categories = [...state.categoryRegistry];
-  const requestedSource = new URLSearchParams(location.search).get('source');
-  if (requestedSource && state.sources.some((s) => s.id === requestedSource)) state.activeSource = requestedSource;
-  if (!state.sources.some((s) => s.id === state.activeSource)) state.activeSource = 'official';
-  state.region = state.regions[0] || null;
-  if (state.region) {
-    const demo = await loadJson(state.region.geojson); state.allFeatures = demo.features || [];
-    state.categories = effectiveCategories(state.allFeatures); state.categories.forEach((c) => state.enabledCategories.add(c.id));
-  }
-  renderSourceTabs(); renderRegions(); renderCategories(); wireUi();
-  els.quickNotes.value = state.notes; els.languageSelect.value = state.lang; els.hideCompleted.checked = state.hideCompleted;
-  applyTranslations(); selectSource(state.activeSource);
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
-}
-
-boot().catch((error) => {
-  console.error(error);
-  els.frameLoading.hidden = false;
-  els.frameLoading.innerHTML = `<strong>WWM Atlas failed to initialize.</strong><small>${String(error.message || error)}</small>`;
-});
+init();
