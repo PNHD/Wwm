@@ -14,76 +14,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Extract public sync API and websocket contract
+      - name: Inspect known public account/sync chunks
         shell: bash
         run: |
           set -euo pipefail
-          curl --silent --show-error --location 'https://wwmmap.pages.dev/' -o /tmp/root.html
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          from urllib.parse import urljoin
-          t=Path('/tmp/root.html').read_text('utf-8',errors='ignore')
-          raw=[]
-          raw += re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
-          raw += re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I)
-          raw += re.findall(r'(/_next/static/[^"\'<>\\\s]+?\.js(?:\?[^"\'<>\\\s]*)?)',t,re.I)
-          assets=[]
-          for u in raw:
-              u=u.replace('\\u0026','&').replace('&amp;','&')
-              full=urljoin('https://wwmmap.pages.dev/',u)
-              if '_next/static/' in full and '.js' in full: assets.append(full)
-          assets=list(dict.fromkeys(assets))
-          Path('/tmp/assets.txt').write_text('\n'.join(assets))
-          print('NEXT_JS_ASSET_COUNT',len(assets))
-          for u in assets: print('ASSET',u)
-          PY
           mkdir -p /tmp/js
+          cat > /tmp/urls.txt <<'EOF'
+          https://wwmmap.pages.dev/_next/static/chunks/webpack-13d62129456919ae.js
+          https://wwmmap.pages.dev/_next/static/chunks/4bd1b696-5ffdbe56c628066e.js
+          https://wwmmap.pages.dev/_next/static/chunks/684-c3b85c27fbd4aaf2.js
+          https://wwmmap.pages.dev/_next/static/chunks/main-app-cabc221b30dd0654.js
+          https://wwmmap.pages.dev/_next/static/chunks/410-38b2e2e51445fb2c.js
+          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/(user)/account/page-bd0688e039586979.js
+          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/(user)/layout-ea5b9e1fed70d492.js
+          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/layout-d796379445f0d325.js
+          EOF
           i=0
           while IFS= read -r url; do
-            [ -n "$url" ] || continue
             out="/tmp/js/$(printf '%03d' "$i").js"
             status="$(curl --silent --show-error --location --output "$out" --write-out '%{http_code}' "$url" || true)"
-            echo "JS $(basename "$out") HTTP $status BYTES $(wc -c < "$out" 2>/dev/null || echo 0) $url"
+            echo "FETCH $(basename "$out") HTTP $status BYTES $(wc -c < "$out" 2>/dev/null || echo 0) $url"
             i=$((i+1))
-          done < /tmp/assets.txt
+          done < /tmp/urls.txt
 
           python - <<'PY'
           from pathlib import Path
           import re
-          needles=[
+          strong=[
             'sync.wwm-map.com','9521','receiver_msg_privilege','friend_only_restriction','sync_success',
             'start_game_sync','stop_game_sync','game_sync','gameauth','verify','verification','link character',
             'Account ID','WebSocket URL','Relay Servers','This Machine','Hawk Sync',
-            'accountId','account_id','uid','roleId','role_id','characterId','character_id',
-            'new WebSocket','onmessage','send(JSON.stringify','messageType','message_type','eventType','event_type',
-            'position','coordinates','marker','finished','completion','progress','permission','confirmation timed out'
+            'new WebSocket','onmessage','send(JSON.stringify','confirmation timed out','only accept messages from friends'
           ]
+          weak=['accountId','account_id','uid','roleId','role_id','characterId','character_id','position','coordinates','marker','finished','completion','permission','confirm']
           route_re=re.compile(r'(?:(?:https?|wss?)://[^"\'`<>\\\s)]+|/[A-Za-z0-9_.~!$&()*+,;=:@%/-]*(?:api|sync|auth|verify|account|game|character|relay|ws)[A-Za-z0-9_.~!$&()*+,;=:@%/?-]*)',re.I)
+          string_re=re.compile(r'(["\'])(.{1,180}?)\1')
           for p in sorted(Path('/tmp/js').glob('*.js')):
               text=p.read_text('utf-8',errors='ignore')
               low=text.lower()
-              hits=[n for n in needles if n.lower() in low]
-              app_hits=[n for n in hits if n not in ['uid','position','progress','permission','messageType']]
-              if not app_hits: continue
-              print(f'\n===== FILE {p.name} BYTES {len(text.encode())} HITS {hits} =====')
-              intervals=[]
-              for n in app_hits:
+              hits=[n for n in strong if n.lower() in low]
+              if not hits: continue
+              print(f'\n===== FILE {p.name} BYTES {len(text.encode())} STRONG {hits} =====')
+              centers=[]
+              for n in hits:
                   pos=0; count=0
-                  while count<12:
+                  while count<15:
                       at=low.find(n.lower(),pos)
                       if at<0: break
-                      lo=max(0,at-2600); hi=min(len(text),at+6500)
-                      if not any(abs(at-a)<1500 for a in intervals):
-                          intervals.append(at)
-                          print(f'\n--- CONTEXT {n} @{at} ---')
-                          print(text[lo:hi].replace('\n',' ')[:9500])
+                      if not any(abs(at-x)<2200 for x in centers):
+                          centers.append(at)
+                          lo=max(0,at-4500); hi=min(len(text),at+10500)
+                          print(f'\n--- {n} @{at} ---')
+                          print(text[lo:hi].replace('\n',' ')[:15500])
                       pos=at+len(n); count+=1
-              print('\n--- URL_AND_ROUTE_LITERALS ---')
+              print('\n--- ROUTES/URLS ---')
+              for v in sorted(set(m.group(0) for m in route_re.finditer(text))):
+                  if len(v)<1000: print(v)
+              print('\n--- RELEVANT STRING LITERALS ---')
               vals=[]
-              for m in route_re.finditer(text):
-                  v=m.group(0)
-                  if 2 < len(v) < 1200: vals.append(v)
+              for m in string_re.finditer(text):
+                  v=m.group(2)
+                  if any(k.lower() in v.lower() for k in ['sync','verify','account','character','websocket','relay','friend','permission','game','uid']): vals.append(v)
               for v in sorted(set(vals)):
-                  print(v)
+                  print(v[:500])
           PY
