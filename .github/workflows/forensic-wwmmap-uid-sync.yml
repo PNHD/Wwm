@@ -14,67 +14,64 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect known public account/sync chunks
+      - name: Trace live map resources without submitting sync
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/js
-          cat > /tmp/urls.txt <<'EOF'
-          https://wwmmap.pages.dev/_next/static/chunks/webpack-13d62129456919ae.js
-          https://wwmmap.pages.dev/_next/static/chunks/4bd1b696-5ffdbe56c628066e.js
-          https://wwmmap.pages.dev/_next/static/chunks/684-c3b85c27fbd4aaf2.js
-          https://wwmmap.pages.dev/_next/static/chunks/main-app-cabc221b30dd0654.js
-          https://wwmmap.pages.dev/_next/static/chunks/410-38b2e2e51445fb2c.js
-          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/(user)/account/page-bd0688e039586979.js
-          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/(user)/layout-ea5b9e1fed70d492.js
-          https://wwmmap.pages.dev/_next/static/chunks/app/(root)/layout-d796379445f0d325.js
-          EOF
-          i=0
-          while IFS= read -r url; do
-            out="/tmp/js/$(printf '%03d' "$i").js"
-            status="$(curl --silent --show-error --location --output "$out" --write-out '%{http_code}' "$url" || true)"
-            echo "FETCH $(basename "$out") HTTP $status BYTES $(wc -c < "$out" 2>/dev/null || echo 0) $url"
-            i=$((i+1))
-          done < /tmp/urls.txt
-
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/trace.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          const fs=require('fs');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:1440,height:900}});
+            const resources=[]; const js=[];
+            page.on('request',r=>resources.push(`${r.method()} ${r.resourceType()} ${r.url()}`));
+            page.on('response',async r=>{
+              const u=r.url();
+              if(/\.js(?:\?|$)|_next\/static\/chunks/i.test(u)){
+                try{const body=await r.text(); if(body.length>200 && !/^\s*<!doctype html/i.test(body)) js.push({u,body});}catch{}
+              }
+            });
+            page.on('console',m=>console.log('CONSOLE',m.type(),m.text()));
+            page.on('pageerror',e=>console.log('PAGEERROR',e.message));
+            let resp=await page.goto('https://wwmmap.pages.dev/map',{waitUntil:'domcontentloaded',timeout:60000}).catch(e=>null);
+            console.log('NAV',resp?.status(),page.url());
+            await page.waitForTimeout(10000);
+            console.log('TITLE',await page.title());
+            console.log('BODY',JSON.stringify((await page.locator('body').innerText().catch(()=>'' )).slice(0,10000)));
+            const buttons=await page.locator('button').evaluateAll(bs=>bs.map((b,i)=>({i,text:(b.innerText||'').trim(),id:b.id,cls:b.className})).filter(x=>x.text||x.id));
+            const inputs=await page.locator('input').evaluateAll(xs=>xs.map((x,i)=>({i,type:x.type,id:x.id,name:x.name,placeholder:x.placeholder,autocomplete:x.autocomplete}))); 
+            console.log('BUTTONS',JSON.stringify(buttons));
+            console.log('INPUTS',JSON.stringify(inputs));
+            console.log('RESOURCES_BEGIN'); for(const x of [...new Set(resources)])console.log(x); console.log('RESOURCES_END');
+            for(let i=0;i<js.length;i++)fs.writeFileSync(`/tmp/live-${i}.js`,js[i].body);
+            console.log('JS_CAPTURED',js.length); js.forEach((x,i)=>console.log('JS_URL',i,x.u,'BYTES',x.body.length));
+            await browser.close();
+          })().catch(e=>{console.error('FATAL',e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/trace.cjs
+          echo '=== CAPTURED JS SYNC CONTEXT ==='
           python - <<'PY'
           from pathlib import Path
           import re
-          strong=[
-            'sync.wwm-map.com','9521','receiver_msg_privilege','friend_only_restriction','sync_success',
-            'start_game_sync','stop_game_sync','game_sync','gameauth','verify','verification','link character',
-            'Account ID','WebSocket URL','Relay Servers','This Machine','Hawk Sync',
-            'new WebSocket','onmessage','send(JSON.stringify','confirmation timed out','only accept messages from friends'
-          ]
-          weak=['accountId','account_id','uid','roleId','role_id','characterId','character_id','position','coordinates','marker','finished','completion','permission','confirm']
-          route_re=re.compile(r'(?:(?:https?|wss?)://[^"\'`<>\\\s)]+|/[A-Za-z0-9_.~!$&()*+,;=:@%/-]*(?:api|sync|auth|verify|account|game|character|relay|ws)[A-Za-z0-9_.~!$&()*+,;=:@%/?-]*)',re.I)
-          string_re=re.compile(r'(["\'])(.{1,180}?)\1')
-          for p in sorted(Path('/tmp/js').glob('*.js')):
-              text=p.read_text('utf-8',errors='ignore')
-              low=text.lower()
-              hits=[n for n in strong if n.lower() in low]
+          terms=['sync.wwm-map.com','receiver_msg_privilege','friend_only_restriction','sync_success','start_game_sync','gameauth','hawk sync','websocket url','account id','verify','verification','uid','confirmation timed out','only accept messages from friends']
+          for p in sorted(Path('/tmp').glob('live-*.js')):
+              t=p.read_text('utf-8',errors='ignore'); low=t.lower(); hits=[x for x in terms if x in low]
               if not hits: continue
-              print(f'\n===== FILE {p.name} BYTES {len(text.encode())} STRONG {hits} =====')
+              print('\nFILE',p.name,'BYTES',len(t.encode()),'HITS',hits)
               centers=[]
-              for n in hits:
-                  pos=0; count=0
-                  while count<15:
-                      at=low.find(n.lower(),pos)
-                      if at<0: break
-                      if not any(abs(at-x)<2200 for x in centers):
-                          centers.append(at)
-                          lo=max(0,at-4500); hi=min(len(text),at+10500)
-                          print(f'\n--- {n} @{at} ---')
-                          print(text[lo:hi].replace('\n',' ')[:15500])
-                      pos=at+len(n); count+=1
-              print('\n--- ROUTES/URLS ---')
-              for v in sorted(set(m.group(0) for m in route_re.finditer(text))):
-                  if len(v)<1000: print(v)
-              print('\n--- RELEVANT STRING LITERALS ---')
-              vals=[]
-              for m in string_re.finditer(text):
-                  v=m.group(2)
-                  if any(k.lower() in v.lower() for k in ['sync','verify','account','character','websocket','relay','friend','permission','game','uid']): vals.append(v)
-              for v in sorted(set(vals)):
-                  print(v[:500])
+              for term in hits:
+                  pos=0
+                  while True:
+                      i=low.find(term,pos)
+                      if i<0: break
+                      if not any(abs(i-c)<2500 for c in centers):
+                          centers.append(i); print('\n---',term,'@',i,'---'); print(t[max(0,i-3500):min(len(t),i+8500)].replace('\n',' ')[:12500])
+                      pos=i+len(term)
+              urls=sorted(set(re.findall(r'(?:https?|wss?)://[^"\'`<>\\\s)]+',t)))
+              for u in urls:
+                  if any(k in u.lower() for k in ['wwm','sync','game','api','relay']):print('URL',u[:1000])
           PY
