@@ -89,7 +89,7 @@ jobs:
           fetch() {
             local path="$1" output="$2"
             echo "SMOKE fetch ${path}"
-            curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-time 45 "${base_url}${path}" -o "$output"
+            curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-time 60 "${base_url}${path}" -o "$output"
             test -s "$output" || { echo "Empty response for ${path}" >&2; exit 1; }
           }
           assert_contains() {
@@ -105,12 +105,14 @@ jobs:
           fetch "/bootstrap.mjs" /tmp/bootstrap.mjs
           fetch "/manifest.webmanifest" /tmp/manifest.webmanifest
           fetch "/api/sync/relay-servers" /tmp/relays.json
+          fetch "/api/map/markers" /tmp/markers.json
 
           assert_contains /tmp/root.html 'WWM Atlas — Auto Sync Map' 'root title'
           assert_contains /tmp/map.html 'WWM Atlas — Auto Sync Map' 'map title'
           assert_contains /tmp/app.js '/api/sync/gameauth' 'sync client'
           node -e "JSON.parse(require('fs').readFileSync('/tmp/manifest.webmanifest','utf8')); console.log('SMOKE PASS manifest JSON')"
           node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/relays.json','utf8')); if(!Array.isArray(x.servers)||!x.servers.length){console.error(x);process.exit(1)}; console.log('SMOKE PASS relay registry', x.servers.length)"
+          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/markers.json','utf8')); if(!Array.isArray(x.markers)||x.markers.length<15000){console.error('marker count',x.markers?.length);process.exit(1)}; console.log('SMOKE PASS marker dataset',x.markers.length)"
 
           echo 'SMOKE POST invalid auth payload'
           status="$(curl --silent --show-error --output /tmp/auth-invalid.json --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$base_url/api/sync/gameauth")"
