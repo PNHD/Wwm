@@ -4,7 +4,7 @@ M0 freezes the frontend-facing shape before any upstream importer is written.
 
 ## Region registry
 
-`data/regions.json` contains stable region IDs and the assets needed to render a region.
+`data/regions.json` is a versioned registry object with a `regions` array containing stable region IDs and the assets needed to render a region. `data/categories.json` follows the same pattern with a `categories` array.
 
 Required fields:
 
@@ -46,13 +46,17 @@ The frontend must never depend on a third-party upstream schema directly. An imp
 
 ## Progress contract
 
-Browser progress uses localStorage key `wwm-map-progress:v1`:
+Browser state uses localStorage key `wwm-atlas-state:v2`:
 
 ```json
 {
-  "schemaVersion": 1,
-  "completedIds": ["qinghe-chest-000123"]
+  "schemaVersion": 2,
+  "lang": "vi",
+  "activeSource": "personal",
+  "notes": "",
+  "completedIds": ["qinghe-chest-000123"],
+  "hideCompleted": false
 }
 ```
 
-Export files add `exportedAt`. Completion is keyed only by normalized POI ID, so a future backend sync can reuse the same identifier without changing the UI.
+Imported user GeoJSON is stored separately under `wwm-atlas-dataset:v1`. Export files add `exportedAt`. Completion is keyed only by normalized POI ID, so a future backend sync can reuse the same identifier without changing the UI.

@@ -1,4 +1,5 @@
 /*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob:; connect-src 'self' https://unpkg.com; frame-src https://www.wherewindsmeetgame.com https://*.wherewindsmeetgame.com https://map.17173.com https://*.17173.com https://mapgenie.io https://*.mapgenie.io; worker-src 'self' blob:; manifest-src 'self';
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
