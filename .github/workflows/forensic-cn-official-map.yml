@@ -1,4 +1,4 @@
-name: Find Official Data Tool Session Contract
+name: Locate Official Data Tool Access Token
 
 on:
   push:
@@ -12,25 +12,17 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract token storage and SSO request contract
+      - name: Find token state implementation
         shell: bash
         run: |
           set -euo pipefail
-          src='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/index-67f2100d.js'
-          curl --fail --silent --show-error --location "$src" -o /tmp/i.js
+          curl --fail --silent --show-error --location 'https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/index-67f2100d.js' -o /tmp/i.js
           python - <<'PY'
           from pathlib import Path
           import re
           t=Path('/tmp/i.js').read_text('utf-8',errors='ignore')
-          for term in ['updateToken(e)','updateToken(t.data)','token:', 'access_token', 'VueBase.cookie', 'cookie.get', 'cookie.set', '/sso/ticket', 'h72na_map']:
-              print('\nTERM',term)
-              pos=0
-              while True:
-                  i=t.find(term,pos)
-                  if i<0: break
-                  print(t[max(0,i-900):min(len(t),i+2300)].replace('\n',' ')[:3200])
-                  pos=i+len(term)
-                  if pos>i+len(term) and pos>0: break
-          keys=sorted(set(re.findall(r'["\']([A-Za-z0-9_:-]{3,60}(?:token|Token|access|login)[A-Za-z0-9_:-]{0,30})["\']',t)))
-          print('\nKEYS',keys[:120])
+          for pat in [r'updateToken\s*\([^)]*\)\s*\{',r'token\s*:\s*[^,]{1,250}',r'localStorage\.getItem\([^)]{0,120}\)',r'localStorage\.setItem\([^)]{0,180}\)',r'cookie\.get\([^)]{0,120}\)',r'cookie\.set\([^)]{0,180}\)']:
+              print('\nPATTERN',pat)
+              for m in list(re.finditer(pat,t))[:15]:
+                  i=m.start();print(t[max(0,i-500):min(len(t),i+1200)].replace('\n',' ')[:1700])
           PY
