@@ -29,8 +29,8 @@ jobs:
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const page=await browser.newPage({viewport:{width:1440,height:900}});
             const bad=[];
-            page.on('response',async r=>{if(r.status()>=400){let body='';try{body=(await r.text()).slice(0,500)}catch{};const x={status:r.status(),url:r.url(),body};bad.push(x);console.log('HTTP_ERROR',JSON.stringify(x));}});
-            page.on('request',r=>{const u=r.url();if(/mpsdk|mpay|oauth|login|device|urs/i.test(u))console.log('AUTH_REQUEST',r.method(),u,(r.postData()||'').slice(0,1200));});
+            page.on('response',async r=>{if(r.status()>=400){let body='';try{body=(await r.text()).slice(0,700)}catch{};const x={status:r.status(),url:r.url(),body};bad.push(x);console.log('HTTP_ERROR',JSON.stringify(x));}});
+            page.on('request',r=>{const u=r.url();if(/mpsdk|mpay|oauth|login|device|urs|sdk-os/i.test(u))console.log('AUTH_REQUEST',r.method(),u,(r.postData()||'').slice(0,1500));});
             page.on('pageerror',e=>console.log('PAGEERROR_DETAIL',JSON.stringify({name:e?.name,message:e?.message,stack:e?.stack,string:String(e)})));
             page.on('console',m=>console.log('CONSOLE',m.type(),m.text()));
             const r=await page.goto(process.env.URL,{waitUntil:'domcontentloaded',timeout:60000});
@@ -40,10 +40,9 @@ jobs:
             await page.click('#loginButton');
             for(const wait of [1000,3000,8000,15000]){
               await page.waitForTimeout(wait===1000?1000:wait-([1000,3000,8000,15000][[1000,3000,8000,15000].indexOf(wait)-1]||0));
-              console.log('DOM_AFTER',wait,JSON.stringify(await page.evaluate(()=>({status:document.querySelector('#authStatus')?.textContent||'',ids:[...document.querySelectorAll('[id*="mosdk"],[class*="mosdk"],iframe')].slice(0,80).map(x=>({tag:x.tagName,id:x.id,cls:typeof x.className==='string'?x.className:'',src:x.src||'',text:(x.textContent||'').trim().slice(0,100)})),bodyText:document.body.innerText.slice(0,1500)}))));
+              console.log('DOM_AFTER',wait,JSON.stringify(await page.evaluate(()=>({status:document.querySelector('#authStatus')?.textContent||'',ids:[...document.querySelectorAll('[id*="mosdk"],[class*="mosdk"],iframe')].slice(0,100).map(x=>({tag:x.tagName,id:x.id,cls:typeof x.className==='string'?x.className:'',src:x.src||'',text:(x.textContent||'').trim().slice(0,160)})),bodyText:document.body.innerText.slice(0,1800)}))));
             }
             console.log('BAD_RESPONSES',JSON.stringify(bad));
-            await page.screenshot({path:'/tmp/login-diagnostic.png',fullPage:true});
             await browser.close();
           })().catch(e=>{console.error('FATAL',e);process.exit(1)});
           NODE
