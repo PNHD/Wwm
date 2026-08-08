@@ -22,7 +22,7 @@ jobs:
           node --check app.js
           node --check sw.js
           python - <<'PY'
-          import json
+          import json,re
           from html.parser import HTMLParser
           from pathlib import Path
           manifest=json.loads(Path('manifest.webmanifest').read_text(encoding='utf-8'))
@@ -35,7 +35,8 @@ jobs:
           assert 'id="syncButton"' in html
           assert 'id="languageSelect"' in html
           assert 'leaflet@1.9.4' in html
-          assert 'input type="password"' not in html
+          assert not re.search(r'<input[^>]+type=["\']password["\']',html,re.I)
+          assert 'syncPassword' not in html
           print('runtime structure valid')
           PY
 
@@ -48,10 +49,6 @@ jobs:
           grep -F "syncBlocked" app.js
           if grep -RInE 'MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/api/auth/ursRoles|/api/auth/ursLogin|h72_map_accessToken|wwmmap\.pages\.dev|/service/gameauth|/service/call_client_method|start_game_sync|sangtacvietcdn|stv-appdomain|MapGenie|mapgenie|17173|localhost:63333|GET_GAME_STATE' index.html app.js sw.js manifest.webmanifest; then
             echo 'Retired or private sync dependency leaked into active runtime.' >&2
-            exit 1
-          fi
-          if grep -RInE '<input[^>]+type=["'"']password|name=["'"']syncPassword' index.html; then
-            echo 'Password credential control leaked into WWMSync.' >&2
             exit 1
           fi
 
