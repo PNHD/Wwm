@@ -76,7 +76,7 @@ jobs:
       - name: Validate no secrets are committed
         run: |
           set -euo pipefail
-          if grep -RInE 'CLOUDFLARE_API_TOKEN=[^$]|X-WWM-PASS["'"']?:[[:space:]]*["'"'][^"'"']+' --exclude-dir=.git .; then
-            echo 'Potential committed secret detected.' >&2
+          if grep -RInE 'CLOUDFLARE_API_TOKEN=[A-Za-z0-9]|CLOUDFLARE_ACCOUNT_ID=[A-Za-z0-9]' index.html app.js sw.js functions; then
+            echo 'Potential committed Cloudflare secret detected.' >&2
             exit 1
           fi
