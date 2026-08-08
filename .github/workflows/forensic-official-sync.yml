@@ -1,4 +1,4 @@
-name: Probe Official WWM API
+name: Inspect Official Mpay SDK
 
 on:
   push:
@@ -10,54 +10,58 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
-      - name: Probe public official map API and CORS
+      - name: Inspect public SDK transport and config
         shell: bash
         run: |
           set -euo pipefail
-          base='https://s2.easebar.com/39f12eda6b86452b'
-          origin='https://wwm-atlas-pnhd.pages.dev'
-          : > probe.txt
-          probe_get() {
-            local path="$1"
-            echo "=== GET $path ===" >> probe.txt
-            curl --silent --show-error --location --compressed -D - "$base$path" -o /tmp/body >> probe.txt || true
-            echo '--- BODY ---' >> probe.txt
-            head -c 12000 /tmp/body >> probe.txt || true
-            echo >> probe.txt
-          }
-          probe_options() {
-            local path="$1" method="$2" headers="$3"
-            echo "=== OPTIONS $path ===" >> probe.txt
-            curl --silent --show-error -X OPTIONS -D - \
-              -H "Origin: $origin" \
-              -H "Access-Control-Request-Method: $method" \
-              -H "Access-Control-Request-Headers: $headers" \
-              "$base$path" -o /tmp/options >> probe.txt || true
-            echo '--- BODY ---' >> probe.txt
-            head -c 4000 /tmp/options >> probe.txt || true
-            echo >> probe.txt
-          }
-          probe_get '/api/map/list?lang=en-US'
-          probe_get '/api/map/points?mapId=1&lang=en-US'
-          probe_options '/api/map/list' GET 'accept-language'
-          probe_options '/api/auth/ursRoles' POST 'content-type'
-          echo '=== POST ursRoles invalid fixture ===' >> probe.txt
-          curl --silent --show-error --location --compressed -D - \
-            -H 'content-type: application/json' \
-            --data '{"loginChannel":"netease_global","appChannel":"netease_global.h5activity","platform":"web","sdkuid":"0","sessionid":"invalid","sdkVersion":"1.0.0","udid":"00000000-0000-4000-8000-000000000000","deviceid":"0","access_token":""}' \
-            "$base/api/auth/ursRoles" -o /tmp/roles >> probe.txt || true
-          echo '--- BODY ---' >> probe.txt
-          head -c 8000 /tmp/roles >> probe.txt || true
-          echo >> probe.txt
+          sdk='https://sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js'
+          curl --fail --silent --show-error --location --compressed "$sdk" -o mpay.js
+          python - <<'PY' > mpay-transport.txt
+          from pathlib import Path
+          import re
+          text=Path('mpay.js').read_text('utf-8',errors='ignore')
+          print('BYTES',len(text.encode()))
+          terms=[
+            'https://sdk-os.mpsdk.easebar.com',
+            '/api/devices/init',
+            '/api/users/login/v2/oauth/config',
+            'baseURL','baseUrl','apiBase','apiHost','host','domain','server',
+            'showLogin','gameRedirectUrl','redirectUrl','redirect_uri','callback',
+            'fetch(','XMLHttpRequest','axios','credentials','withCredentials',
+            'iframe','postMessage','window.open','location.href','oauth'
+          ]
+          for term in terms:
+            start=0; count=0
+            while True:
+              i=text.lower().find(term.lower(),start)
+              if i<0 or count>=40: break
+              lo=max(0,i-3200); hi=min(len(text),i+7800)
+              print(f'\n=== {term} @ {i} ===')
+              print(text[lo:hi])
+              start=i+len(term); count+=1
+          print('\n=== URL LITERALS ===')
+          for u in sorted(set(re.findall(r'https?://[^\"\'<>\\\s)]+',text))):
+            if any(k in u.lower() for k in ['mpsdk','easebar','netease','oauth','login','passport','account']):
+              print(u[:1500])
+          print('\n=== CONFIG-LIKE STRING KEYS ===')
+          strings=sorted(set(m.group(2) for m in re.finditer(r'(["\'])([A-Za-z_$][A-Za-z0-9_$.-]{2,80})\1',text)))
+          for s in strings:
+            low=s.lower()
+            if any(k in low for k in ['url','host','domain','base','redirect','callback','oauth','login','api','origin','channel']):
+              print(s)
+          PY
+          sha256sum mpay.js > mpay.sha256
 
-      - name: Upload probe
+      - name: Upload textual SDK evidence
         uses: actions/upload-artifact@v4
         with:
-          name: official-api-probe
-          path: probe.txt
+          name: mpay-sdk-transport
+          path: |
+            mpay-transport.txt
+            mpay.sha256
           if-no-files-found: error
           retention-days: 1
