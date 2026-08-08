@@ -119,10 +119,10 @@ jobs:
           fetch "/?source=official" /tmp/official.html
           fetch "/?source=personal" /tmp/personal.html
 
-          grep -q '<title>WWM Atlas</title>' /tmp/root.html
-          grep -q '<title>WWM Atlas</title>' /tmp/map.html
-          grep -q '<title>WWM Atlas</title>' /tmp/official.html
-          grep -q '<title>WWM Atlas</title>' /tmp/personal.html
+          grep -q '<title>WWM Atlas' /tmp/root.html
+          grep -q '<title>WWM Atlas' /tmp/map.html
+          grep -q '<title>WWM Atlas' /tmp/official.html
+          grep -q '<title>WWM Atlas' /tmp/personal.html
           test -s /tmp/styles.css
           test -s /tmp/app.js
           test -s /tmp/bootstrap.mjs
