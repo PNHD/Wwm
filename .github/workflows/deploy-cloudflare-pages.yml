@@ -85,3 +85,49 @@ jobs:
             --branch "$PRODUCTION_BRANCH" \
             --commit-hash "$GITHUB_SHA" \
             --commit-message "WWM Atlas ${GITHUB_SHA::7}"
+
+      - name: Smoke test production
+        run: |
+          set -euo pipefail
+          base_url="https://${CLOUDFLARE_PROJECT_NAME}.pages.dev"
+
+          fetch() {
+            local path="$1"
+            local output="$2"
+            curl --fail --silent --show-error --location \
+              --retry 12 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              "${base_url}${path}" -o "$output"
+          }
+
+          fetch "/" /tmp/root.html
+          fetch "/map" /tmp/map.html
+          fetch "/styles.css" /tmp/styles.css
+          fetch "/app.js" /tmp/app.js
+          fetch "/bootstrap.mjs" /tmp/bootstrap.mjs
+          fetch "/manifest.webmanifest" /tmp/manifest.webmanifest
+          fetch "/data/sources.json" /tmp/sources.json
+          fetch "/?source=official" /tmp/official.html
+          fetch "/?source=personal" /tmp/personal.html
+
+          grep -q '<title>WWM Atlas</title>' /tmp/root.html
+          grep -q '<title>WWM Atlas</title>' /tmp/map.html
+          grep -q '<title>WWM Atlas</title>' /tmp/official.html
+          grep -q '<title>WWM Atlas</title>' /tmp/personal.html
+          test -s /tmp/styles.css
+          test -s /tmp/app.js
+          test -s /tmp/bootstrap.mjs
+
+          node -e "JSON.parse(require('fs').readFileSync('/tmp/manifest.webmanifest','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('/tmp/sources.json','utf8'))"
+
+          curl --fail --silent --show-error --location --head \
+            --retry 12 --retry-delay 5 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "$base_url/" > /tmp/root.headers
+
+          grep -qi '^x-content-type-options: nosniff' /tmp/root.headers
+          grep -qi '^referrer-policy: strict-origin-when-cross-origin' /tmp/root.headers
+          grep -qi '^permissions-policy: camera=(), microphone=(), geolocation=()' /tmp/root.headers
+
+          echo "Production smoke test passed: $base_url"
