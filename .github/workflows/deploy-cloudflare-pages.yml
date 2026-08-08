@@ -43,6 +43,20 @@ jobs:
               print('valid', path)
           PY
 
+      - name: Prepare static bundle
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          cp index.html styles.css app.js bootstrap.mjs sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp -R assets data dist/
+          test -f dist/index.html
+          test -f dist/data/sources.json
+          if find dist -type f -path '*/.github/*' | grep -q .; then
+            echo 'Internal GitHub files leaked into dist.' >&2
+            exit 1
+          fi
+
       - name: Ensure Pages project exists
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -66,7 +80,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@latest pages deploy . \
+          npx --yes wrangler@latest pages deploy dist \
             --project-name "$CLOUDFLARE_PROJECT_NAME" \
             --branch "$PRODUCTION_BRANCH" \
             --commit-hash "$GITHUB_SHA" \
