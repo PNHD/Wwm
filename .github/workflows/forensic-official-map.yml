@@ -18,125 +18,111 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deep probe official CN and Global map surfaces
+      - name: Probe public Global backend and sync code
         shell: bash
         run: |
           python - <<'PY'
-          import json, re, ssl, urllib.request, urllib.error
+          import json, re, ssl, urllib.request, urllib.error, urllib.parse
           from pathlib import Path
 
-          UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
-          ctx = ssl.create_default_context()
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
+          BASE="https://s2.easebar.com/39f12eda6b86452b"
+          JS="https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js"
+          ctx=ssl.create_default_context()
 
-          ASSETS = {
-            "global_pc": "https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js",
-            "global_common": "https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js",
-            "cn_yysls": "https://g.166.net/res/a19/p__g__yysls.8e3f9c6a.async.js",
-            "cn_umi": "https://g.166.net/res/a19/umi.e9951072.js",
-            "cn_vendor": "https://g.166.net/res/a19/chunk-vendors.9e331439.js",
-            "cn_runtime": "https://g.166.net/res/a19/runtime~umi.683df681.js",
-          }
-
-          GLOBAL_GETS = [
-            "https://www.wherewindsmeetgame.com/api/map/list",
-            "https://www.wherewindsmeetgame.com/api/map/points",
-            "https://www.wherewindsmeetgame.com/api/map/point",
-          ]
-
-          def fetch(url, max_bytes=12_000_000):
-              req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"}, method="GET")
+          def get(url, headers=None, max_bytes=8_000_000):
+              h={"User-Agent":UA,"Accept":"application/json,text/plain,*/*","Accept-Language":"en-US"}
+              if headers: h.update(headers)
+              req=urllib.request.Request(url,headers=h,method="GET")
               try:
-                  with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
-                      data = r.read(max_bytes + 1)
-                      return {"status": getattr(r, "status", 200), "final_url": r.geturl(), "headers": dict(r.headers.items()), "body": data[:max_bytes], "truncated": len(data) > max_bytes}
+                  with urllib.request.urlopen(req,timeout=30,context=ctx) as r:
+                      b=r.read(max_bytes+1)
+                      return {"status":getattr(r,"status",200),"url":r.geturl(),"headers":dict(r.headers.items()),"body":b[:max_bytes]}
               except urllib.error.HTTPError as e:
-                  data = e.read(max_bytes + 1)
-                  return {"status": e.code, "final_url": e.geturl(), "headers": dict(e.headers.items()), "body": data[:max_bytes], "truncated": len(data) > max_bytes}
+                  b=e.read(max_bytes+1)
+                  return {"status":e.code,"url":e.geturl(),"headers":dict(e.headers.items()),"body":b[:max_bytes]}
 
-          report = {"assets": {}, "contexts": {}, "global_gets": []}
-          texts = {}
-          for name, url in ASSETS.items():
-              try:
-                  r = fetch(url)
-                  text = r["body"].decode("utf-8", "replace")
-                  texts[name] = text
-                  report["assets"][name] = {"url": url, "status": r["status"], "bytes": len(r["body"]), "truncated": r["truncated"], "content_type": r["headers"].get("Content-Type")}
-              except Exception as e:
-                  report["assets"][name] = {"url": url, "error": f"{type(e).__name__}: {e}"}
+          def dec(r): return r["body"].decode("utf-8","replace")
+          def probe(path, params=None):
+              u=BASE+path
+              if params: u += "?"+urllib.parse.urlencode(params)
+              r=get(u,max_bytes=3_000_000)
+              text=dec(r)
+              try: data=json.loads(text)
+              except Exception: data=None
+              return {"request_url":u,"status":r["status"],"content_type":r["headers"].get("Content-Type"),"cors":r["headers"].get("Access-Control-Allow-Origin"),"set_cookie":r["headers"].get("Set-Cookie"),"json":data,"body_prefix":None if data is not None else text[:3000]}
 
-          needles = {
-            "global_common": [
-              "/api/map/list", "/api/map/points", "/api/map/point", "/api/map/point/finish", "/api/user/point/finish",
-              "/api/auth/h72naLogin", "/api/auth/ursLogin", "/api/auth/ursRoles", "mapList", "mapPoints", "silentLogin",
-              "Find my location", "Select character", "point_finished", "showPosition", "GAME_NAME", "JF_GAMEID", "CHANNEL_GAME_ID",
-              "ntGameLoginSuccess", "NATIVE_EVENT_HANDLER", "baseURL", "axios.create"
-            ],
-            "global_pc": ["mapList", "mapPoints", "silentLogin", "finished", "Select character", "Find my location"],
-            "cn_yysls": [
-              "地图", "共创", "同步", "宝箱", "位置", "坐标", "PC", "pc", "download", "Download", ".exe", ".zip", ".msi",
-              "yysls", "map", "plugin", "tool", "大神", "一键", "实时", "游戏", "启动", "overlay", "助手"
-            ],
-            "cn_umi": ["yysls", "地图", "download", "map", "plugin", "tool", "sync", "bridge", "native"],
-          }
+          report={"public":[],"derived":{},"api_paths":[],"sync_contexts":{}}
 
-          def contexts(text, needle, radius=520, limit=8):
-              out=[]; start=0
-              while len(out) < limit:
-                  i=text.find(needle, start)
-                  if i < 0: break
-                  lo=max(0, i-radius); hi=min(len(text), i+len(needle)+radius)
-                  out.append(text[lo:hi].replace("\n", " "))
-                  start=i+len(needle)
-              return out
+          # Public read-only calls exactly as official map code uses them.
+          ml=probe("/api/map/list")
+          report["public"].append(ml)
+          maps=[]
+          if isinstance(ml.get("json"),dict):
+              d=ml["json"].get("data")
+              if isinstance(d,dict): maps=d.get("maps") or []
+          report["derived"]["map_ids"]=[m.get("id") for m in maps if isinstance(m,dict)][:30]
 
-          for asset, ns in needles.items():
-              text = texts.get(asset, "")
-              report["contexts"][asset] = {}
-              for n in ns:
-                  c = contexts(text, n)
-                  if c: report["contexts"][asset][n] = c
+          chosen=report["derived"]["map_ids"][0] if report["derived"]["map_ids"] else 1
+          mp=probe("/api/map/points",{"mapId":chosen})
+          report["public"].append(mp)
 
-          # Extract absolute URLs and API-like paths from the CN game page bundle.
-          cn = texts.get("cn_yysls", "")
-          abs_urls = sorted(set(re.findall(r'https?://[^"\'<>\\\s]{4,260}', cn)))
-          path_like = sorted(set(re.findall(r'/(?:api|activity|act|map|maps|game|tool|download|client|pc|yysls)[A-Za-z0-9_?&=./:%+\-]{1,240}', cn, re.I)))
-          report["cn_urls"] = abs_urls[:500]
-          report["cn_paths"] = path_like[:500]
+          # Derive one point id without mutating anything.
+          point_id=None
+          pdata=mp.get("json",{}).get("data") if isinstance(mp.get("json"),dict) else None
+          cats=pdata.get("categories",[]) if isinstance(pdata,dict) else []
+          for cat in cats:
+              for child in (cat.get("childCategories",[]) if isinstance(cat,dict) else []):
+                  pts=child.get("pointList",[]) if isinstance(child,dict) else []
+                  if pts:
+                      point_id=pts[0].get("id"); break
+              if point_id is not None: break
+          report["derived"]["point_id"]=point_id
+          if point_id is not None:
+              report["public"].append(probe("/api/map/point",{"pointId":point_id}))
+          report["public"].append(probe("/api/user/info"))
 
-          # Read-only GET probes only. Never call finish/login mutation endpoints.
-          for url in GLOBAL_GETS:
-              try:
-                  r = fetch(url, 300_000)
-                  body = r["body"].decode("utf-8", "replace")
-                  report["global_gets"].append({"url": url, "status": r["status"], "content_type": r["headers"].get("Content-Type"), "allow_origin": r["headers"].get("Access-Control-Allow-Origin"), "body_prefix": body[:5000]})
-              except Exception as e:
-                  report["global_gets"].append({"url": url, "error": f"{type(e).__name__}: {e}"})
+          # Enumerate API routes from the official JS and preserve exact nearby code for sync/auth behavior.
+          jr=get(JS,max_bytes=4_000_000); text=dec(jr)
+          report["api_paths"]=sorted(set(re.findall(r'/api/[A-Za-z0-9_?&=./:%+\\-]{2,120}',text)))
 
-          Path("forensic-deep-summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          needles=[
+              "async fetchRolesAndLogin", "async loginWithRole", "h72naSsoLogin", "updateToken(", "updateUserinfo(",
+              "h72_map_accessToken", "/api/user/info", "/api/user/point/finish", "finished:", "point_finished",
+              "roleList", "sauthParams", "SAUTH_JSON", "gameDataFailed", "Failed to Load Game Data", "sync", "Sync",
+              "ntGameLoginSuccess", "ntUploadUserInfo", "USERINFO_ROLE", "GAME_NAME", "h72na"
+          ]
+          for n in needles:
+              arr=[]; pos=0
+              while len(arr)<12:
+                  i=text.find(n,pos)
+                  if i<0: break
+                  arr.append(text[max(0,i-900):min(len(text),i+len(n)+1400)].replace("\n"," "))
+                  pos=i+len(n)
+              if arr: report["sync_contexts"][n]=arr
 
-          print("=== ASSET STATUS ===")
-          for k,v in report["assets"].items(): print(k, json.dumps(v, ensure_ascii=False))
-          print("=== GLOBAL READ-ONLY GETS ===")
-          for v in report["global_gets"]: print(json.dumps(v, ensure_ascii=False))
-          print("=== GLOBAL CONTEXTS ===")
-          for asset in ("global_common", "global_pc"):
-              for needle, arr in report["contexts"].get(asset, {}).items():
-                  print(f"--- {asset} :: {needle} :: {len(arr)}")
-                  for s in arr[:4]: print(s)
-          print("=== CN YYSLS CONTEXTS ===")
-          for needle, arr in report["contexts"].get("cn_yysls", {}).items():
-              print(f"--- cn_yysls :: {needle} :: {len(arr)}")
-              for s in arr[:5]: print(s)
-          print("=== CN URLS ===")
-          for u in report.get("cn_urls", []): print(u)
-          print("=== CN PATHS ===")
-          for p in report.get("cn_paths", []): print(p)
+          Path("global-backend-sync.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+          print("=== PUBLIC RESPONSES ===")
+          for p in report["public"]:
+              q=dict(p)
+              if q.get("json") is not None:
+                  raw=json.dumps(q["json"],ensure_ascii=False)
+                  q["json_summary"]={"chars":len(raw),"prefix":raw[:12000]}; del q["json"]
+              print(json.dumps(q,ensure_ascii=False))
+          print("=== DERIVED ===")
+          print(json.dumps(report["derived"],ensure_ascii=False))
+          print("=== API PATHS ===")
+          for p in report["api_paths"]: print(p)
+          print("=== SYNC CONTEXTS ===")
+          for n,arr in report["sync_contexts"].items():
+              print("---",n,"::",len(arr))
+              for s in arr[:6]: print(s)
           PY
 
-      - name: Upload deep forensic summary
+      - name: Upload backend sync summary
         uses: actions/upload-artifact@v4
         with:
-          name: official-map-forensic-deep-summary
-          path: forensic-deep-summary.json
+          name: global-backend-sync-summary
+          path: global-backend-sync.json
           if-no-files-found: error
           retention-days: 7
