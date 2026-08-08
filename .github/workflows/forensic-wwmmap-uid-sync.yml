@@ -14,64 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect binding instructions and public service health safely
+      - uses: actions/checkout@v4
+      - name: Print current map-only implementation contexts
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location 'https://wwmmap.pages.dev/data/locales_2026.json5' -o /tmp/locales.json5
           python - <<'PY'
           from pathlib import Path
-          import re
-          t=Path('/tmp/locales.json5').read_text('utf-8',errors='ignore')
-          keys=['BIND_INTRO','BIND_STEP1','BIND_STEP2','BIND_STEP3','BIND_STEP4','PERMISSION_HELP_NOT_BOUND','PERMISSION_HELP_BOUND','SYNC_TIMEOUT_LEAD','SYNC_TIMEOUT_TIP1','SYNC_TIMEOUT_TIP2','CHARACTER_UID','UID_PLACEHOLDER']
-          for k in keys:
-              for m in re.finditer(re.escape(k),t):
-                  lo=max(0,m.start()-180); hi=min(len(t),m.start()+900)
-                  print('\nLOCALE',k, t[lo:hi].replace('\n',' ')[:1100])
-                  break
-          PY
-
-          echo '=== RELAY SERVERS ==='
-          status="$(curl --silent --show-error --location --output /tmp/relays.json --write-out '%{http_code}' 'https://wwmmap.pages.dev/service/relay_servers' || true)"
-          echo "relay_servers HTTP $status"
-          python - <<'PY'
-          import json
-          try:
-              x=json.load(open('/tmp/relays.json'))
-              out={'keys':list(x)[:20] if isinstance(x,dict) else [],'servers':[]}
-              for s in (x.get('servers') or [])[:10]:
-                  out['servers'].append({k:s.get(k) for k in ['id','name','location','webSocketDomain','alternateDomains'] if k in s})
-              print(json.dumps(out,ensure_ascii=False))
-          except Exception as e: print('relay parse failed',e)
-          PY
-
-          echo '=== INVALID UID PROBE (cannot target a real character) ==='
-          invalid='wwsync-invalid-probe-not-a-game-uid'
-          status="$(curl --silent --show-error --location --output /tmp/auth.json --write-out '%{http_code}' \
-            -H 'content-type: application/json' \
-            --data "{\"playerId\":\"${invalid}\"}" \
-            'https://wwmmap.pages.dev/service/gameauth' || true)"
-          echo "gameauth HTTP $status"
-          python - <<'PY'
-          import json
-          try:
-              x=json.load(open('/tmp/auth.json'))
-              safe={k:x.get(k) for k in ['status','error','message'] if k in x}
-              print(json.dumps(safe,ensure_ascii=False))
-          except Exception as e: print('auth parse failed',e)
-          PY
-
-          echo '=== UNAUTHENTICATED CLIENT METHOD PROBE ==='
-          status="$(curl --silent --show-error --location --output /tmp/call.json --write-out '%{http_code}' \
-            -H 'content-type: application/json' \
-            --data '{"method":"start_game_sync","args":{"connectionKey":"probe0000","relayServerId":"default"}}' \
-            'https://wwmmap.pages.dev/service/call_client_method' || true)"
-          echo "call_client_method HTTP $status"
-          python - <<'PY'
-          import json
-          try:
-              x=json.load(open('/tmp/call.json'))
-              safe={k:x.get(k) for k in ['status','error','message','controlCode'] if k in x}
-              print(json.dumps(safe,ensure_ascii=False))
-          except Exception as e: print('call parse failed',e)
+          t=Path('app.js').read_text('utf-8')
+          terms=['MAP_ASSET_ROOT','function initMap','L.tileLayer','function renderPoints','function renderCategories','function updateProgressUI','async function bootstrap','async function boot','loadActiveMapPoints','function flattenPoints','function pointToLayer']
+          for term in terms:
+              start=0
+              while True:
+                  i=t.find(term,start)
+                  if i<0: break
+                  lo=max(0,i-1800); hi=min(len(t),i+9000)
+                  print('\n===',term,'@',i,'===')
+                  print(t[lo:hi])
+                  start=i+len(term)
+                  if term not in ['MAP_ASSET_ROOT','L.tileLayer']: break
           PY
