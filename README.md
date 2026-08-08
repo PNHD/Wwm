@@ -8,7 +8,7 @@ M0 foundation for a self-owned Where Winds Meet exploration map.
 
 ### Implemented
 
-- MapLibre GL JS map shell with a local image source.
+- MapLibre GL JS v6 ESM map shell with a local image source.
 - Region registry and normalized GeoJSON POI contract.
 - Category filters and search.
 - Marker clustering for large future datasets.

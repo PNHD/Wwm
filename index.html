@@ -67,7 +67,10 @@
     </div>
 
     <noscript>This map requires JavaScript.</noscript>
-    <script src="https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.js"></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module">
+      import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.2.0/dist/maplibre-gl.mjs';
+      window.maplibregl = maplibregl;
+      await import('./app.js');
+    </script>
   </body>
 </html>
