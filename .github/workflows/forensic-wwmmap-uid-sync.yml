@@ -24,19 +24,27 @@ jobs:
           import re
           from urllib.parse import urljoin
           t=Path('/tmp/root.html').read_text('utf-8',errors='ignore')
+          raw=[]
+          raw += re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I)
+          raw += re.findall(r'<link[^>]+href=["\']([^"\']+)',t,re.I)
+          raw += re.findall(r'(/_next/static/[^"\'<>\\\s]+?\.js(?:\?[^"\'<>\\\s]*)?)',t,re.I)
           assets=[]
-          for u in re.findall(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
-              assets.append(urljoin('https://wwmmap.pages.dev/',u))
-          Path('/tmp/assets.txt').write_text('\n'.join(dict.fromkeys(assets)))
-          print('ASSET_COUNT',len(dict.fromkeys(assets)))
+          for u in raw:
+              u=u.replace('\\u0026','&').replace('&amp;','&')
+              full=urljoin('https://wwmmap.pages.dev/',u)
+              if '_next/static/' in full and '.js' in full: assets.append(full)
+          assets=list(dict.fromkeys(assets))
+          Path('/tmp/assets.txt').write_text('\n'.join(assets))
+          print('NEXT_JS_ASSET_COUNT',len(assets))
+          for u in assets: print('ASSET',u)
           PY
           mkdir -p /tmp/js
           i=0
           while IFS= read -r url; do
             [ -n "$url" ] || continue
             out="/tmp/js/$(printf '%03d' "$i").js"
-            curl --silent --show-error --location "$url" -o "$out" || true
-            echo "JS $(basename "$out") $(wc -c < "$out" 2>/dev/null || echo 0) $url"
+            status="$(curl --silent --show-error --location --output "$out" --write-out '%{http_code}' "$url" || true)"
+            echo "JS $(basename "$out") HTTP $status BYTES $(wc -c < "$out" 2>/dev/null || echo 0) $url"
             i=$((i+1))
           done < /tmp/assets.txt
 
@@ -46,33 +54,34 @@ jobs:
           needles=[
             'sync.wwm-map.com','9521','receiver_msg_privilege','friend_only_restriction','sync_success',
             'start_game_sync','stop_game_sync','game_sync','gameauth','verify','verification','link character',
+            'Account ID','WebSocket URL','Relay Servers','This Machine','Hawk Sync',
             'accountId','account_id','uid','roleId','role_id','characterId','character_id',
-            'WebSocket','new WebSocket','messageType','message_type','eventType','event_type',
-            'position','coordinates','marker','finished','completion','progress','permission','confirm'
+            'new WebSocket','onmessage','send(JSON.stringify','messageType','message_type','eventType','event_type',
+            'position','coordinates','marker','finished','completion','progress','permission','confirmation timed out'
           ]
-          api_re=re.compile(r'(?:(?:https?|wss?)://[^"\'`<>\\\s)]+|/[A-Za-z0-9_.~!$&()*+,;=:@%/-]*(?:api|sync|auth|verify|account|game|character|relay|ws)[A-Za-z0-9_.~!$&()*+,;=:@%/?-]*)',re.I)
+          route_re=re.compile(r'(?:(?:https?|wss?)://[^"\'`<>\\\s)]+|/[A-Za-z0-9_.~!$&()*+,;=:@%/-]*(?:api|sync|auth|verify|account|game|character|relay|ws)[A-Za-z0-9_.~!$&()*+,;=:@%/?-]*)',re.I)
           for p in sorted(Path('/tmp/js').glob('*.js')):
               text=p.read_text('utf-8',errors='ignore')
               low=text.lower()
               hits=[n for n in needles if n.lower() in low]
-              if not hits: continue
+              app_hits=[n for n in hits if n not in ['uid','position','progress','permission','messageType']]
+              if not app_hits: continue
               print(f'\n===== FILE {p.name} BYTES {len(text.encode())} HITS {hits} =====')
-              printed=[]
-              for n in hits:
+              intervals=[]
+              for n in app_hits:
                   pos=0; count=0
-                  while count<8:
+                  while count<12:
                       at=low.find(n.lower(),pos)
                       if at<0: break
-                      key=(max(0,at-1800)//500)
-                      if key not in printed:
-                          printed.append(key)
-                          lo=max(0,at-1800); hi=min(len(text),at+4200)
+                      lo=max(0,at-2600); hi=min(len(text),at+6500)
+                      if not any(abs(at-a)<1500 for a in intervals):
+                          intervals.append(at)
                           print(f'\n--- CONTEXT {n} @{at} ---')
-                          print(text[lo:hi].replace('\n',' ')[:6500])
+                          print(text[lo:hi].replace('\n',' ')[:9500])
                       pos=at+len(n); count+=1
               print('\n--- URL_AND_ROUTE_LITERALS ---')
               vals=[]
-              for m in api_re.finditer(text):
+              for m in route_re.finditer(text):
                   v=m.group(0)
                   if 2 < len(v) < 1200: vals.append(v)
               for v in sorted(set(vals)):
