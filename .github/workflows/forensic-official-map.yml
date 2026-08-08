@@ -1,0 +1,145 @@
+name: Forensic Official Map Protocol
+
+on:
+  push:
+    branches:
+      - forensic/wwm-sync-protocol
+    paths:
+      - .github/workflows/forensic-official-map.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Probe official map surfaces
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, re, ssl, urllib.request, urllib.parse, urllib.error
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          TARGETS = [
+              "https://www.wherewindsmeetgame.com/map/en/",
+              "https://www.wherewindsmeetgame.com/map/",
+              "https://ds.163.com/g/yysls",
+              "https://act.ds.163.com/",
+          ]
+          UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
+          ctx = ssl.create_default_context()
+          out = {"targets": [], "assets": [], "findings": []}
+
+          class Assets(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.urls=[]
+              def handle_starttag(self, tag, attrs):
+                  d=dict(attrs)
+                  if tag == "script" and d.get("src"):
+                      self.urls.append(d["src"])
+                  if tag == "link" and d.get("href") and ("javascript" in d.get("as", "") or "script" in d.get("rel", "") or d["href"].split("?",1)[0].endswith((".js", ".mjs"))):
+                      self.urls.append(d["href"])
+
+          def fetch(url, max_bytes=5_000_000):
+              req=urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+              with urllib.request.urlopen(req, timeout=25, context=ctx) as r:
+                  data=r.read(max_bytes+1)
+                  return {
+                      "status": getattr(r, "status", 200),
+                      "final_url": r.geturl(),
+                      "headers": dict(r.headers.items()),
+                      "body": data[:max_bytes],
+                      "truncated": len(data)>max_bytes,
+                  }
+
+          html_assets=[]
+          for url in TARGETS:
+              rec={"url":url}
+              try:
+                  r=fetch(url, 3_000_000)
+                  text=r["body"].decode("utf-8", "replace")
+                  rec.update({"status":r["status"],"final_url":r["final_url"],"bytes":len(r["body"]),"content_type":r["headers"].get("Content-Type"),"server":r["headers"].get("Server")})
+                  p=Assets(); p.feed(text)
+                  resolved=[]
+                  for raw in p.urls:
+                      u=urllib.parse.urljoin(r["final_url"], raw)
+                      if u not in resolved: resolved.append(u)
+                  rec["script_assets"]=resolved
+                  html_assets += resolved
+                  # Inline endpoint-like strings can be useful even when bootstrapped dynamically.
+                  for m in re.findall(r'https?://[^"\'<>\\\s]{4,220}', text):
+                      out["findings"].append({"source":url,"kind":"absolute_url","value":m})
+              except Exception as e:
+                  rec["error"]=f"{type(e).__name__}: {e}"
+              out["targets"].append(rec)
+
+          # Restrict asset fan-out to official/NetEase-owned hosts discovered by the pages.
+          allowed_suffixes=("wherewindsmeetgame.com", "163.com", "netease.com", "nie.netease.com")
+          assets=[]
+          for u in html_assets:
+              host=(urllib.parse.urlparse(u).hostname or "").lower()
+              if any(host==s or host.endswith("."+s) for s in allowed_suffixes):
+                  if u not in assets: assets.append(u)
+          assets=assets[:60]
+
+          keyword_re=re.compile(r'(?i)(sync|progress|collect|marker|point|poi|location|position|coord|role|character|uid|login|token|socket|websocket|wss|native|ipc|bridge|game|yysls|map)')
+          string_re=re.compile(r'(["\'])(.{1,240}?)\1')
+          abs_re=re.compile(r'https?://[^"\'<>\\\s]{4,220}')
+          path_re=re.compile(r'/(?:api|v\d+|map|maps|game|user|role|point|poi|marker|collect|progress|sync|location|position|login|auth|account)[A-Za-z0-9_?&=./:%+\-]{1,220}', re.I)
+
+          for i,u in enumerate(assets):
+              a={"url":u}
+              try:
+                  r=fetch(u, 6_000_000)
+                  body=r["body"]
+                  text=body.decode("utf-8", "replace")
+                  a.update({"status":r["status"],"bytes":len(body),"truncated":r["truncated"],"content_type":r["headers"].get("Content-Type")})
+                  vals=set(abs_re.findall(text)) | set(path_re.findall(text))
+                  # Also keep compact quoted strings containing protocol-relevant terms.
+                  for _,s in string_re.findall(text):
+                      if keyword_re.search(s) and len(s) <= 220:
+                          vals.add(s)
+                  ranked=[]
+                  for v in vals:
+                      if keyword_re.search(v): ranked.append(v)
+                  ranked=sorted(set(ranked), key=lambda s:(len(s),s))[:250]
+                  for v in ranked:
+                      out["findings"].append({"source":u,"kind":"asset_string","value":v})
+              except Exception as e:
+                  a["error"]=f"{type(e).__name__}: {e}"
+              out["assets"].append(a)
+
+          # De-duplicate findings globally and cap noise while preserving source attribution.
+          seen=set(); clean=[]
+          for f in out["findings"]:
+              k=(f["source"],f["value"])
+              if k in seen: continue
+              seen.add(k); clean.append(f)
+          out["findings"]=clean[:3000]
+
+          Path("forensic-summary.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("=== TARGETS ===")
+          for t in out["targets"]:
+              print(json.dumps(t, ensure_ascii=False))
+          print("=== ASSETS ===")
+          for a in out["assets"]:
+              print(json.dumps(a, ensure_ascii=False))
+          print("=== PROTOCOL FINDINGS (first 500) ===")
+          for f in out["findings"][:500]:
+              print(json.dumps(f, ensure_ascii=False))
+          print(f"TOTAL_FINDINGS={len(out['findings'])}")
+          PY
+
+      - name: Upload forensic summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-map-forensic-summary
+          path: forensic-summary.json
+          if-no-files-found: error
+          retention-days: 7
