@@ -1,4 +1,4 @@
-name: Forensic Official Global Map SSO
+name: Verify Official Global Map SSO Contract
 
 on:
   push:
@@ -14,35 +14,51 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trace first-party login config and map ticket exchange
+      - name: Extract h72na SSO exchange and test public boundary
         shell: bash
         run: |
           set -euo pipefail
-          data='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
-          map='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
-          curl --fail --silent --show-error --location "$data/uniLogin-422132ba.js" -o /tmp/unilogin.js
-          curl --fail --silent --show-error --location "$data/index-67f2100d.js" -o /tmp/data-index.js
-          for f in pc-d3f0a0d4.js common-a15f2132.js index-be137abf.js index-1d9774f9.js; do curl --fail --silent --show-error --location "$map/$f" -o "/tmp/$f"; done
+          src='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js'
+          curl --fail --silent --show-error --location "$src" -o /tmp/map.js
           python - <<'PY'
           from pathlib import Path
           import re
-          files=['unilogin.js','data-index.js','pc-d3f0a0d4.js','common-a15f2132.js','index-be137abf.js','index-1d9774f9.js']
-          terms=['MpayOSSDK','gameId','game_id','appChannel','app_channel','loginChannel','login_channel','enableLoginType','showLogin','gameRedirectUrl','JF_GAMEID','SAUTH_JSON','h72na_map','?ticket=','ticket','sso','h72_map_accessToken','accessToken','access_token','roleList','roleLogin','map/points','map/list','finished','finishPointsNum','pointList','s2.easebar.com']
-          for fn in files:
-              t=Path('/tmp/'+fn).read_text('utf-8',errors='ignore')
-              print('\nFILE',fn,'BYTES',len(t.encode()))
-              low=t.lower(); seen=[]
-              for term in terms:
-                  i=low.find(term.lower())
-                  if i<0: continue
-                  s=t[max(0,i-420):min(len(t),i+1300)].replace('\n',' ')[:1720]
-                  print('CTX',term,'::',s)
-              routes=set()
-              for m in re.finditer(r'["\'`](/(?:api/)?(?:auth|login|logout|role|map|sso|ticket|point|progress)[^"\'`]*)["\'`]',t,re.I):
-                  if len(m.group(1))<180: routes.add(m.group(1))
-              if routes:
-                  print('ROUTES',*sorted(routes),sep='\n')
-              urls=sorted(set(re.findall(r'https://[^\s"\'`<>\\)]+',t)))
-              for u in urls:
-                  if any(k in u.lower() for k in ['s2.easebar','mpsdk','wherewindsmeetgame.com/map']): print('URL',u[:600])
+          t=Path('/tmp/map.js').read_text('utf-8',errors='ignore')
+          terms=['h72naSsoLogin','new URLSearchParams(window.location.search).get("ticket")',"new URLSearchParams(window.location.search).get('ticket')",'vN(','/api/auth/h72naLogin','history.replaceState','ticket=','updateToken','nickName']
+          for term in terms:
+              print('\nTERM',term)
+              pos=0; count=0
+              while True:
+                  i=t.find(term,pos)
+                  if i<0: break
+                  print('CTX',t[max(0,i-900):min(len(t),i+2600)].replace('\n',' ')[:3500])
+                  pos=i+len(term); count+=1
+                  if count>=4: break
+              print('COUNT',count)
+          for m in re.finditer(r'h72naSsoLogin\s*\([^)]*\)\s*\{',t):
+              i=m.start(); print('\nMETHOD_CTX',t[max(0,i-500):min(len(t),i+5000)].replace('\n',' ')[:5500])
+          PY
+
+          echo '=== CORS PREFLIGHT ==='
+          curl --silent --show-error -X OPTIONS -D /tmp/cors.headers -o /tmp/cors.body \
+            -H 'Origin: https://wwmsync.pages.dev' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            'https://s2.easebar.com/39f12eda6b86452b/api/auth/h72naLogin'
+          awk 'BEGIN{IGNORECASE=1}/^HTTP\//||/^access-control-/{print}' /tmp/cors.headers
+
+          echo '=== SYNTHETIC INVALID TICKET ==='
+          status="$(curl --silent --show-error --output /tmp/invalid.json --write-out '%{http_code}' \
+            -H 'Origin: https://wwmsync.pages.dev' \
+            -H 'Content-Type: application/json' \
+            --data '{"ticket":"wwmsync-invalid-synthetic-ticket"}' \
+            'https://s2.easebar.com/39f12eda6b86452b/api/auth/h72naLogin' || true)"
+          echo "HTTP $status"
+          python - <<'PY'
+          import json
+          try:
+              x=json.load(open('/tmp/invalid.json'))
+              print(json.dumps({k:x.get(k) for k in ('success','code','msg','message') if k in x},ensure_ascii=False))
+          except Exception as e:
+              print('BODY_PARSE_ERROR',e)
           PY
