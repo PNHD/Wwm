@@ -13,83 +13,159 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Trace Global PC bridge and personal link protocol
+      - name: Trace lazy Global chunks and official CN assistant handoff
         shell: bash
         run: |
           python - <<'PY'
-          import json, re, ssl, urllib.request, urllib.error
+          import json, re, ssl, urllib.request, urllib.error, urllib.parse
+          from html.parser import HTMLParser
           from pathlib import Path
 
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"
           ctx=ssl.create_default_context()
-          ASSETS={
-            "common":"https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js",
-            "pc":"https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js",
+          ROOTS={
+            "global":"https://www.wherewindsmeetgame.com/map/en/",
+            "cn":"https://ds.163.com/g/yysls",
+          }
+          LIMIT=90
+          MAX_BYTES=9_000_000
+
+          def fetch(url):
+              req=urllib.request.Request(url,headers={"User-Agent":UA,"Accept":"*/*","Accept-Language":"en-US,en;q=0.8,zh-CN;q=0.7"},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=28,context=ctx) as r:
+                      b=r.read(MAX_BYTES+1)
+                      return {"status":getattr(r,"status",200),"url":r.geturl(),"ct":r.headers.get("Content-Type",""),"text":b[:MAX_BYTES].decode("utf-8","replace"),"truncated":len(b)>MAX_BYTES}
+              except urllib.error.HTTPError as e:
+                  b=e.read(MAX_BYTES+1)
+                  return {"status":e.code,"url":e.geturl(),"ct":e.headers.get("Content-Type",""),"text":b[:MAX_BYTES].decode("utf-8","replace"),"truncated":len(b)>MAX_BYTES}
+              except Exception as e:
+                  return {"status":0,"url":url,"ct":"","text":"","error":f"{type(e).__name__}: {e}"}
+
+          class Scripts(HTMLParser):
+              def __init__(self): super().__init__(); self.urls=[]
+              def handle_starttag(self,tag,attrs):
+                  d=dict(attrs)
+                  if tag=="script" and d.get("src"): self.urls.append(d["src"])
+                  if tag=="link" and d.get("href") and d.get("rel") in ("modulepreload","preload"): self.urls.append(d["href"])
+
+          def allowed(kind,u):
+              host=(urllib.parse.urlparse(u).hostname or "").lower()
+              if kind=="global": return host=="www.wherewindsmeetgame.com" or host.endswith(".wherewindsmeetgame.com")
+              return any(host==s or host.endswith("."+s) for s in ("163.com","166.net","netease.com"))
+
+          # Pull direct script tags, then discover lazy JS chunk URLs referenced inside bundles.
+          corpus={}; metadata={}; queues={}
+          for kind,root in ROOTS.items():
+              page=fetch(root); corpus[root]=page["text"]; metadata[root]={k:v for k,v in page.items() if k!="text"}
+              p=Scripts(); p.feed(page["text"])
+              q=[]
+              for raw in p.urls:
+                  u=urllib.parse.urljoin(page["url"],raw)
+                  if allowed(kind,u) and (".js" in urllib.parse.urlparse(u).path): q.append(u)
+              queues[kind]=list(dict.fromkeys(q))
+
+          for kind in ("global","cn"):
+              seen=set(); idx=0
+              while idx < len(queues[kind]) and len(seen)<LIMIT:
+                  u=queues[kind][idx]; idx+=1
+                  if u in seen: continue
+                  seen.add(u)
+                  r=fetch(u); corpus[u]=r["text"]; metadata[u]={k:v for k,v in r.items() if k!="text"}
+                  if not r["text"]: continue
+                  # absolute/protocol-relative and quoted relative JS references
+                  candidates=[]
+                  candidates += re.findall(r'https?://[^"\'<>\\\s]{3,320}\.js(?:\?[^"\'<>\\\s]*)?',r["text"])
+                  candidates += ["https:"+x for x in re.findall(r'//[^"\'<>\\\s]{3,320}\.js(?:\?[^"\'<>\\\s]*)?',r["text"])]
+                  candidates += re.findall(r'["\']([^"\']{1,240}\.js(?:\?[^"\']*)?)["\']',r["text"])
+                  for raw in candidates:
+                      nu=urllib.parse.urljoin(u,raw)
+                      if allowed(kind,nu) and nu not in seen and nu not in queues[kind]: queues[kind].append(nu)
+
+          groups={
+            "global":[
+              "find_self_pos","map_pos_ok","map_pos_fail","personalLink","/api/personal/link","/personal.html#/link",
+              "officialAssistant","Official Assistant","PC Map Portal","help_haowan_title","help_netease_title",
+              "getCurrentPosition","geolocation","currentPosition","selfPos","self_pos","quickLocate","showPosition",
+              "WebSocket","127.0.0.1","localhost","cefQuery","chrome.webview","webkit.messageHandlers",
+              "postMessage","gameDataFailed","ntGameLoginSuccess","h72_map_accessToken","/api/user/point/finish",
+              "maplibre","tileUrl","tile_url","tiles:","coordinate","transform"
+            ],
+            "cn":[
+              "共创大地图","大地图","实时位置","实时定位","一键同步","同步数据","同步","宝箱","已拾取","变灰","灰色",
+              "地图工具","地图助手","PC地图","PC端","大神","官方助手","燕云十六声","位置","定位","坐标",
+              "download",".exe",".msi","overlay","assistant","plugin","bridge","native","WebSocket","127.0.0.1","localhost",
+              "postMessage","deeplink","scheme","yysls://","netease://","ds://"
+            ]
           }
 
-          def get(url,max_bytes=10_000_000):
-              req=urllib.request.Request(url,headers={"User-Agent":UA,"Accept":"*/*"},method="GET")
-              try:
-                  with urllib.request.urlopen(req,timeout=30,context=ctx) as r:
-                      return r.read(max_bytes).decode("utf-8","replace")
-              except urllib.error.HTTPError as e:
-                  return e.read(max_bytes).decode("utf-8","replace")
+          report={"metadata":metadata,"queues":{k:queues[k][:LIMIT] for k in queues},"matches":{"global":{},"cn":{}},"candidate_urls":{"global":[],"cn":[]},"custom_schemes":{"global":[],"cn":[]}}
 
-          texts={k:get(v) for k,v in ASSETS.items()}
-          report={"assets":{k:{"url":ASSETS[k],"chars":len(v)} for k,v in texts.items()},"contexts":{},"urls":{},"protocol_strings":{}}
+          for kind in ("global","cn"):
+              for needle in groups[kind]:
+                  hits=[]
+                  for u,text in corpus.items():
+                      if not allowed(kind,u): continue
+                      start=0
+                      while len(hits)<25:
+                          i=text.find(needle,start)
+                          if i<0: break
+                          snippet=text[max(0,i-1300):min(len(text),i+len(needle)+2200)].replace("\n"," ")
+                          hits.append({"url":u,"context":snippet})
+                          start=i+len(needle)
+                      if len(hits)>=25: break
+                  if hits: report["matches"][kind][needle]=hits
 
-          needles=[
-            "/api/personal/link","personal/link","personalLink","showBind","showServerSelect","officialAssistant","pcEntry",
-            "quickLocate","Quick Locate","Find my location","Locate","location","geolocation","getCurrentPosition",
-            "WebSocket","wss://","ws://","127.0.0.1","localhost","postMessage","addEventListener(\"message\"",
-            "native","Native","bridge","Bridge","ipc","IPC","scheme","deeplink","deepLink","launch","launcher",
-            "MShare","window.external","webkit.messageHandlers","cefQuery","chrome.webview","electron","openExternal",
-            "tracking","trackPoint","showPosition","position","coordinate","coord","PC大地圖入口","官方助手","定位"
-          ]
+              urls=set(); schemes=set()
+              for u,text in corpus.items():
+                  if not allowed(kind,u): continue
+                  for x in re.findall(r'https?://[^"\'<>\\\s]{4,300}',text):
+                      low=x.lower()
+                      if any(k in low for k in ("map","yysls","position","location","sync","assistant","download","client","tool","easebar","ds.163","g.166")): urls.add(x)
+                  for x in re.findall(r'([A-Za-z][A-Za-z0-9+.-]{1,30}://[^"\'<>\\\s]{1,260})',text):
+                      if not x.lower().startswith(("http://","https://")): schemes.add(x)
+              report["candidate_urls"][kind]=sorted(urls)[:900]
+              report["custom_schemes"][kind]=sorted(schemes)[:500]
 
-          for name,text in texts.items():
-              report["contexts"][name]={}
-              for needle in needles:
-                  arr=[]; pos=0
-                  while len(arr)<15:
-                      i=text.find(needle,pos)
-                      if i<0: break
-                      arr.append(text[max(0,i-1000):min(len(text),i+len(needle)+1800)].replace("\n"," "))
-                      pos=i+len(needle)
-                  if arr: report["contexts"][name][needle]=arr
+          Path("lazy-chunk-sync-trace.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
 
-              urls=sorted(set(re.findall(r'https?://[^"\'<>\\\s]{4,300}',text)))
-              report["urls"][name]=[u for u in urls if any(k in u.lower() for k in ("map","yysls","winds","easebar","163","netease","download","pc","assistant","link"))][:700]
-              prot=sorted(set(re.findall(r'(?:[A-Za-z][A-Za-z0-9+.-]{1,30})://[^"\'<>\\\s]{1,260}',text)))
-              report["protocol_strings"][name]=prot[:400]
-
-          Path("global-pc-bridge.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
-          print("=== ASSETS ===")
-          print(json.dumps(report["assets"],ensure_ascii=False))
-          print("=== RELEVANT URLS ===")
-          for name,vals in report["urls"].items():
-              print("---",name)
-              for v in vals: print(v)
-          print("=== CUSTOM PROTOCOL STRINGS ===")
-          for name,vals in report["protocol_strings"].items():
-              print("---",name)
-              for v in vals: print(v)
-          print("=== CONTEXTS ===")
-          for name,groups in report["contexts"].items():
-              for needle,arr in groups.items():
-                  print(f"--- {name} :: {needle} :: {len(arr)}")
-                  for s in arr[:8]: print(s)
+          print("=== DISCOVERY COUNTS ===")
+          for kind in ("global","cn"):
+              print(kind,"queued_js",len(report["queues"][kind]),"matched_needles",len(report["matches"][kind]),"urls",len(report["candidate_urls"][kind]),"schemes",len(report["custom_schemes"][kind]))
+          print("=== MATCH INDEX ===")
+          for kind in ("global","cn"):
+              print("##",kind)
+              for needle,hits in report["matches"][kind].items():
+                  print(json.dumps({"needle":needle,"hits":len(hits),"sources":list(dict.fromkeys(h["url"] for h in hits))[:8]},ensure_ascii=False))
+          print("=== HIGH VALUE CONTEXTS ===")
+          high={"global":["find_self_pos","map_pos_ok","map_pos_fail","personalLink","/personal.html#/link","Official Assistant","PC Map Portal","getCurrentPosition","127.0.0.1","localhost"],"cn":["共创大地图","实时位置","实时定位","一键同步","同步数据","地图助手","PC地图","宝箱","127.0.0.1","localhost",".exe",".msi"]}
+          for kind,needles in high.items():
+              for n in needles:
+                  hits=report["matches"][kind].get(n,[])
+                  if hits:
+                      print(f"--- {kind} :: {n} :: {len(hits)}")
+                      for h in hits[:5]:
+                          print("SOURCE",h["url"])
+                          print(h["context"])
+          print("=== CUSTOM SCHEMES ===")
+          for kind,vals in report["custom_schemes"].items():
+              print("##",kind)
+              for v in vals[:150]: print(v)
+          print("=== CANDIDATE URLS ===")
+          for kind,vals in report["candidate_urls"].items():
+              print("##",kind)
+              for v in vals[:250]: print(v)
           PY
 
-      - name: Upload PC bridge summary
+      - name: Upload trace
         uses: actions/upload-artifact@v4
         with:
-          name: global-pc-bridge-summary
-          path: global-pc-bridge.json
+          name: lazy-chunk-sync-trace
+          path: lazy-chunk-sync-trace.json
           if-no-files-found: error
           retention-days: 7
