@@ -1,4 +1,4 @@
-name: Trace WWM CN Realtime Bridge Contract
+name: Trace Global Map Ticket And Completion Session
 
 on:
   push:
@@ -11,106 +11,86 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fetch WWM route chunks and extract bridge contract
+      - name: Trace official Global role to map ticket flow
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wwm
-          base='https://g.166.net/res/a19'
-          urls=(
-            '7295.b568775a.async.js'
-            '8645.2e1dc741.async.js'
-            '2204.28632699.async.js'
-            '6466.616526a1.async.js'
-            '9301.6d938f8a.async.js'
-            '3224.15a6d646.async.js'
-            '9014.f7a84cf6.async.js'
-            '5686.b7529da8.async.js'
-            '3098.d21225b3.async.js'
-            '3127.9030b033.async.js'
-            '9356.cd5f1eac.async.js'
-            '6316.5cd9d09d.async.js'
-            'p__g__yysls.8e3f9c6a.async.js'
-          )
-          for f in "${urls[@]}"; do
-            curl -fsSL "$base/$f" -o "/tmp/wwm/$f"
-            echo "FETCHED $f $(wc -c < "/tmp/wwm/$f")"
-          done
+          mkdir -p /tmp/wwm/mapjs
 
-          grow='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
-          curl -fsSL "$grow/index-67f2100d.js" -o /tmp/wwm/global-index.js
-          curl -fsSL "$grow/app-9b07739a.js" -o /tmp/wwm/global-app.js
+          tool='https://www.wherewindsmeetgame.com/m/zt/20251121182818'
+          curl -fsSL "$tool/js/index-67f2100d.js" -o /tmp/wwm/global-index.js
+          curl -fsSL "$tool/js/app-9b07739a.js" -o /tmp/wwm/global-app.js
+          curl -fsSL "$tool/js/uniLogin-422132ba.js" -o /tmp/wwm/global-unilogin.js || true
+
+          map='https://www.wherewindsmeetgame.com/map/en/'
+          curl -fsSL -D /tmp/wwm/map.headers "$map" -o /tmp/wwm/map.html
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urljoin
+          import re, html, subprocess
+          base='https://www.wherewindsmeetgame.com/map/en/'
+          t=Path('/tmp/wwm/map.html').read_text('utf8',errors='ignore')
+          print('MAP_HTML_BYTES',len(t))
+          assets=[]
+          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
+            u=urljoin(base,html.unescape(m.group(1)))
+            if u not in assets: assets.append(u)
+          print('MAP_SCRIPTS')
+          for i,u in enumerate(assets):
+            print(i,u)
+            subprocess.run(['curl','-fsSL',u,'-o',f'/tmp/wwm/mapjs/{i}.js'],check=False)
+          PY
 
           python - <<'PY'
           from pathlib import Path
           import re, json
 
-          files=list(Path('/tmp/wwm').glob('*.js'))
-          cn=[p for p in files if not p.name.startswith('global-')]
-          gl=[p for p in files if p.name.startswith('global-')]
-
-          key_terms=[
-            'UniSDKJSBridge','postMsgToNative','callHandler','registerHandler','WebViewJavascriptBridge',
-            'gmbridge','Godlike','getMyInfo','isGodWebGame','GOD_GAME',
-            'realtime','realTime','position','location','coordinate','sync','collect','finish','finished','chest',
-            '实时','位置','坐标','同步','宝箱','已完成','已收集','探索','共创','地图'
-          ]
-          method_re=re.compile(r'(?:methodId|method|handler|eventName|action|cmd)\s*[:=]\s*["\']([^"\']{1,100})["\']',re.I)
-          quoted_re=re.compile(r'["\']([^"\']{2,100})["\']')
-          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
+          groups={
+            'GLOBAL_TOOL':[Path('/tmp/wwm/global-index.js'),Path('/tmp/wwm/global-app.js'),Path('/tmp/wwm/global-unilogin.js')],
+            'OFFICIAL_MAP':list(Path('/tmp/wwm/mapjs').glob('*.js')),
+          }
+          terms=['ticket','goToMap','roleList','roleLogin','roleInfo','access_token','finished','finish','point/finish','map/points','map/list','ursLogin','h72naLogin','auth','login','sdkuid','sessionid']
           route_re=re.compile(r'["\'](/[^"\']{1,180})["\']')
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+',re.I)
 
-          def contexts(group,label):
-            print('\n==========',label,'==========')
-            methods=[]; urls=[]; routes=[]
-            for p in group:
+          for label,files in groups.items():
+            files=[p for p in files if p.exists()]
+            print('\n==========',label,'FILES',[(p.name,p.stat().st_size) for p in files],'==========')
+            routes=[]; urls=[]
+            for p in files:
               t=p.read_text('utf8',errors='ignore')
-              for m in method_re.finditer(t):
-                v=m.group(1)
-                if v not in methods: methods.append(v)
-              for m in url_re.finditer(t):
-                v=m.group(0).rstrip('),;')
-                if v not in urls: urls.append(v)
               for m in route_re.finditer(t):
                 v=m.group(1)
-                if any(k in v.lower() for k in ['map','sync','game','role','user','point','position','location','auth','token','collect','finish']):
+                if any(k in v.lower() for k in ['ticket','map','role','user','point','auth','login','finish','token']):
                   if v not in routes: routes.append(v)
-            print('METHOD_IDS',json.dumps(methods[:200],ensure_ascii=False))
-            print('URLS',json.dumps(urls[:160],ensure_ascii=False))
-            print('ROUTES',json.dumps(routes[:200],ensure_ascii=False))
+              for m in url_re.finditer(t):
+                v=m.group(0).rstrip('),;')
+                if any(k in v.lower() for k in ['easebar','wherewindsmeet','unisdk','map']):
+                  if v not in urls: urls.append(v)
+            print('ROUTES',json.dumps(routes[:300],ensure_ascii=False))
+            print('URLS',json.dumps(urls[:120],ensure_ascii=False))
 
-            for term in key_terms:
+            for term in terms:
               hits=[]
-              for p in group:
+              for p in files:
                 t=p.read_text('utf8',errors='ignore')
                 for m in re.finditer(re.escape(term),t,re.I):
-                  s=t[max(0,m.start()-420):min(len(t),m.start()+1000)].replace('\n',' ')
-                  # Skip obvious framework/library noise unless context carries bridge/game terms.
-                  low=s.lower()
-                  if term.lower() in ['position','location','sync','finish','finished'] and not any(x in low for x in ['map','game','bridge','uni','yysls','role','point','探索','地图','宝箱','同步','坐标','位置']):
-                    continue
-                  hits.append((p.name,s[:1420]))
-                  if len(hits)>=10: break
-                if len(hits)>=10: break
+                  s=t[max(0,m.start()-700):min(len(t),m.start()+1500)].replace('\n',' ')
+                  hits.append((p.name,s[:2200]))
+                  if len(hits)>=12: break
+                if len(hits)>=12: break
               if hits:
-                print('\nTERM',term,'HITS',len(hits))
+                print('\nTERM',term,'COUNT_SHOWN',len(hits))
                 for name,s in hits:
                   print('FILE',name)
                   print(s)
 
-          contexts(cn,'CN WWM DD ROUTE')
-          contexts(gl,'GLOBAL OFFICIAL DATA TOOL')
-
-          # Direct cross-match of CN-discovered native method IDs in Global bundles.
-          cn_methods=[]
-          for p in cn:
-            t=p.read_text('utf8',errors='ignore')
-            for m in method_re.finditer(t):
-              v=m.group(1)
-              if v not in cn_methods: cn_methods.append(v)
-          gt='\n'.join(p.read_text('utf8',errors='ignore') for p in gl)
-          print('\n========== CROSS MATCH =========')
-          for v in cn_methods:
-            if v and v in gt:
-              print('GLOBAL_MATCH',v)
+          # Pull out every short route near the API wrapper in Global tool.
+          gt=Path('/tmp/wwm/global-index.js').read_text('utf8',errors='ignore')
+          print('\n========== GLOBAL TOOL API STRINGS =========')
+          vals=[]
+          for m in re.finditer(r'["\'](/[^"\']{1,100})["\']',gt):
+            v=m.group(1)
+            if v not in vals and re.match(r'^/[A-Za-z0-9_./-]+$',v): vals.append(v)
+          for v in vals: print(v)
           PY
