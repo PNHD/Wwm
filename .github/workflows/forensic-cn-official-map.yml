@@ -1,4 +1,4 @@
-name: Trace Official Global Map Auth Store
+name: Trace NetEase DD WWM Realtime Interface
 
 on:
   push:
@@ -9,104 +9,119 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      - name: Fetch map chunks and extract auth/progress contract
+      - name: Trace public DD route chunks and source maps
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wwm/chunks
-          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803'
-          curl -fsSL "$root/js/pc-d3f0a0d4.js" -o /tmp/wwm/chunks/pc-d3f0a0d4.js
+          mkdir -p /tmp/dd
+          base='https://g.166.net/res/a19'
+          files=(
+            '7295.b568775a.async.js'
+            '8645.2e1dc741.async.js'
+            '2204.28632699.async.js'
+            '6466.616526a1.async.js'
+            '9301.6d938f8a.async.js'
+            '3224.15a6d646.async.js'
+            '9014.f7a84cf6.async.js'
+            '5686.b7529da8.async.js'
+            '3098.d21225b3.async.js'
+            '3127.9030b033.async.js'
+            '9356.cd5f1eac.async.js'
+            '6316.5cd9d09d.async.js'
+            'p__g__yysls.8e3f9c6a.async.js'
+          )
+          for f in "${files[@]}"; do
+            curl -fsSL "$base/$f" -o "/tmp/dd/$f"
+            echo "JS $f $(wc -c < /tmp/dd/$f)"
+            sm=$(grep -oE 'sourceMappingURL=[^[:space:]]+' "/tmp/dd/$f" | tail -1 | cut -d= -f2 || true)
+            if [ -n "$sm" ]; then
+              echo "SOURCEMAP_REF $f $sm"
+              curl -fsSL "$base/$sm" -o "/tmp/dd/$f.map" || true
+            else
+              curl -fsSL "$base/$f.map" -o "/tmp/dd/$f.map" || true
+            fi
+            [ -s "/tmp/dd/$f.map" ] && echo "MAP $f $(wc -c < /tmp/dd/$f.map)" || true
+          done
 
-          python - <<'PY'
-          from pathlib import Path
-          import re, subprocess
-          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/'
-          out=Path('/tmp/wwm/chunks')
-          seen={p.name for p in out.glob('*.js')}
-          for round_no in range(4):
-            names=[]
-            for p in list(out.glob('*.js')):
-              t=p.read_text('utf8',errors='ignore')
-              pats=[
-                r'["\']\./([A-Za-z0-9_.-]+\.js)["\']',
-                r'import\(["\']\./([A-Za-z0-9_.-]+\.js)["\']\)',
-                r'["\']js/([A-Za-z0-9_.-]+\.js)["\']',
-              ]
-              for pat in pats:
-                for m in re.finditer(pat,t):
-                  n=m.group(1)
-                  if n not in seen and n not in names: names.append(n)
-            if not names: break
-            print('ROUND',round_no,'DISCOVERED',len(names))
-            for n in names[:160]:
-              r=subprocess.run(['curl','-fsSL',root+n,'-o',str(out/n)])
-              print('FETCH',r.returncode,n)
-              if r.returncode==0: seen.add(n)
-          print('TOTAL_JS',len(list(out.glob('*.js'))))
-          print('FILES')
-          for p in sorted(out.glob('*.js')):
-            print(p.name,p.stat().st_size)
-          PY
+          curl -fsSL 'https://ds.163.com/g/yysls' -o /tmp/dd/landing.html || true
 
           python - <<'PY'
           from pathlib import Path
           import re, json
-          files=list(Path('/tmp/wwm/chunks').glob('*.js'))
-          terms=['mapPoints','silentLogin','loginWithRole','roleList','updateToken','userinfo','finished','point/finish','user/point','map/points','map/list','ticket','h72na','access_token','pointFinish','finishPoint','toggleFinish','finish']
-          api_like=re.compile(r'["\'](/(?:api/)?[^"\']{1,150})["\']')
-          url_re=re.compile(r'https?://[^"\'`<>\\ ]+',re.I)
 
-          routes=[]; urls=[]
-          for p in files:
+          js=list(Path('/tmp/dd').glob('*.js'))
+          print('=== FILES ===')
+          for p in js: print(p.name,p.stat().st_size)
+
+          needles=[
+            'yysls','燕云十六声','实时','位置','坐标','地图','同步','宝箱','探索','收集','进度','角色',
+            'realtime','position','location','coordinate','map','sync','collect','progress','role',
+            'callHandler','registerHandler','postMsgToNative','WebViewJavascriptBridge','UniSDKJSBridge',
+            'Godlike','gmbridge','ngwebview','getMyInfo','isGodWebGame','GOD_GAME',
+            'localhost','127.0.0.1','websocket','wss://','ws://','act.ds.163.com'
+          ]
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
+          method_re=re.compile(r'(?:callHandler|registerHandler|postMsgToNative)\s*\(\s*["\']([^"\']+)',re.I)
+          object_method_re=re.compile(r'(?:methodId|method|action|cmd|eventName|type)\s*[:=]\s*["\']([^"\']{2,100})["\']',re.I)
+
+          all_methods=[]; all_urls=[]
+          for p in js:
             t=p.read_text('utf8',errors='ignore')
-            for m in api_like.finditer(t):
-              v=m.group(1)
-              if any(k in v.lower() for k in ['map','point','user','role','login','auth','ticket','finish','token']):
-                if v not in routes: routes.append(v)
+            for rx in [method_re,object_method_re]:
+              for m in rx.finditer(t):
+                v=m.group(1)
+                if v not in all_methods: all_methods.append(v)
             for m in url_re.finditer(t):
               v=m.group(0).rstrip('),;')
-              if any(k in v.lower() for k in ['s2.easebar','wherewindsmeet','mpsdk','api']):
-                if v not in urls: urls.append(v)
-          print('\n=== ROUTES ===')
-          for v in routes[:400]: print(v)
+              if v not in all_urls: all_urls.append(v)
+          print('\n=== METHOD CANDIDATES ===')
+          for v in all_methods: print(v)
           print('\n=== URLS ===')
-          for v in urls[:200]: print(v)
+          for v in all_urls: print(v)
 
-          for term in terms:
-            hits=[]
-            for p in files:
+          print('\n=== FOCUSED CONTEXTS ===')
+          for term in needles:
+            shown=0
+            for p in js:
               t=p.read_text('utf8',errors='ignore')
               for m in re.finditer(re.escape(term),t,re.I):
-                s=t[max(0,m.start()-850):min(len(t),m.start()+1800)].replace('\n',' ')
-                # focus noisy generic "finish" only when map/point/user context appears
-                if term.lower()=='finish' and not any(k in s.lower() for k in ['point','map','user','finished']):
-                  continue
-                hits.append((p.name,s[:2650]))
-                if len(hits)>=10: break
-              if len(hits)>=10: break
-            if hits:
-              print('\n=== TERM',term,'===')
-              for name,s in hits:
-                print('FILE',name)
-                print(s)
+                ctx=t[max(0,m.start()-700):min(len(t),m.start()+1500)].replace('\n',' ')
+                low=ctx.lower()
+                # For generic words require WWM/native context to keep output useful.
+                if term.lower() in {'map','sync','role','position','location','progress','collect'}:
+                  if not any(k in low for k in ['yysls','燕云','bridge','godlike','gmbridge','webview','实时','地图','宝箱','探索']):
+                    continue
+                print('TERM',term,'FILE',p.name)
+                print(ctx[:2200])
+                shown+=1
+                if shown>=8: break
+              if shown>=8: break
 
-          # Find likely API wrappers: s2.easebar base +/- 1200 chars.
-          print('\n=== API BASE CONTEXTS ===')
-          for p in files:
-            t=p.read_text('utf8',errors='ignore')
-            for m in re.finditer(r's2\.easebar\.com',t,re.I):
-              print('FILE',p.name)
-              print(t[max(0,m.start()-1000):min(len(t),m.start()+2200)].replace('\n',' ')[:3200])
-
-          # Find exact property constructions containing finished.
-          print('\n=== FINISHED OBJECT CONTEXTS ===')
-          for p in files:
-            t=p.read_text('utf8',errors='ignore')
-            for m in re.finditer(r'finished',t,re.I):
-              s=t[max(0,m.start()-1400):min(len(t),m.start()+2600)].replace('\n',' ')
-              if any(k in s.lower() for k in ['map/points','point/finish','pointlist','mappoint','categorypoints','request','axios']):
-                print('FILE',p.name)
-                print(s[:4000])
+          print('\n=== SOURCEMAP INSPECTION ===')
+          for mp in Path('/tmp/dd').glob('*.map'):
+            try:
+              obj=json.loads(mp.read_text('utf8',errors='ignore'))
+            except Exception:
+              continue
+            sources=obj.get('sources') or []
+            contents=obj.get('sourcesContent') or []
+            interesting=[]
+            for i,s in enumerate(sources):
+              ss=s.lower()
+              if any(k in ss for k in ['yysls','map','bridge','game','position','sync','collect','role']):
+                interesting.append((i,s))
+            print('MAPFILE',mp.name,'SOURCES',len(sources),'INTERESTING',len(interesting))
+            for i,s in interesting[:100]: print('SOURCE',i,s)
+            for i,s in interesting[:30]:
+              if i>=len(contents) or not contents[i]: continue
+              c=contents[i]
+              if any(k.lower() in c.lower() for k in needles):
+                print('SOURCE_CONTENT',s)
+                for term in needles:
+                  m=re.search(re.escape(term),c,re.I)
+                  if m:
+                    print(c[max(0,m.start()-900):min(len(c),m.start()+2200)][:3100])
+                    break
           PY
