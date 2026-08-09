@@ -14,79 +14,100 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Trace Global official shared auth/store chunks
+      - name: Extract exact Global auth contract
         shell: bash
         run: |
           set -euo pipefail
           ROOT='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
+          API='https://s2.easebar.com/39f12eda6b86452b'
           mkdir -p /tmp/g
-          for f in common-a15f2132.js index-1d9774f9.js index-be137abf.js vue.runtime.esm-bundler-11d7002a.js pc-d3f0a0d4.js; do
-            curl -fsSL --max-time 30 "$ROOT/$f" -o "/tmp/g/$f"
-            echo "$f $(wc -c < /tmp/g/$f)"
-          done
+          curl -fsSL --max-time 30 "$ROOT/common-a15f2132.js" -o /tmp/g/common.js
+          curl -fsSL --max-time 30 "$ROOT/pc-d3f0a0d4.js" -o /tmp/g/pc.js
 
           python3 - <<'PY'
           import pathlib,re
-          needles=['silentLogin','loginWithRole','updateToken','mapPoints','mapList','ursRoles','ursLogin','h72naLogin','/api/auth/','/api/user/','/api/map/','MpayOSSDK','mpay','unisdk_token','token','roleList','Authorization','withCredentials','credentials','X-','headers','finished','finishPointsNum']
-          for p in pathlib.Path('/tmp/g').glob('*.js'):
-              s=p.read_text('utf-8','ignore')
-              hits=[n for n in needles if n.lower() in s.lower()]
-              if not hits: continue
-              print('\n===== FILE',p.name,'HITS',','.join(hits),'=====')
-              for n in hits:
-                  pos=0; count=0
-                  while count<10:
-                      i=s.lower().find(n.lower(),pos)
-                      if i<0: break
-                      print('CTX',n,' '.join(s[max(0,i-1200):i+2200].split())[:3500])
-                      pos=i+len(n); count+=1
-              routes=sorted(set(re.findall(r'["\']([^"\']*(?:/api/(?:auth|user|map)/)[^"\']*)["\']',s)))
-              for r in routes: print('ROUTE_LITERAL',r[:800])
+          s=pathlib.Path('/tmp/g/common.js').read_text('utf-8','ignore')
+          print('COMMON_BYTES',len(s))
+          needles=[
+            '/api/auth/ursRoles','/api/auth/ursLogin','/api/auth/h72naLogin',
+            '/api/user/info','/api/user/point/finish','silentLogin','loginWithRole',
+            'updateToken','withCredentials','Authorization','MpayOSSDK'
+          ]
+          for needle in needles:
+              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
+              print('\nKEY',needle,'COUNT',len(hits))
+              for i in hits[:3]:
+                  a=max(0,i-1800); b=min(len(s),i+2600)
+                  print('SNIP',' '.join(s[a:b].split())[:4500])
+          # Extract compact route literals, object keys and probable endpoint wrappers.
+          print('\nAUTH_ROUTE_LITERALS')
+          for x in sorted(set(re.findall(r'["\']([^"\']*/api/auth/[^"\']+)["\']',s))): print(x[:500])
+          print('\nUSER_ROUTE_LITERALS')
+          for x in sorted(set(re.findall(r'["\']([^"\']*/api/user/[^"\']+)["\']',s))): print(x[:500])
           PY
 
-          echo '===== INVALID FIELD PROBES ====='
-          API='https://s2.easebar.com/39f12eda6b86452b'
-          for spec in \
-            'ursRoles:{"token":"x"}' \
-            'ursRoles:{"unisdkToken":"x"}' \
-            'ursLogin:{"roleId":"x"}' \
-            'ursLogin:{"server":"x","roleId":"x"}' \
-            'h72naLogin:{"ticket":"x"}'; do
-            name=${spec%%:*}; body=${spec#*:}
-            echo "-- $name $body"
-            curl -sS --max-time 15 -X POST "$API/api/auth/$name?lang=en-US" -H 'Content-Type: application/json' -H 'Origin: https://wwmsync.pages.dev' --data "$body" | head -c 1200; echo
-          done
+          echo '===== VALIDATION RESPONSES ====='
+          while IFS='|' read -r path body; do
+            echo "CASE $path BODY $body"
+            curl -sS --max-time 15 -X POST "$API$path?lang=en-US" \
+              -H 'Origin: https://wwmsync.pages.dev' \
+              -H 'Content-Type: application/json' \
+              --data "$body" | python3 -c 'import sys,json; raw=sys.stdin.read(); print(raw[:1600])'
+          done <<'EOF'
+          /api/auth/ursRoles|{}
+          /api/auth/ursRoles|{"token":"x"}
+          /api/auth/ursRoles|{"unisdkToken":"x"}
+          /api/auth/ursRoles|{"loginToken":"x"}
+          /api/auth/ursLogin|{}
+          /api/auth/ursLogin|{"roleId":"x"}
+          /api/auth/ursLogin|{"serverId":"x","roleId":"x"}
+          /api/auth/h72naLogin|{}
+          /api/auth/h72naLogin|{"ticket":"x"}
+          /api/user/info|{}
+          EOF
 
-      - name: Resolve official DD Windows client and inspect package statically
+      - name: Resolve official DD client metadata and bridge signals
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/dd
           CHUNK='https://static.dd.163.com/frontendddwebsitenext/_next/static/chunks/1733-eab8b6d336eae216.js'
           curl -fsSL --max-time 30 "$CHUNK" -o /tmp/dd/chunk.js
-          echo '===== DD API CONSTANTS / DOWNLOAD METHOD ====='
+
           python3 - <<'PY'
-          import pathlib
+          import pathlib,re
           s=pathlib.Path('/tmp/dd/chunk.js').read_text('utf-8','ignore')
-          for n in ['75609:function','get_channel_download_link','setDownloadContext','baseURL','cc.163.com','api.cc','x64_download_link','x32_download_link']:
-              pos=0; c=0
-              while c<8:
-                  i=s.find(n,pos)
-                  if i<0: break
-                  print('DDCTX',n,' '.join(s[max(0,i-1400):i+2600].split())[:4200])
-                  pos=i+len(n); c+=1
+          print('DD_CHUNK_BYTES',len(s))
+          for needle in ['get_channel_download_link','setDownloadContext','baseURL','x64_download_link','x32_download_link','75609:']:
+              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
+              print('\nKEY',needle,'COUNT',len(hits))
+              for i in hits[:4]:
+                  print('SNIP',' '.join(s[max(0,i-1800):min(len(s),i+3000)].split())[:5000])
+          for u in sorted(set(re.findall(r'https?://[^"\'<>\\\s]+',s))):
+              if any(k in u.lower() for k in ('163.com','netease','download','api.')):
+                  print('URL',u[:800])
           PY
 
-          # Probe likely official API roots without credentials; endpoint is the public website's own download resolver.
-          for host in 'https://api.cc.163.com' 'https://api.dd.163.com' 'https://dd.163.com'; do
-            echo "===== HOST $host ====="
+          echo '===== DD PUBLIC API ROOT PROBES ====='
+          for host in 'https://api.cc.163.com' 'https://api.dd.163.com' 'https://dd.163.com' 'https://cc.163.com'; do
             for path in '/v1/teamchannelpkg/get_channel_download_link' '/v1/mixteamversion/setDownloadContext'; do
-              echo "-- $path GET"
-              curl -sS --max-time 15 -D /tmp/dd/h -o /tmp/dd/b -w 'HTTP_%{http_code}\n' "$host$path" || true
-              grep -iE '^(content-type:|location:|server:)' /tmp/dd/h | tail -n 10 || true
-              head -c 1000 /tmp/dd/b; echo
-              echo "-- $path POST {}"
-              curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' --data '{}' -D /tmp/dd/h -o /tmp/dd/b -w 'HTTP_%{http_code}\n' "$host$path" || true
-              head -c 1000 /tmp/dd/b; echo
+              echo "CASE $host$path"
+              code=$(curl -sS --max-time 15 -D /tmp/dd/h -o /tmp/dd/b -w '%{http_code}' "$host$path" || true)
+              echo "HTTP $code"
+              grep -iE '^(content-type:|location:|server:|access-control-)' /tmp/dd/h | tail -n 15 || true
+              head -c 1200 /tmp/dd/b; echo
             done
           done
+
+          echo '===== CN YYSLS BRIDGE SIGNALS ====='
+          Y='https://g.166.net/res/a19/p__g__yysls.8e3f9c6a.async.js'
+          curl -fsSL --max-time 30 "$Y" -o /tmp/dd/yysls.js
+          python3 - <<'PY'
+          import pathlib,re
+          s=pathlib.Path('/tmp/dd/yysls.js').read_text('utf-8','ignore')
+          for needle in ['实时地图','共创大地图','gm://','UniSDKJSBridge','postMsgToNative','isGodWebGame','getUserTicket','WebSocket','wss://','127.0.0.1','localhost','position','sync','yysls']:
+              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
+              print('\nKEY',needle,'COUNT',len(hits))
+              for i in hits[:5]:
+                  print('SNIP',' '.join(s[max(0,i-1400):min(len(s),i+2400)].split())[:4000])
+          PY
