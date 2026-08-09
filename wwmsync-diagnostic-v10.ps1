@@ -153,21 +153,30 @@ foreach($needle in $Needles){
 }
 $state.keywordHits=@($hits | Sort-Object offset,needle)
 
+$distinct=@{}
+foreach($h in $state.keywordHits){
+  if($h -is [System.Collections.IDictionary] -and $h.Contains('needle')){$distinct[[string]$h['needle']]=$true}
+}
+$signalCount=0
+foreach($v in @(
+  $state.formatSignals.sqliteHeader,
+  ($state.formatSignals.sqliteMagicOccurrences -gt 0),
+  ($state.formatSignals.levelManifestTextOccurrences -gt 0),
+  ($state.formatSignals.lmdbMagicLittleEndianOccurrences -gt 0),
+  $state.formatSignals.startsWithZip,
+  $state.formatSignals.startsWithGzip,
+  $state.formatSignals.startsWithZstd
+)){
+  if($v -eq $true){$signalCount++}
+}
+
 $state.status='complete'
 $state.generatedAtUtc=[DateTime]::UtcNow.ToString('o')
 $state.summary=[ordered]@{
   siblingFiles=$state.localDbSiblings.Count
   keywordHits=$state.keywordHits.Count
-  distinctNeedles=@($state.keywordHits | Select-Object -ExpandProperty needle -Unique)
-  formatSignalCount=@(
-    $state.formatSignals.sqliteHeader,
-    ($state.formatSignals.sqliteMagicOccurrences -gt 0),
-    ($state.formatSignals.levelManifestTextOccurrences -gt 0),
-    ($state.formatSignals.lmdbMagicLittleEndianOccurrences -gt 0),
-    $state.formatSignals.startsWithZip,
-    $state.formatSignals.startsWithGzip,
-    $state.formatSignals.startsWithZstd
-  ).Where({$_ -eq $true}).Count
+  distinctNeedles=@($distinct.Keys | Sort-Object)
+  formatSignalCount=$signalCount
 }
 Write-Json $state
 Write-Host "Complete. siblings=$($state.summary.siblingFiles) keywordHits=$($state.summary.keywordHits) formatSignals=$($state.summary.formatSignalCount)" -ForegroundColor Green
