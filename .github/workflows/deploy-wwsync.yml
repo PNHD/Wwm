@@ -161,8 +161,19 @@ jobs:
             const forbidden=requests.filter(u=>/sdk-os\.mpsdk|wwmmap\.pages\.dev|sangtacviet|stv-appdomain|\/service\/(gameauth|call_client_method)/i.test(u));
             if(forbidden.length)fatal.push(`forbidden requests=${forbidden.join(',')}`);
 
-            // Synthetic sanitized snapshot exercises only WWMSync's receiver. No auth token is present.
-            const payload={v:1,source:'official-map',at:Date.now(),maps:[[1,[1,2,3]],[2,[]],[3,[]],[4,[]]]};
+            // Select real current point IDs so the receiver test follows the live Official Map catalog.
+            const liveIds=await page.evaluate(async()=>{
+              const r=await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US',{credentials:'omit'});
+              const j=await r.json();
+              const ids=[];
+              for(const group of j?.data?.categories||[])for(const category of group?.childCategories||[])for(const point of category?.pointList||[]){
+                const id=Number(point?.id);if(Number.isInteger(id)&&id>0&&!ids.includes(id))ids.push(id);
+                if(ids.length===3)return ids;
+              }
+              return ids;
+            });
+            if(liveIds.length!==3)throw new Error(`could not select three live Official Map IDs: ${JSON.stringify(liveIds)}`);
+            const payload={v:1,source:'official-map',at:Date.now(),maps:[[1,liveIds],[2,[]],[3,[]],[4,[]]]};
             await page.goto(`${base}/#wwmsync-import=${enc(payload)}`,{waitUntil:'domcontentloaded',timeout:60000});
             await page.waitForFunction(()=>Number(document.querySelector('#totalCount')?.textContent.replace(/\D/g,''))>1000,null,{timeout:30000});
             await page.waitForFunction(()=>document.querySelector('#completedCount')?.textContent.trim()==='3',null,{timeout:30000});
@@ -173,7 +184,7 @@ jobs:
             if(!imported.stored||/token|cookie|sessionid|access_token/i.test(imported.stored))fatal.push('sanitized snapshot persistence failed');
             if(imported.cookieKeys.length)fatal.push(`unexpected credential-like localStorage keys=${imported.cookieKeys.join(',')}`);
 
-            console.log('BROWSER_STATE',JSON.stringify({...s,status,stored,forbiddenRequests:forbidden.length,imported}));
+            console.log('BROWSER_STATE',JSON.stringify({...s,status,stored,liveIds,forbiddenRequests:forbidden.length,imported}));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
             if(csp.length||fatal.length)process.exit(1);
