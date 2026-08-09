@@ -224,6 +224,19 @@ async function copyBridge(){
     const textarea=document.createElement('textarea');textarea.value=value;textarea.style.position='fixed';textarea.style.opacity='0';document.body.appendChild(textarea);textarea.select();document.execCommand('copy');textarea.remove();toast(t('bridgeCopied'));
   }
 }
+async function consumeIncomingSnapshot(){
+  let snapshot=null;
+  try{snapshot=consumeOfficialImport()}catch(error){console.warn('[WWMSync] Official Map import rejected',error);toast(t('importInvalid'));return}
+  if(!snapshot)return;
+  state.officialSnapshot=snapshot;
+  state.pointCache.clear();
+  updateSyncPresentation();
+  try{
+    await loadActiveMapPoints();
+    await loadCatalogTotal();
+    setSyncStatus(t('importSuccess',{count:state.completedTotal}),'success');
+  }catch(error){console.error('[WWMSync] import refresh',error);toast(t('mapLoadError'))}
+}
 function bindEvents(){
   el.languageSelect.onchange=()=>{state.lang=el.languageSelect.value;localStorage.setItem(LANG_KEY,state.lang);applyI18n()};
   el.syncButton.onclick=handleSync;
@@ -236,6 +249,7 @@ function bindEvents(){
   el.sidebarToggle.onclick=()=>el.sidebar.classList.toggle('open');
   if(el.officialBridgeBookmarklet)el.officialBridgeBookmarklet.onclick=event=>{event.preventDefault();toast(t('bridgeDrag'))};
   if(el.copyBridgeButton)el.copyBridgeButton.onclick=copyBridge;
+  window.addEventListener('hashchange',()=>{void consumeIncomingSnapshot()});
 }
 async function boot(){
   bindEvents();
