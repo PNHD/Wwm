@@ -1,0 +1,64 @@
+name: Probe Official Global Auth SDK
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/probe-global-auth-sdk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Initialize official Mpay SDK on WWMSync preview origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/probe.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:1280,height:800}});
+            const errors=[]; const requests=[];
+            page.on('request',r=>requests.push(r.url()));
+            page.on('requestfailed',r=>errors.push(`REQFAIL ${r.url()} ${r.failure()?.errorText||''}`));
+            page.on('pageerror',e=>errors.push(`PAGEERROR ${e.message}`));
+            page.on('console',m=>console.log('CONSOLE',m.type(),m.text()));
+            const res=await page.goto('https://preview.wwmsync.pages.dev/',{waitUntil:'domcontentloaded',timeout:60000});
+            if(!res?.ok()) throw new Error(`preview HTTP ${res?.status()}`);
+            await page.addScriptTag({url:'https://sdk-os.mpsdk.easebar.com/gzip_static/h5/v1.3.1/js/mpay-h5-sdk-oversea.umd.js'});
+            const result=await page.evaluate(async()=>{
+              if(typeof window.MpayOSSDK!=='function') return {ok:false,reason:`MpayOSSDK=${typeof window.MpayOSSDK}`};
+              const sdk=new window.MpayOSSDK({
+                gameId:398,
+                lang:'en_US',
+                appChannel:'netease_global.h5activity',
+                gv:'1.0.0',
+                qrcodeAppId:'',
+                debugMode:'0',
+                packageName:''
+              });
+              const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('init timeout')),20000));
+              await Promise.race([sdk.init(),timeout]);
+              return {
+                ok:true,
+                ctor:typeof window.MpayOSSDK,
+                methods:['showLogin','getLocalAccounts','loginWithHistory','getLoginMethods'].filter(k=>typeof sdk[k]==='function')
+              };
+            });
+            const official=requests.filter(u=>/mpsdk\.easebar\.com|easebar\.com\/api\/users\/login/i.test(u));
+            console.log('SDK_RESULT',JSON.stringify(result));
+            console.log('OFFICIAL_REQUEST_COUNT',official.length);
+            console.log('ERRORS',JSON.stringify(errors));
+            await browser.close();
+            if(!result.ok||!result.methods.includes('showLogin')||errors.some(x=>/content security policy/i.test(x))) process.exit(1);
+          })().catch(e=>{console.error('AUTH_SDK_FATAL',e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/probe.cjs
