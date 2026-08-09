@@ -14,123 +14,196 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Trace official public map and data-tool surfaces
+      - name: Build compact forensic report
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wwm/{cn,global}
+          mkdir -p forensic/raw/{global-map,global-data,cn-dd,cn-helper}
 
-          python - <<'PY'
+          cat > /tmp/trace.py <<'PY'
           from pathlib import Path
-          from urllib.parse import urljoin
-          import html, re, subprocess
+          from urllib.parse import urljoin, urlparse
+          import html, json, re, subprocess, time
 
-          targets = [
-            ('global-map', 'https://www.wherewindsmeetgame.com/map/en/', Path('/tmp/wwm/global')),
-            ('global-data', 'https://www.wherewindsmeetgame.com/m/2025h5sjgj/en/', Path('/tmp/wwm/global')),
-            ('cn-dd', 'https://dd.163.com/?utm_source=yyslsjingling&auto=1', Path('/tmp/wwm/cn')),
-            ('cn-helper', 'https://act.ds.163.com/7cf1cfa6a9edf833/', Path('/tmp/wwm/cn')),
+          UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          ROOT = Path('forensic/raw')
+          TARGETS = {
+            'global-map': 'https://www.wherewindsmeetgame.com/map/en/',
+            'global-data': 'https://www.wherewindsmeetgame.com/m/2025h5sjgj/en/',
+            'cn-dd': 'https://dd.163.com/?utm_source=yyslsjingling&auto=1',
+            'cn-helper': 'https://act.ds.163.com/7cf1cfa6a9edf833/',
+          }
+          EXTRA = {
+            'cn-dd': ['https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js'],
+          }
+
+          def fetch(url, out):
+            out.parent.mkdir(parents=True, exist_ok=True)
+            p = subprocess.run([
+              'curl','-L','-sS','--compressed','--connect-timeout','8','--max-time','30',
+              '-A',UA,'-D',str(out)+'.headers','-o',str(out),'-w','%{http_code}\t%{url_effective}',url
+            ], capture_output=True, text=True)
+            status, _, effective = p.stdout.partition('\t')
+            return {'url':url,'effective':effective.strip(),'status':status.strip(),'rc':p.returncode,
+                    'bytes':out.stat().st_size if out.exists() else 0,'path':str(out)}
+
+          def safe_name(i, url):
+            path = urlparse(url).path
+            ext = '.js' if '.js' in path.lower() else '.txt'
+            return f'{i:03d}{ext}'
+
+          def extract_script_refs(text, base):
+            refs=[]
+            patterns=[
+              r'<script[^>]+src=["\']([^"\']+)',
+              r'<link[^>]+href=["\']([^"\']+\.js(?:\?[^"\']*)?)',
+              r'["\']([^"\']+\.js(?:\?[^"\']*)?)["\']',
+              r'(https?://[^"\'`<>\s]+\.js(?:\?[^"\'`<>\s]*)?)',
+            ]
+            for pat in patterns:
+              for m in re.finditer(pat,text,re.I):
+                raw=html.unescape(m.group(1)).replace('\\/','/')
+                if raw.startswith(('data:','javascript:')): continue
+                u=urljoin(base,raw)
+                if u.startswith(('http://','https://')) and u not in refs:
+                  refs.append(u)
+            return refs
+
+          meta=[]
+          for name, page in TARGETS.items():
+            root=ROOT/name
+            page_out=root/'page.html'
+            rec=fetch(page,page_out); rec['surface']=name; rec['kind']='page'; meta.append(rec)
+            queue=[]
+            if page_out.exists():
+              queue += extract_script_refs(page_out.read_text('utf8',errors='ignore'), rec['effective'] or page)
+            queue += EXTRA.get(name,[])
+            seen=set()
+            i=0
+            while queue and i < 140:
+              u=queue.pop(0)
+              if u in seen: continue
+              seen.add(u)
+              out=root/safe_name(i,u)
+              got=fetch(u,out); got['surface']=name; got['kind']='script'; meta.append(got)
+              if out.exists() and 0 < out.stat().st_size < 15_000_000:
+                txt=out.read_text('utf8',errors='ignore')
+                for child in extract_script_refs(txt, got['effective'] or u):
+                  # Stay on public web/static hosts already referenced by the surface.
+                  if child not in seen and child not in queue:
+                    queue.append(child)
+              i += 1
+              time.sleep(.03)
+
+          KEYWORDS = [
+            'api','login','logout','auth','token','session','cookie','passport','account',
+            'role','character','uid','server','bind','gameRole','player',
+            'map','marker','point','collect','finish','complete','completed','progress','explore','treasure','chest','achievement',
+            'sync','realtime','websocket','wss://','ws://','EventSource','poll','interval',
+            'dd-link','openApp','openGame','bridge','native','postMessage','localhost','127.0.0.1','scheme','invoke'
           ]
+          TRANSPORT_TERMS=['websocket','wss://','ws://','eventsource','postmessage','localhost','127.0.0.1','dd-link','openapp','opengame','native','bridge']
+          PLAYER_TERMS=['login','auth','token','session','role','character','uid','server','bind','player']
+          PROGRESS_TERMS=['progress','complete','completed','finish','collect','marker','point','explore','treasure','chest','achievement','sync']
 
-          for name, url, root in targets:
-            root.mkdir(parents=True, exist_ok=True)
-            html_path = root / f'{name}.html'
-            print(f'=== FETCH PAGE {name} {url} ===')
-            r = subprocess.run(['curl','-LfsS','--compressed','-A','Mozilla/5.0',url,'-o',str(html_path)])
-            print('PAGE_RC', r.returncode, 'BYTES', html_path.stat().st_size if html_path.exists() else 0)
-            if not html_path.exists():
-              continue
-            text = html_path.read_text('utf8', errors='ignore')
-            refs = []
-            for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)', text, re.I):
-              u = urljoin(url, html.unescape(m.group(1)))
-              if u not in refs:
-                refs.append(u)
-            print('SCRIPTS', len(refs))
-            for i, u in enumerate(refs[:120]):
-              fn = root / f'{name}-{i:03}.js'
-              rr = subprocess.run(['curl','-LfsS','--compressed','-A','Mozilla/5.0',u,'-o',str(fn)])
-              print('SCRIPT', i, 'RC', rr.returncode, 'BYTES', fn.stat().st_size if fn.exists() else 0, u)
+          url_re=re.compile(r'(?:https?|wss?)://[^"\'`<>\\\s]+',re.I)
+          quoted_re=re.compile(r'["\']([^"\']{2,260})["\']')
+          report={'meta':meta,'surfaces':{}}
 
-          dd = Path('/tmp/wwm/cn/dd-link.js')
-          u = 'https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js'
-          rr = subprocess.run(['curl','-LfsS','--compressed','-A','Mozilla/5.0',u,'-o',str(dd)])
-          print('DD_LINK_RC', rr.returncode, 'BYTES', dd.stat().st_size if dd.exists() else 0, u)
-          PY
-
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          roots = [('GLOBAL', Path('/tmp/wwm/global')), ('CN', Path('/tmp/wwm/cn'))]
-          terms = [
-            'api/', '/api', 'axios', 'baseURL', 'fetch(', 'XMLHttpRequest',
-            'login', 'logout', 'account', 'auth', 'token', 'session', 'cookie', 'passport',
-            'role', 'character', 'uid', 'server', 'gameRole', 'bind',
-            'map', 'point', 'marker', 'collect', 'finish', 'finished', 'complete', 'completed',
-            'progress', 'explore', 'treasure', 'chest', 'achievement', 'sync', 'realtime',
-            'websocket', 'wss://', 'ws://', 'EventSource', 'SSE', 'poll', 'interval',
-            'dd-link', 'openApp', 'openGame', 'bridge', 'native', 'postMessage',
-            'localhost', '127.0.0.1', 'scheme', 'invoke'
-          ]
-          url_re = re.compile(r'https?://[^"\'`<>\\\s]+|wss?://[^"\'`<>\\\s]+', re.I)
-          endpoint_re = re.compile(r'["\']((?:/|https?://)[^"\']{2,240})["\']')
-
-          for label, root in roots:
-            files = sorted([p for p in root.rglob('*') if p.is_file() and p.stat().st_size < 20_000_000])
-            print(f'\n===== {label} FILES {len(files)} =====')
-            for p in files:
-              print('FILE', p.name, p.stat().st_size)
-
-            urls=[]
-            endpoints=[]
+          for name in TARGETS:
+            root=ROOT/name
+            files=[p for p in root.iterdir() if p.is_file() and not p.name.endswith('.headers') and p.stat().st_size < 15_000_000]
+            urls=[]; paths=[]; contexts=[]
             for p in files:
               text=p.read_text('utf8',errors='ignore')
+              lower=text.lower()
               for m in url_re.finditer(text):
-                v=m.group(0).rstrip('),;}')
-                if v not in urls: urls.append(v)
-              for m in endpoint_re.finditer(text):
-                v=m.group(1)
+                v=m.group(0).rstrip('),;]}')
                 lv=v.lower()
-                if any(k in lv for k in ['api','login','auth','role','character','map','point','collect','finish','progress','sync','server','user','profile']):
-                  if v not in endpoints: endpoints.append(v)
+                if any(k.lower() in lv for k in KEYWORDS) and v not in urls:
+                  urls.append(v)
+              for m in quoted_re.finditer(text):
+                v=m.group(1).replace('\\/','/')
+                lv=v.lower()
+                if len(v) <= 220 and any(k.lower() in lv for k in KEYWORDS):
+                  if (v.startswith('/') or '/api' in lv or 'http' in lv or 'wss:' in lv or 'ws:' in lv) and v not in paths:
+                    paths.append(v)
+              # High-signal contexts only: require at least one player/auth term plus progress/API/transport relation.
+              anchors=[]
+              for term in set(PLAYER_TERMS+PROGRESS_TERMS+TRANSPORT_TERMS):
+                for m in re.finditer(re.escape(term),text,re.I):
+                  anchors.append((m.start(),term))
+              for pos,term in sorted(anchors)[:2500]:
+                lo=max(0,pos-350); hi=min(len(text),pos+700)
+                ctx=' '.join(text[lo:hi].split())
+                lc=ctx.lower()
+                groups=sum([
+                  any(x in lc for x in PLAYER_TERMS),
+                  any(x in lc for x in PROGRESS_TERMS),
+                  any(x in lc for x in TRANSPORT_TERMS),
+                  any(x in lc for x in ['http','/api','fetch(','axios','xmlhttprequest','request('])
+                ])
+                if groups >= 2:
+                  item={'file':p.name,'term':term,'context':ctx[:1050]}
+                  key=(item['file'],item['context'][:260])
+                  if key not in {(x['file'],x['context'][:260]) for x in contexts}:
+                    contexts.append(item)
+                if len(contexts)>=120: break
+              if len(contexts)>=120: break
+            report['surfaces'][name]={
+              'files':len(files),
+              'urls':urls[:180],
+              'paths':paths[:260],
+              'contexts':contexts[:120],
+            }
 
-            print(f'\n===== {label} URLS =====')
-            for v in urls[:500]: print(v)
-            print(f'\n===== {label} ENDPOINT CANDIDATES =====')
-            for v in endpoints[:700]: print(v)
+          # Safe GET-only probes of known public map host; no state mutation.
+          probes=[]
+          known=[
+            'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US',
+            'https://s2.easebar.com/39f12eda6b86452b/api/user/info?lang=en-US',
+            'https://s2.easebar.com/39f12eda6b86452b/api/user/profile?lang=en-US',
+            'https://s2.easebar.com/39f12eda6b86452b/api/role/list?lang=en-US',
+            'https://s2.easebar.com/39f12eda6b86452b/api/map/progress?lang=en-US',
+          ]
+          for i,u in enumerate(known):
+            out=Path(f'/tmp/probe-{i}.txt')
+            rec=fetch(u,out)
+            body=out.read_text('utf8',errors='ignore')[:1000] if out.exists() else ''
+            probes.append({**rec,'body':' '.join(body.split())})
+          report['probes']=probes
 
-            print(f'\n===== {label} FOCUSED CONTEXTS =====')
-            seen=set()
-            for term in terms:
-              shown=0
-              for p in files:
-                text=p.read_text('utf8',errors='ignore')
-                for m in re.finditer(re.escape(term), text, re.I):
-                  ctx=text[max(0,m.start()-650):min(len(text),m.start()+1500)].replace('\n',' ')
-                  key=(term,ctx[:300])
-                  if key in seen: continue
-                  seen.add(key)
-                  low=ctx.lower()
-                  if term.lower() in {'map','point','login','auth','token','role','uid','progress','sync','finished','complete','websocket','poll'}:
-                    if not any(k in low for k in ['api','http','request','fetch','axios','server','user','game','map','role','account','token','session','socket']):
-                      continue
-                  print('TERM', term, 'FILE', p.name)
-                  print(ctx[:2100])
-                  shown += 1
-                  if shown >= 8: break
-                if shown >= 8: break
+          Path('forensic/evidence.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),'utf8')
+
+          lines=[]
+          lines.append('WWMSYNC OFFICIAL SYNC FORENSIC REPORT')
+          lines.append('====================================')
+          for m in meta:
+            if m['kind']=='page' or (m['kind']=='script' and m['bytes']>0):
+              lines.append(f"FETCH {m['surface']} {m['kind']} HTTP={m['status']} bytes={m['bytes']} {m['effective'] or m['url']}")
+          for name,data in report['surfaces'].items():
+            lines += ['',f'### {name.upper()}','URL CANDIDATES']
+            lines += [f'URL {x}' for x in data['urls']]
+            lines += ['PATH CANDIDATES']+[f'PATH {x}' for x in data['paths']]
+            lines += ['HIGH-SIGNAL CONTEXTS']
+            for c in data['contexts']:
+              lines.append(f"CTX file={c['file']} term={c['term']} :: {c['context']}")
+          lines += ['','### SAFE GET PROBES']
+          for p in probes:
+            lines.append(f"PROBE HTTP={p['status']} bytes={p['bytes']} {p['url']} :: {p['body']}")
+          Path('forensic/report.txt').write_text('\n'.join(lines),'utf8')
+          print('\n'.join(lines[:240]))
+          print(f'REPORT_LINES={len(lines)} REPORT_BYTES={Path("forensic/report.txt").stat().st_size}')
           PY
 
-          echo '=== PUBLIC GLOBAL API PROBES ==='
-          for url in \
-            'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/user/info?lang=en-US' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/user/profile?lang=en-US' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/role/list?lang=en-US' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/map/progress?lang=en-US' \
-            'https://s2.easebar.com/39f12eda6b86452b/api/map/finish?lang=en-US'; do
-            code=$(curl -L -sS --compressed -A 'Mozilla/5.0' -o /tmp/wwm/probe.body -w '%{http_code}' "$url" || true)
-            echo "PROBE $code $url BYTES $(wc -c < /tmp/wwm/probe.body 2>/dev/null || echo 0)"
-            head -c 700 /tmp/wwm/probe.body 2>/dev/null | tr '\n' ' '; echo
-          done
+          python /tmp/trace.py
+
+      - name: Upload forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-sync-forensic
+          path: |
+            forensic/report.txt
+            forensic/evidence.json
+          if-no-files-found: error
+          retention-days: 7
