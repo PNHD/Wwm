@@ -12,102 +12,110 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - name: Extract exact Global auth contract
+      - name: Resolve exact Official Global SDK initialization
         shell: bash
         run: |
           set -euo pipefail
           ROOT='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
-          API='https://s2.easebar.com/39f12eda6b86452b'
           mkdir -p /tmp/g
           curl -fsSL --max-time 30 "$ROOT/common-a15f2132.js" -o /tmp/g/common.js
           curl -fsSL --max-time 30 "$ROOT/pc-d3f0a0d4.js" -o /tmp/g/pc.js
-
           python3 - <<'PY'
           import pathlib,re
           s=pathlib.Path('/tmp/g/common.js').read_text('utf-8','ignore')
-          print('COMMON_BYTES',len(s))
           needles=[
-            '/api/auth/ursRoles','/api/auth/ursLogin','/api/auth/h72naLogin',
-            '/api/user/info','/api/user/point/finish','silentLogin','loginWithRole',
-            'updateToken','withCredentials','Authorization','MpayOSSDK'
+            'Su.init(', 'Su.login', 'Su.getSauthJson', 'Su.loginOut',
+            'yysls-map-login-type', 'setProp(Ut.APPID', 'APPID:',
+            'NETEASE_GLOBAL_SERVER_BASE_URL', 'NETEASE_GLOBAL_GAME_REDIRECT_URL',
+            'GAME_VERSION', 'gameId:', 'loginReport', 'saveLoginType(',
+            'fetchRolesAndLogin', 'showCharacterSelect', 'loginType',
           ]
-          for needle in needles:
-              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
-              print('\nKEY',needle,'COUNT',len(hits))
-              for i in hits[:3]:
-                  a=max(0,i-1800); b=min(len(s),i+2600)
-                  print('SNIP',' '.join(s[a:b].split())[:4500])
-          # Extract compact route literals, object keys and probable endpoint wrappers.
-          print('\nAUTH_ROUTE_LITERALS')
-          for x in sorted(set(re.findall(r'["\']([^"\']*/api/auth/[^"\']+)["\']',s))): print(x[:500])
-          print('\nUSER_ROUTE_LITERALS')
-          for x in sorted(set(re.findall(r'["\']([^"\']*/api/user/[^"\']+)["\']',s))): print(x[:500])
+          for n in needles:
+              hits=[m.start() for m in re.finditer(re.escape(n),s,re.I)]
+              print('\nKEY',n,'COUNT',len(hits))
+              for i in hits[:8]:
+                  print('SNIP',' '.join(s[max(0,i-2600):min(len(s),i+4200)].split())[:7000])
+          # All assignments/references where the minified alias Su is defined.
+          for pat in [r'\bSu\s*=\s*[^,;]{1,800}', r'\bSu\s*=\s*[^;]{1,1800};', r'\bAPPID\b.{0,3000}']:
+              print('\nPATTERN',pat)
+              for m in list(re.finditer(pat,s,re.S))[:12]:
+                  print('MATCH',' '.join(m.group(0).split())[:4000])
+          # Candidate numeric/string app IDs near SDK setup.
+          for m in re.finditer(r'(?:APPID|gameId|GAME_VERSION|PACKAGE_NAME).{0,400}',s,re.I):
+              x=' '.join(m.group(0).split())
+              if any(c.isdigit() for c in x): print('CFG',x[:700])
           PY
 
-          echo '===== VALIDATION RESPONSES ====='
-          while IFS='|' read -r path body; do
-            echo "CASE $path BODY $body"
-            curl -sS --max-time 15 -X POST "$API$path?lang=en-US" \
-              -H 'Origin: https://wwmsync.pages.dev' \
-              -H 'Content-Type: application/json' \
-              --data "$body" | python3 -c 'import sys,json; raw=sys.stdin.read(); print(raw[:1600])'
-          done <<'EOF'
-          /api/auth/ursRoles|{}
-          /api/auth/ursRoles|{"token":"x"}
-          /api/auth/ursRoles|{"unisdkToken":"x"}
-          /api/auth/ursRoles|{"loginToken":"x"}
-          /api/auth/ursLogin|{}
-          /api/auth/ursLogin|{"roleId":"x"}
-          /api/auth/ursLogin|{"serverId":"x","roleId":"x"}
-          /api/auth/h72naLogin|{}
-          /api/auth/h72naLogin|{"ticket":"x"}
-          /api/user/info|{}
+          echo '===== OFFICIAL MAP LOGIN UI NETWORK (NO CREDENTIALS) ====='
+          cat > /tmp/g/package.json <<'EOF'
+          {"type":"module","dependencies":{"playwright":"latest"}}
           EOF
+          cd /tmp/g
+          npm install --silent --no-audit --no-fund
+          npx playwright install chromium >/dev/null 2>&1
+          cat > /tmp/g/probe.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage({viewport:{width:1440,height:1000}});
+          const events=[];
+          page.on('request',r=>{const u=r.url(); if(/mpsdk|easebar|\/api\/auth|unisdk|login/i.test(u)) events.push(['REQ',r.method(),u]);});
+          page.on('response',r=>{const u=r.url(); if(/mpsdk|easebar|\/api\/auth|unisdk|login/i.test(u)) events.push(['RES',r.status(),u]);});
+          await page.goto('https://www.wherewindsmeetgame.com/map/en/',{waitUntil:'domcontentloaded',timeout:60000});
+          await page.waitForTimeout(6000);
+          console.log('URL0',page.url());
+          console.log('LS0',await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage))));
+          const texts=await page.locator('button, [role=button], a').allTextContents();
+          console.log('CONTROLS',texts.map(x=>x.trim()).filter(Boolean).slice(0,120));
+          const candidates=page.getByText(/log in|login|sign in/i);
+          console.log('LOGIN_MATCHES',await candidates.count());
+          if(await candidates.count()) {
+            await candidates.first().click({timeout:10000}).catch(e=>console.log('CLICK_ERR',e.message));
+            await page.waitForTimeout(5000);
+            console.log('URL1',page.url());
+            console.log('LS1',await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage))));
+            console.log('BODY_TEXT',(await page.locator('body').innerText()).slice(0,4000));
+          }
+          for(const e of events.slice(-120)) console.log(...e);
+          await browser.close();
+          EOF
+          node /tmp/g/probe.mjs
 
-      - name: Resolve official DD client metadata and bridge signals
+      - name: Resolve official DD installer and inspect metadata safely
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/dd
-          CHUNK='https://static.dd.163.com/frontendddwebsitenext/_next/static/chunks/1733-eab8b6d336eae216.js'
-          curl -fsSL --max-time 30 "$CHUNK" -o /tmp/dd/chunk.js
-
-          python3 - <<'PY'
-          import pathlib,re
-          s=pathlib.Path('/tmp/dd/chunk.js').read_text('utf-8','ignore')
-          print('DD_CHUNK_BYTES',len(s))
-          for needle in ['get_channel_download_link','setDownloadContext','baseURL','x64_download_link','x32_download_link','75609:']:
-              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
-              print('\nKEY',needle,'COUNT',len(hits))
-              for i in hits[:4]:
-                  print('SNIP',' '.join(s[max(0,i-1800):min(len(s),i+3000)].split())[:5000])
-          for u in sorted(set(re.findall(r'https?://[^"\'<>\\\s]+',s))):
-              if any(k in u.lower() for k in ('163.com','netease','download','api.')):
-                  print('URL',u[:800])
-          PY
-
-          echo '===== DD PUBLIC API ROOT PROBES ====='
-          for host in 'https://api.cc.163.com' 'https://api.dd.163.com' 'https://dd.163.com' 'https://cc.163.com'; do
-            for path in '/v1/teamchannelpkg/get_channel_download_link' '/v1/mixteamversion/setDownloadContext'; do
-              echo "CASE $host$path"
-              code=$(curl -sS --max-time 15 -D /tmp/dd/h -o /tmp/dd/b -w '%{http_code}' "$host$path" || true)
-              echo "HTTP $code"
-              grep -iE '^(content-type:|location:|server:|access-control-)' /tmp/dd/h | tail -n 15 || true
-              head -c 1200 /tmp/dd/b; echo
-            done
+          echo '===== APPAPI DOWNLOAD RESOLVER ====='
+          for q in '' '?channel=InviteLandingPage' '?channel=yysls' '?channel=official'; do
+            echo "CASE $q"
+            curl -sS --max-time 20 -D /tmp/dd/h -o /tmp/dd/b "https://appapi.cc.163.com/v1/teamchannelpkg/get_channel_download_link$q" || true
+            grep -iE '^(HTTP/|content-type:|location:|server:)' /tmp/dd/h | tail -n 10 || true
+            cat /tmp/dd/b | head -c 3000; echo
           done
 
-          echo '===== CN YYSLS BRIDGE SIGNALS ====='
-          Y='https://g.166.net/res/a19/p__g__yysls.8e3f9c6a.async.js'
-          curl -fsSL --max-time 30 "$Y" -o /tmp/dd/yysls.js
+          python3 - <<'PY'
+          import json,urllib.request
+          url='https://appapi.cc.163.com/v1/teamchannelpkg/get_channel_download_link'
+          req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+          raw=urllib.request.urlopen(req,timeout=20).read().decode('utf-8','ignore')
+          print('RAW',raw[:2000])
+          try:
+              data=json.loads(raw).get('data') or {}
+          except Exception: data={}
+          for k,v in data.items():
+              if isinstance(v,str) and ('http://' in v or 'https://' in v): print('DOWNLOAD_FIELD',k,v)
+          PY
+
+          echo '===== DD LINK SDK / NATIVE PROTOCOL ====='
+          curl -fsSL --max-time 30 'https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js' -o /tmp/dd/link.js
           python3 - <<'PY'
           import pathlib,re
-          s=pathlib.Path('/tmp/dd/yysls.js').read_text('utf-8','ignore')
-          for needle in ['实时地图','共创大地图','gm://','UniSDKJSBridge','postMsgToNative','isGodWebGame','getUserTicket','WebSocket','wss://','127.0.0.1','localhost','position','sync','yysls']:
-              hits=[m.start() for m in re.finditer(re.escape(needle),s,re.I)]
-              print('\nKEY',needle,'COUNT',len(hits))
-              for i in hits[:5]:
-                  print('SNIP',' '.join(s[max(0,i-1400):min(len(s),i+2400)].split())[:4000])
+          s=pathlib.Path('/tmp/dd/link.js').read_text('utf-8','ignore')
+          print('LINK_JS_BYTES',len(s))
+          for n in ['cc-voice-hub://','WebSocket','ws://','wss://','127.0.0.1','localhost','postMessage','native','bridge','open','game','role','plugin','tool']:
+              hits=[m.start() for m in re.finditer(re.escape(n),s,re.I)]
+              print('\nKEY',n,'COUNT',len(hits))
+              for i in hits[:8]: print('SNIP',' '.join(s[max(0,i-1000):min(len(s),i+1800)].split())[:3000])
           PY
