@@ -12,6 +12,7 @@ on:
       - wwmsync-diagnostic-v8.ps1
       - wwmsync-diagnostic-v9.ps1
       - wwmsync-diagnostic-v10.ps1
+      - wwmsync-diagnostic-v11.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -25,21 +26,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run db_mp static schema diagnostic in safe CI environment
+      - name: Run read-only SQLite diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = Join-Path $env:RUNNER_TEMP 'LocalDB'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $db = Join-Path $dir 'db_mp'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v10.json'
-          $payload = [Text.Encoding]::UTF8.GetBytes('CUSTOMDB prefix mapId=1 pointId=42 finished=true playerPosition x=123 y=0 z=456 sceneId=9 suffix')
-          [IO.File]::WriteAllBytes($db, $payload)
-          [IO.File]::WriteAllText((Join-Path $dir 'db_user'),'sibling')
-          .\wwmsync-diagnostic-v10.ps1 -DbPath $db -OutputPath $out
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v11.json'
+          $mk = Join-Path $env:RUNNER_TEMP 'make-v11-fixture.py'
+          @'
+          import sqlite3, sys
+          p=sys.argv[1]
+          c=sqlite3.connect(p)
+          c.execute('create table localdata(k text primary key, v text)')
+          c.execute('create table numeric_state(id integer primary key, n integer)')
+          c.executemany('insert into localdata(k,v) values (?,?)', [
+            ('map_show_collections','1'),
+            ('get_hujian_spot_finish_vx_1','1'),
+            ('player_position_cache','scene=9 x=123 z=456'),
+            ('unrelated_setting','abc')
+          ])
+          c.commit(); c.close()
+          '@ | Set-Content -LiteralPath $mk -Encoding UTF8
+          python $mk $db
+          .\wwmsync-diagnostic-v11.ps1 -DbPath $db -OutputPath $out
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v10') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v11') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -47,10 +61,14 @@ jobs:
           if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
           if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
           if ($j.safety.pipeWrite -ne $false) { throw 'pipeWrite boundary failed' }
-          if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
           if ($j.safety.databaseWrite -ne $false) { throw 'databaseWrite boundary failed' }
-          if ($j.safety.fileContentRead -ne $true) { throw 'fileContentRead contract failed' }
-          if ($j.safety.fileContentExport -ne $false) { throw 'fileContentExport boundary failed' }
-          if ($j.summary.siblingFiles -lt 2) { throw 'Expected sibling metadata missing' }
-          if ($j.summary.keywordHits -lt 4) { throw 'Expected semantic keyword hits missing' }
-          Write-Host "VALID diagnostic schema=$($j.schema) siblings=$($j.summary.siblingFiles) hits=$($j.summary.keywordHits)"
+          if ($j.safety.sqliteReadOnly -ne $true) { throw 'sqliteReadOnly contract failed' }
+          if ($j.safety.sqliteQueryOnly -ne $true) { throw 'sqliteQueryOnly contract failed' }
+          if ($j.summary.engine -ne 'python-sqlite3') { throw "Expected python sqlite engine, got $($j.summary.engine)" }
+          if ($j.summary.queryOnly -ne $true) { throw 'SQLite query_only was not enabled' }
+          if ($j.summary.tableCount -lt 2) { throw 'Expected fixture tables missing' }
+          if ($j.summary.keywordRowCount -lt 3) { throw 'Expected keyword-filtered rows missing' }
+          $vals=@($j.sqlite.keywordRows | ForEach-Object {$_.value}) -join "`n"
+          if ($vals -notmatch 'map_show_collections') { throw 'Expected map key missing' }
+          if ($vals -notmatch 'player_position_cache') { throw 'Expected position key missing' }
+          Write-Host "VALID diagnostic schema=$($j.schema) tables=$($j.summary.tableCount) keywordRows=$($j.summary.keywordRowCount)"
