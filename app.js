@@ -14,24 +14,24 @@ const MAP_CONFIG={
 const I18N={
   vi:{
     tagline:'Where Winds Meet companion',officialSource:'Dữ liệu Official WWM',syncTitle:'Đồng bộ game',
-    syncIntro:'Nhập UID nhân vật để lưu cấu hình. WWMSync không giả lập nút Allow: luồng UID → Allow cần một dịch vụ game-side đã được game tin cậy, và chưa có API công khai đã xác minh để WWMSync tự thực hiện.',
-    uidLabel:'UID nhân vật',uidPlaceholder:'Nhập UID nhân vật',syncButton:'Sync',syncIdle:'Chưa kết nối game.',
+    syncIntro:'UID hiện chỉ dùng để lưu hồ sơ nhân vật cục bộ. WWMSync chưa có connector game-side đã xác minh, vì vậy lưu UID không đồng nghĩa với việc đã dò game, gửi Allow hay bắt đầu đồng bộ.',
+    uidLabel:'UID nhân vật',uidPlaceholder:'Nhập UID nhân vật',syncButton:'Lưu UID',syncIdle:'Connector chưa kết nối.',
     invalidUid:'UID phải là chuỗi số hợp lệ.',
-    syncBlocked:'UID đã được lưu cục bộ. Chưa thể gửi yêu cầu Allow vào game một cách độc lập: cơ chế cũ cần backend/game-side transport riêng. WWMSync không gửi UID sang WWMMAP và không yêu cầu PIN hay mật khẩu.',
+    syncSaved:'UID đã được lưu cục bộ. Chưa có kết nối hoặc handshake nào với game được thực hiện.',
     progress:'Tiến độ game',completed:'Đã hoàn thành',totalPoints:'Tổng điểm',progressNote:'Hiện chỉ hiển thị catalog Official Map. Completion trong game chưa được auto-sync.',
     map:'Bản đồ',search:'Tìm kiếm',searchPlaceholder:'Tên địa điểm / loại điểm...',hideCompleted:'Ẩn điểm đã hoàn thành',categories:'Danh mục',all:'Tất cả',
-    syncCheck:'Trạng thái sync',diagnosticBlocked:'UID-only sync độc lập: chưa khả dụng',diagnosticIntro:'Forensic xác nhận flow cũ cần backend xác thực riêng để gửi yêu cầu vào game, sau đó mới nhận full state và vị trí qua relay WebSocket. Không có transport đó thì web thuần không thể làm game hiện Allow chỉ bằng UID.',
+    syncCheck:'Trạng thái sync',diagnosticBlocked:'Game connector: chưa kết nối',diagnosticIntro:'WWMSync hiện chưa có game-side connector đã xác minh. Nhập UID chỉ lưu cấu hình trên máy này; ứng dụng chưa kiểm tra game có đang chạy và chưa gửi bất kỳ yêu cầu Allow nào vào game.',
     loadingMap:'Đang tải bản đồ…',fanMade:'Companion do fan làm',officialMap:'Official Map',mapLoadError:'Không tải được dữ liệu bản đồ.',openPopup:'Chưa đồng bộ trạng thái game',catalogLoaded:'Đã tải {count} điểm Official Map.'
   },
   en:{
     tagline:'Where Winds Meet companion',officialSource:'Official WWM data',syncTitle:'Game sync',
-    syncIntro:'Enter a character UID to save the local profile. WWMSync does not fake an Allow prompt: UID → Allow requires a game-side service trusted by the game, and no verified public API is available for WWMSync to do this independently.',
-    uidLabel:'Character UID',uidPlaceholder:'Enter character UID',syncButton:'Sync',syncIdle:'Game not connected.',
+    syncIntro:'The UID currently only saves a local character profile. WWMSync does not yet have a verified game-side connector, so saving a UID does not mean the game was detected, an Allow request was sent, or syncing started.',
+    uidLabel:'Character UID',uidPlaceholder:'Enter character UID',syncButton:'Save UID',syncIdle:'Connector not connected.',
     invalidUid:'UID must be a valid numeric string.',
-    syncBlocked:'UID saved locally. WWMSync cannot independently send an Allow request into the game: the legacy flow depends on its own backend/game-side transport. WWMSync does not send your UID to WWMMAP and never asks for its PIN or password.',
+    syncSaved:'UID saved locally. No connection or handshake with the game has been attempted.',
     progress:'Game progress',completed:'Completed',totalPoints:'Total points',progressNote:'Currently showing the Official Map catalog only. In-game completion is not auto-synced yet.',
     map:'Map',search:'Search',searchPlaceholder:'Place / point category...',hideCompleted:'Hide completed points',categories:'Categories',all:'All',
-    syncCheck:'Sync status',diagnosticBlocked:'Independent UID-only sync: unavailable',diagnosticIntro:'Forensic verification shows the legacy flow requires a private authentication backend to send the in-game request, then receives full state and player position over a relay WebSocket. Without that transport, a pure web app cannot make the game show Allow from a UID alone.',
+    syncCheck:'Sync status',diagnosticBlocked:'Game connector: not connected',diagnosticIntro:'WWMSync does not yet have a verified game-side connector. Entering a UID only saves configuration on this device; the app has not checked whether the game is running and has not sent any Allow request into the game.',
     loadingMap:'Loading map…',fanMade:'Fan-made companion',officialMap:'Official Map',mapLoadError:'Could not load map data.',openPopup:'Game state not synced',catalogLoaded:'Loaded {count} Official Map points.'
   }
 };
@@ -62,6 +62,7 @@ function applyI18n(){
   document.querySelectorAll('[data-i18n-placeholder]').forEach(node=>node.placeholder=t(node.dataset.i18nPlaceholder));
   el.languageSelect.value=state.lang;
   el.syncStateBadge.textContent=t('syncIdle');
+  el.syncStateBadge.className='status-badge';
   el.diagnosticBadge.textContent=t('diagnosticBlocked');
   el.diagnosticText.textContent=t('diagnosticIntro');
   el.progressNote.textContent=t('progressNote');
@@ -192,9 +193,9 @@ function handleSync(){
   const uid=el.characterUid.value.trim();
   if(!/^\d{5,24}$/.test(uid)){setSyncStatus(t('invalidUid'),'error');return}
   state.uid=uid;localStorage.setItem(UID_KEY,uid);
-  setSyncStatus(t('syncBlocked'),'error');
+  setSyncStatus(t('syncSaved'));
   el.syncStateBadge.textContent=t('diagnosticBlocked');
-  el.syncStateBadge.className='status-badge warn';
+  el.syncStateBadge.className='status-badge';
 }
 function bindEvents(){
   el.languageSelect.onchange=()=>{state.lang=el.languageSelect.value;localStorage.setItem(LANG_KEY,state.lang);applyI18n()};
