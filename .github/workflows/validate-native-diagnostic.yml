@@ -7,6 +7,7 @@ on:
     paths:
       - wwmsync-diagnostic.ps1
       - wwmsync-diagnostic-v5.ps1
+      - wwmsync-diagnostic-v6.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -20,15 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run static launcher/pipe diagnostic in safe CI environment
+      - name: Run launcher owner locator in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v5.json'
-          .\wwmsync-diagnostic-v5.ps1 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v6.json'
+          .\wwmsync-diagnostic-v6.ps1 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v5') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v6') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -36,10 +37,9 @@ jobs:
           if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
           if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
           if ($j.safety.pipeWrite -ne $false) { throw 'pipeWrite boundary failed' }
-          if ($j.safety.credentialCollection -ne $false) { throw 'credentialCollection boundary failed' }
           if ($j.safety.registryWrite -ne $false) { throw 'registryWrite boundary failed' }
           if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
           if ($j.safety.staticFileRead -ne $true) { throw 'staticFileRead contract failed' }
-          if ($null -eq $j.summary) { throw 'summary missing' }
-          if ($null -eq $j.needles) { throw 'needles missing' }
-          Write-Host "VALID diagnostic schema=$($j.schema) candidates=$($j.summary.candidateFiles) hits=$($j.summary.totalHits)"
+          if ($j.safety.processMetadataRead -ne $true) { throw 'processMetadataRead contract failed' }
+          if ($null -eq $j.scanSummary) { throw 'scanSummary missing' }
+          Write-Host "VALID diagnostic schema=$($j.schema) candidates=$($j.scanSummary.candidateFiles) pipeHits=$($j.scanSummary.totalPipeHits)"
