@@ -36,7 +36,7 @@ jobs:
           $db = Join-Path $dir 'db_mp'
           $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v12.json'
           $mk = Join-Path $env:RUNNER_TEMP 'make-v12-fixture.py'
-          $mut = Join-Path $env:RUNNER_TEMP 'mutate-v12-fixture.py'
+          $set = Join-Path $env:RUNNER_TEMP 'set-v12-fixture.py'
           @'
           import sqlite3, sys
           p=sys.argv[1]
@@ -50,17 +50,38 @@ jobs:
           c.commit(); c.close()
           '@ | Set-Content -LiteralPath $mk -Encoding UTF8
           @'
-          import sqlite3, sys, time
-          p=sys.argv[1]
-          time.sleep(3.0)
-          c=sqlite3.connect(p); c.execute("update localdb set content=? where id='collect-id'",(b'1',)); c.commit(); c.close()
-          time.sleep(2.0)
-          c=sqlite3.connect(p); c.execute("update localdb set content=? where id='map-id'",(b'1',)); c.commit(); c.close()
-          '@ | Set-Content -LiteralPath $mut -Encoding UTF8
+          import sqlite3, sys
+          p,row,value=sys.argv[1],sys.argv[2],sys.argv[3].encode()
+          c=sqlite3.connect(p)
+          c.execute('update localdb set content=? where id=?',(value,row))
+          c.commit(); c.close()
+          '@ | Set-Content -LiteralPath $set -Encoding UTF8
           python $mk $db
-          $job = Start-Job -ScriptBlock { param($py,$script,$p) & $py $script $p } -ArgumentList (Get-Command python).Source,$mut,$db
-          .\wwmsync-diagnostic-v12.ps1 -DbPath $db -StillSeconds 2 -AutoPhaseSeconds 2 -OutputPath $out
-          Receive-Job $job -Wait | Out-Null
+
+          $job = Start-Job -ScriptBlock {
+            param($repo,$p,$o)
+            Set-Location $repo
+            .\wwmsync-diagnostic-v12.ps1 -DbPath $p -StillSeconds 2 -AutoPhaseSeconds 8 -OutputPath $o
+          } -ArgumentList $PWD.Path,$db,$out
+
+          $deadline=(Get-Date).AddSeconds(30)
+          while(-not (Test-Path $out)){
+            if((Get-Date) -gt $deadline){throw 'V12 did not start in time'}
+            Start-Sleep -Milliseconds 200
+          }
+
+          # V12 writes its running JSON before baseline snapshot. Waiting 4 sec from
+          # that marker places this mutation after the 2-sec still baseline and
+          # safely inside the 8-sec collection window.
+          Start-Sleep -Seconds 4
+          python $set $db collect-id 1
+
+          # Collection snapshot occurs near t=10s; t=13s is safely inside the
+          # following 8-sec map-control window.
+          Start-Sleep -Seconds 9
+          python $set $db map-id 1
+
+          Receive-Job $job -Wait
           Remove-Job $job -Force
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
