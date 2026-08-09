@@ -21,18 +21,28 @@
         <section class="panel hero-panel">
           <p class="eyebrow">WWMSYNC</p>
           <h1 data-i18n="syncTitle">Đồng bộ game</h1>
-          <p class="muted" data-i18n="syncIntro">Nhập UID nhân vật để lưu cấu hình. WWMSync không giả lập nút Allow: luồng UID → Allow cần một dịch vụ game-side đã được game tin cậy, và chưa có API công khai đã xác minh để WWMSync tự thực hiện.</p>
+          <p class="muted" data-i18n="syncIntro">UID hiện chỉ dùng để lưu hồ sơ nhân vật cục bộ. WWMSync chưa có connector game-side đã xác minh.</p>
           <div class="auth-block">
             <label class="field-label" for="characterUid" data-i18n="uidLabel">UID nhân vật</label>
             <input id="characterUid" class="field-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" data-i18n-placeholder="uidPlaceholder" placeholder="Nhập UID nhân vật">
-            <button id="syncButton" class="primary-button" type="button"><span>↻</span><span data-i18n="syncButton">Sync</span></button>
-            <p class="fineprint">WWMSync không yêu cầu PIN, mật khẩu, cookie hoặc token tài khoản.</p>
+            <button id="syncButton" class="primary-button" type="button"><span>↻</span><span data-i18n="syncButton">Lưu UID</span></button>
+            <p class="fineprint" data-i18n="privacyNote">WWMSync không yêu cầu PIN, mật khẩu, cookie hoặc token tài khoản.</p>
           </div>
           <div id="syncStatus" class="status-line" role="status" aria-live="polite"></div>
+
+          <div class="official-bridge">
+            <div class="bridge-head"><strong data-i18n="bridgeTitle">Nhập tiến độ từ Official Map</strong><span class="status-badge good">READ-ONLY</span></div>
+            <p class="fineprint" data-i18n="bridgeIntro">Kéo nút WWMSync Official Sync lên thanh dấu trang. Sau đó mở Official Map, đăng nhập bình thường và bấm dấu trang đó. Token đăng nhập chỉ được dùng ngay trên trang Official Map; WWMSync chỉ nhận danh sách ID đã hoàn thành.</p>
+            <div class="bridge-actions">
+              <a id="officialBridgeBookmarklet" class="bookmarklet-button" href="#" data-i18n="bridgeBookmarklet">WWMSync Official Sync</a>
+              <button id="copyBridgeButton" class="text-button bridge-copy" type="button" data-i18n="copyBridge">Sao chép nút</button>
+            </div>
+            <a id="openOfficialMap" class="official-map-link" href="https://www.wherewindsmeetgame.com/map/en/" target="_blank" rel="noopener noreferrer" data-i18n="openOfficialMap">Mở Official Map ↗</a>
+          </div>
         </section>
 
         <section class="panel progress-panel">
-          <div class="section-head"><h2 data-i18n="progress">Tiến độ game</h2><span id="syncStateBadge" class="status-badge neutral">Chưa kết nối game.</span></div>
+          <div class="section-head"><h2 data-i18n="progress">Tiến độ game</h2><span id="syncStateBadge" class="status-badge neutral">Chưa nhập snapshot.</span></div>
           <div class="progress-grid"><div><span data-i18n="completed">Đã hoàn thành</span><strong id="completedCount">0</strong></div><div><span data-i18n="totalPoints">Tổng điểm</span><strong id="totalCount">0</strong></div></div>
           <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
           <p id="progressNote" class="fineprint" data-i18n="progressNote">Hiện chỉ hiển thị catalog Official Map. Completion trong game chưa được auto-sync.</p>
@@ -47,8 +57,8 @@
         </section>
 
         <section class="panel diagnostic-panel">
-          <div class="section-head"><h2 data-i18n="syncCheck">Trạng thái sync</h2><span id="diagnosticBadge" class="status-badge warn">UID-only sync độc lập: chưa khả dụng</span></div>
-          <p id="diagnosticText" class="fineprint" data-i18n="diagnosticIntro">Forensic xác nhận flow cũ cần backend xác thực riêng để gửi yêu cầu vào game, sau đó mới nhận full state và vị trí qua relay WebSocket. Không có transport đó thì web thuần không thể làm game hiện Allow chỉ bằng UID.</p>
+          <div class="section-head"><h2 data-i18n="syncCheck">Trạng thái sync</h2><span id="diagnosticBadge" class="status-badge warn">Game connector: chưa kết nối</span></div>
+          <p id="diagnosticText" class="fineprint" data-i18n="diagnosticIntro">Snapshot Official Map là đường nhập an toàn đã xác minh ở phía web. Chưa có bằng chứng rằng Global Official Map tự động phản chiếu mọi completion vừa nhặt trong game; bước đó cần kiểm tra bằng tài khoản thật.</p>
         </section>
       </aside>
 
