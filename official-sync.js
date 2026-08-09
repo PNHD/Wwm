@@ -99,7 +99,7 @@ function runOfficialMapBridge(targetOrigin){
         const ids=[];
         for(const group of data?.categories||[])for(const category of group?.childCategories||[])for(const point of category?.pointList||[]){
           const id=Number(point?.id);
-          if(point?.finished===true&&Number.isInteger(id)&&id>0)ids.push(id);
+          if((point?.finished===true||point?.finished===1)&&Number.isInteger(id)&&id>0)ids.push(id);
         }
         ids.sort((a,b)=>a-b);maps.push([mapId,[...new Set(ids)]]);
       }
