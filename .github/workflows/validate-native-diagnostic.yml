@@ -10,6 +10,7 @@ on:
       - wwmsync-diagnostic-v6.ps1
       - wwmsync-diagnostic-v7.ps1
       - wwmsync-diagnostic-v8.ps1
+      - wwmsync-diagnostic-v9.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -23,27 +24,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run writable-state delta diagnostic in safe CI environment
+      - name: Run db_mp movement correlation diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $root = Join-Path $env:RUNNER_TEMP 'wwm_lite'
-          $local = Join-Path $root 'LocalData'
-          $emptyLocal = Join-Path $env:RUNNER_TEMP 'empty-localappdata'
-          $emptyRoam = Join-Path $env:RUNNER_TEMP 'empty-appdata'
-          New-Item -ItemType Directory -Force -Path $local,$emptyLocal,$emptyRoam | Out-Null
-          $env:LOCALAPPDATA = $emptyLocal
-          $env:APPDATA = $emptyRoam
-          $probe = Join-Path $local 'probe.log'
-          Set-Content -Path $probe -Value 'before'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v8.json'
-          $job = Start-Job -ScriptBlock { param($p) Start-Sleep -Milliseconds 900; Add-Content -LiteralPath $p -Value 'after' } -ArgumentList $probe
-          .\wwmsync-diagnostic-v8.ps1 -GameRoot $root -Seconds 3 -OutputPath $out
+          $db = Join-Path $env:RUNNER_TEMP 'db_mp'
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v9.json'
+          [IO.File]::WriteAllBytes($db, (New-Object byte[] 262144))
+          $job = Start-Job -ScriptBlock {
+            param($p)
+            Start-Sleep -Milliseconds 5500
+            $fs = New-Object System.IO.FileStream($p,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Write,[System.IO.FileShare]::ReadWrite)
+            try {
+              $fs.Position = 70000
+              $fs.WriteByte(123)
+              $fs.Flush()
+            } finally { $fs.Dispose() }
+          } -ArgumentList $db
+          .\wwmsync-diagnostic-v9.ps1 -DbPath $db -PhaseSeconds 4 -SampleSeconds 1 -ChunkSize 65536 -OutputPath $out
           Receive-Job $job -Wait | Out-Null
           Remove-Job $job -Force
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v8') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v9') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -51,9 +54,9 @@ jobs:
           if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
           if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
           if ($j.safety.pipeWrite -ne $false) { throw 'pipeWrite boundary failed' }
-          if ($j.safety.registryWrite -ne $false) { throw 'registryWrite boundary failed' }
           if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
-          if ($j.safety.filesystemMetadataRead -ne $true) { throw 'filesystemMetadataRead contract failed' }
-          if ($j.safety.fileContentRead -ne $false) { throw 'fileContentRead boundary failed' }
-          if ($j.summary.changedFiles -lt 1) { throw 'Expected changed file was not detected' }
-          Write-Host "VALID diagnostic schema=$($j.schema) roots=$($j.summary.rootCount) changes=$($j.summary.changedFiles)"
+          if ($j.safety.databaseWrite -ne $false) { throw 'databaseWrite boundary failed' }
+          if ($j.safety.fileContentExport -ne $false) { throw 'fileContentExport boundary failed' }
+          if ($j.safety.fileContentHashRead -ne $true) { throw 'fileContentHashRead contract failed' }
+          if ($j.summary.movementExclusiveChunkCount -lt 1) { throw 'Expected movement-exclusive chunk was not detected' }
+          Write-Host "VALID diagnostic schema=$($j.schema) snapshots=$($j.summary.snapshots) move=$($j.summary.moveChangedChunks) exclusive=$($j.summary.movementExclusiveChunkCount)"
