@@ -1,4 +1,4 @@
-name: Trace Official CN Realtime Map Bridge
+name: Trace WWM CN Realtime Bridge Contract
 
 on:
   push:
@@ -11,91 +11,106 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trace public official CN and Global clients
+      - name: Fetch WWM route chunks and extract bridge contract
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/wwm
+          base='https://g.166.net/res/a19'
+          urls=(
+            '7295.b568775a.async.js'
+            '8645.2e1dc741.async.js'
+            '2204.28632699.async.js'
+            '6466.616526a1.async.js'
+            '9301.6d938f8a.async.js'
+            '3224.15a6d646.async.js'
+            '9014.f7a84cf6.async.js'
+            '5686.b7529da8.async.js'
+            '3098.d21225b3.async.js'
+            '3127.9030b033.async.js'
+            '9356.cd5f1eac.async.js'
+            '6316.5cd9d09d.async.js'
+            'p__g__yysls.8e3f9c6a.async.js'
+          )
+          for f in "${urls[@]}"; do
+            curl -fsSL "$base/$f" -o "/tmp/wwm/$f"
+            echo "FETCHED $f $(wc -c < "/tmp/wwm/$f")"
+          done
 
-          echo '=== CN DD LANDING ==='
-          curl -fsSL -D /tmp/wwm/cn.headers 'https://ds.163.com/g/yysls' -o /tmp/wwm/cn.html || true
-          sed -n '1,20p' /tmp/wwm/cn.headers || true
-          python - <<'PY'
-          from pathlib import Path
-          import re, html
-          p=Path('/tmp/wwm/cn.html')
-          t=p.read_text('utf8',errors='ignore') if p.exists() else ''
-          print('CN_HTML_BYTES',len(t))
-          urls=[]
-          for m in re.finditer(r'(?:src|href)=["\']([^"\']+)',t,re.I):
-            u=html.unescape(m.group(1))
-            if u not in urls: urls.append(u)
-          print('CN_ASSETS')
-          for u in urls[:120]: print(u)
-          for pat in [r'https?://[^"\'<> ]+',r'wss?://[^"\'<> ]+',r'127\.0\.0\.1[^"\'<> ]*',r'localhost[^"\'<> ]*']:
-            vals=[]
-            for m in re.finditer(pat,t,re.I):
-              v=m.group(0)
-              if v not in vals: vals.append(v)
-            if vals:
-              print('CN_INLINE',pat)
-              for v in vals[:80]: print(v)
-          PY
-
-          echo '=== FETCH CN JS ASSETS ==='
-          python - <<'PY'
-          from pathlib import Path
-          from urllib.parse import urljoin, urlparse
-          import re, subprocess, html
-          base='https://ds.163.com/g/yysls'
-          t=Path('/tmp/wwm/cn.html').read_text('utf8',errors='ignore') if Path('/tmp/wwm/cn.html').exists() else ''
-          out=[]
-          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
-            u=urljoin(base,html.unescape(m.group(1)))
-            if u not in out: out.append(u)
-          for i,u in enumerate(out[:40]):
-            fn=f'/tmp/wwm/cn-{i}.js'
-            r=subprocess.run(['curl','-fsSL',u,'-o',fn])
-            print('CN_JS',i,r.returncode,u)
-          PY
-
-          echo '=== GLOBAL OFFICIAL DATA TOOL ==='
           grow='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
           curl -fsSL "$grow/index-67f2100d.js" -o /tmp/wwm/global-index.js
           curl -fsSL "$grow/app-9b07739a.js" -o /tmp/wwm/global-app.js
 
           python - <<'PY'
           from pathlib import Path
-          import re
+          import re, json
 
           files=list(Path('/tmp/wwm').glob('*.js'))
-          print('JS_FILES',[(p.name,p.stat().st_size) for p in files])
-          terms=['websocket','wss://','ws://','localhost','127.0.0.1','ipc','bridge','realtime','realTime','sync','location','position','role','character','gameId','game_id','yysls','燕云','地图','map/points','user/point','finished','accessToken','updateToken']
-          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
-          api_re=re.compile(r'["\'](/[^"\']{1,160})["\']')
+          cn=[p for p in files if not p.name.startswith('global-')]
+          gl=[p for p in files if p.name.startswith('global-')]
 
-          for p in files:
+          key_terms=[
+            'UniSDKJSBridge','postMsgToNative','callHandler','registerHandler','WebViewJavascriptBridge',
+            'gmbridge','Godlike','getMyInfo','isGodWebGame','GOD_GAME',
+            'realtime','realTime','position','location','coordinate','sync','collect','finish','finished','chest',
+            '实时','位置','坐标','同步','宝箱','已完成','已收集','探索','共创','地图'
+          ]
+          method_re=re.compile(r'(?:methodId|method|handler|eventName|action|cmd)\s*[:=]\s*["\']([^"\']{1,100})["\']',re.I)
+          quoted_re=re.compile(r'["\']([^"\']{2,100})["\']')
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
+          route_re=re.compile(r'["\'](/[^"\']{1,180})["\']')
+
+          def contexts(group,label):
+            print('\n==========',label,'==========')
+            methods=[]; urls=[]; routes=[]
+            for p in group:
+              t=p.read_text('utf8',errors='ignore')
+              for m in method_re.finditer(t):
+                v=m.group(1)
+                if v not in methods: methods.append(v)
+              for m in url_re.finditer(t):
+                v=m.group(0).rstrip('),;')
+                if v not in urls: urls.append(v)
+              for m in route_re.finditer(t):
+                v=m.group(1)
+                if any(k in v.lower() for k in ['map','sync','game','role','user','point','position','location','auth','token','collect','finish']):
+                  if v not in routes: routes.append(v)
+            print('METHOD_IDS',json.dumps(methods[:200],ensure_ascii=False))
+            print('URLS',json.dumps(urls[:160],ensure_ascii=False))
+            print('ROUTES',json.dumps(routes[:200],ensure_ascii=False))
+
+            for term in key_terms:
+              hits=[]
+              for p in group:
+                t=p.read_text('utf8',errors='ignore')
+                for m in re.finditer(re.escape(term),t,re.I):
+                  s=t[max(0,m.start()-420):min(len(t),m.start()+1000)].replace('\n',' ')
+                  # Skip obvious framework/library noise unless context carries bridge/game terms.
+                  low=s.lower()
+                  if term.lower() in ['position','location','sync','finish','finished'] and not any(x in low for x in ['map','game','bridge','uni','yysls','role','point','探索','地图','宝箱','同步','坐标','位置']):
+                    continue
+                  hits.append((p.name,s[:1420]))
+                  if len(hits)>=10: break
+                if len(hits)>=10: break
+              if hits:
+                print('\nTERM',term,'HITS',len(hits))
+                for name,s in hits:
+                  print('FILE',name)
+                  print(s)
+
+          contexts(cn,'CN WWM DD ROUTE')
+          contexts(gl,'GLOBAL OFFICIAL DATA TOOL')
+
+          # Direct cross-match of CN-discovered native method IDs in Global bundles.
+          cn_methods=[]
+          for p in cn:
             t=p.read_text('utf8',errors='ignore')
-            print('\n### FILE',p.name,'BYTES',len(t))
-            urls=[]
-            for m in url_re.finditer(t):
-              u=m.group(0).rstrip('),;')
-              if u not in urls: urls.append(u)
-            if urls:
-              print('URLS')
-              for u in urls[:120]: print(u)
-            routes=[]
-            for m in api_re.finditer(t):
-              s=m.group(1)
-              if any(k in s.lower() for k in ['api','map','sync','role','game','user','point','auth','token','position','location','socket','bridge']):
-                if s not in routes: routes.append(s)
-            if routes:
-              print('ROUTES')
-              for s in routes[:160]: print(s)
-            for term in terms:
-              hits=[m.start() for m in re.finditer(re.escape(term),t,re.I)]
-              if not hits: continue
-              print('TERM',term,'COUNT',len(hits))
-              for pos in hits[:4]:
-                print(t[max(0,pos-260):min(len(t),pos+650)].replace('\n',' ')[:920])
+            for m in method_re.finditer(t):
+              v=m.group(1)
+              if v not in cn_methods: cn_methods.append(v)
+          gt='\n'.join(p.read_text('utf8',errors='ignore') for p in gl)
+          print('\n========== CROSS MATCH =========')
+          for v in cn_methods:
+            if v and v in gt:
+              print('GLOBAL_MATCH',v)
           PY
