@@ -12,9 +12,9 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
-      - name: Inspect deployed receiver state
+      - name: Compare receiver with and without service worker
         shell: bash
         env:
           TARGET: https://46a4dced.wwmsync.pages.dev
@@ -27,42 +27,64 @@ jobs:
           const { chromium }=require(process.cwd()+'/node_modules/playwright-core');
           const base=process.env.TARGET.replace(/\/$/,'');
           const enc=o=>Buffer.from(JSON.stringify(o),'utf8').toString('base64url');
-          (async()=>{
-            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage();
-            page.on('console',m=>console.log('PAGE_CONSOLE',m.type(),m.text()));
-            page.on('pageerror',e=>console.log('PAGE_ERROR',e.message));
+
+          async function run(browser,label,serviceWorkers){
+            const context=await browser.newContext({serviceWorkers,viewport:{width:1280,height:800}});
+            const page=await context.newPage();
+            const req=[];
+            page.on('response',async r=>{const u=r.url();if(/\/(app|official-sync|sw)\.js(?:\?|$)/.test(u))req.push({url:u,status:r.status(),fromSW:r.fromServiceWorker()})});
+            page.on('console',m=>console.log(label,'PAGE_CONSOLE',m.type(),m.text()));
+            page.on('pageerror',e=>console.log(label,'PAGE_ERROR',e.message));
             await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
             await page.waitForFunction(()=>Number(document.querySelector('#totalCount')?.textContent.replace(/\D/g,''))>1000,null,{timeout:30000});
             const liveIds=await page.evaluate(async()=>{
               const r=await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US',{credentials:'omit'});const j=await r.json();const ids=[];
               for(const g of j?.data?.categories||[])for(const c of g?.childCategories||[])for(const p of c?.pointList||[]){const id=Number(p.id);if(Number.isInteger(id)&&id>0&&!ids.includes(id))ids.push(id);if(ids.length===3)return ids}return ids;
             });
+            const beforeFiles=await page.evaluate(async()=>{
+              const [app,off,sw]=await Promise.all(['/app.js','/official-sync.js','/sw.js'].map(u=>fetch(u,{cache:'no-store'}).then(r=>r.text())));
+              return{
+                appHasConsume:app.includes('consumeOfficialImport()'),
+                appHasImportKey:app.includes('wwmsync:official-completion'),
+                appPrefix:app.slice(0,180),
+                officialHasConsume:off.includes('function consumeOfficialImport'),
+                officialHasPrefix:off.includes("#wwmsync-import="),
+                swCache:(sw.match(/const CACHE='([^']+)'/)||[])[1]||'',
+                swPrefix:sw.slice(0,120)
+              };
+            });
             const payload={v:1,source:'official-map',at:Date.now(),maps:[[1,liveIds],[2,[]],[3,[]],[4,[]]]};
             await page.goto(`${base}/#wwmsync-import=${enc(payload)}`,{waitUntil:'domcontentloaded',timeout:60000});
             await page.waitForFunction(()=>Number(document.querySelector('#totalCount')?.textContent.replace(/\D/g,''))>1000,null,{timeout:30000});
-            await page.waitForTimeout(1500);
+            await page.waitForTimeout(1200);
             const state=await page.evaluate(async ids=>{
               const mod=await import('/official-sync.js');
               const snap=mod.loadOfficialCompletion();
-              const api=await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US',{credentials:'omit'}).then(r=>r.json());
-              const apiIds=[];for(const g of api?.data?.categories||[])for(const c of g?.childCategories||[])for(const p of c?.pointList||[])if(ids.includes(Number(p.id)))apiIds.push(Number(p.id));
               return{
                 url:location.href,hash:location.hash,
                 done:document.querySelector('#completedCount')?.textContent.trim(),
                 total:document.querySelector('#totalCount')?.textContent.trim(),
                 badge:document.querySelector('#syncStateBadge')?.textContent.trim(),
-                note:document.querySelector('#progressNote')?.textContent.trim(),
-                status:document.querySelector('#syncStatus')?.textContent.trim(),
                 stored:localStorage.getItem('wwmsync:official-completion:v1'),
-                moduleSnapshot:snap,
-                moduleSet:[...mod.completionSet(snap,1)],
-                liveIds:ids,apiMatchedIds:apiIds,
-                controlled:!!navigator.serviceWorker?.controller
+                moduleSnapshot:snap,moduleSet:[...mod.completionSet(snap,1)],liveIds:ids,
+                controlled:!!navigator.serviceWorker?.controller,
+                controller:navigator.serviceWorker?.controller?.scriptURL||''
               };
             },liveIds);
-            console.log('RECEIVER_STATE',JSON.stringify(state));
+            console.log(label,'FILES',JSON.stringify(beforeFiles));
+            console.log(label,'RESPONSES',JSON.stringify(req));
+            console.log(label,'STATE',JSON.stringify(state));
+            await context.close();
+            return state;
+          }
+
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const blocked=await run(browser,'SW_BLOCKED','block');
+            const allowed=await run(browser,'SW_ALLOWED','allow');
             await browser.close();
+            if(blocked.done!=='3')process.exitCode=2;
+            if(allowed.done!=='3')process.exitCode=3;
           })().catch(e=>{console.error('RECEIVER_FATAL',e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/diag.cjs
