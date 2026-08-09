@@ -1,4 +1,4 @@
-name: Locate Official NetEase DD WWM Client Assets
+name: Trace Official DD Link SDK And Installer API
 
 on:
   push:
@@ -11,76 +11,132 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Inspect public DD landing and client asset references
+      - name: Inspect public DD SDK, helper page, and installer API
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/dd/js
-          for u in \
-            'https://dd.163.com/?utm_source=yyslsjingling&auto=1' \
-            'https://dd.163.com/' \
-            'http://dd.163.com/?utm_source=yyslsjingling&auto=1'; do
-            echo "=== GET $u ==="
-            curl -LfsS -D /tmp/dd/headers "$u" -o /tmp/dd/index.html && break || true
-          done
-          sed -n '1,40p' /tmp/dd/headers || true
-          echo "HTML_BYTES $(wc -c < /tmp/dd/index.html 2>/dev/null || echo 0)"
+          mkdir -p /tmp/dd/site
+
+          echo '=== DD LINK SDK ==='
+          curl -LfsS -D /tmp/dd/ddlink.headers 'https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js' -o /tmp/dd/dd-link.js
+          sed -n '1,20p' /tmp/dd/ddlink.headers
+          echo "DD_LINK_BYTES $(wc -c < /tmp/dd/dd-link.js)"
+
+          echo '=== OFFICIAL HELPER PAGE ==='
+          curl -LfsS -D /tmp/dd/helper.headers 'https://act.ds.163.com/7cf1cfa6a9edf833/' -o /tmp/dd/helper.html || true
+          sed -n '1,20p' /tmp/dd/helper.headers || true
+          echo "HELPER_BYTES $(wc -c < /tmp/dd/helper.html 2>/dev/null || echo 0)"
+
+          echo '=== DD SITE ==='
+          curl -LfsS 'https://dd.163.com/?utm_source=yyslsjingling&auto=1' -o /tmp/dd/index.html
 
           python - <<'PY'
           from pathlib import Path
           from urllib.parse import urljoin
           import re, html, subprocess
-          p=Path('/tmp/dd/index.html')
-          t=p.read_text('utf8',errors='ignore') if p.exists() else ''
-          base='https://dd.163.com/'
-          refs=[]
-          for m in re.finditer(r'(?:src|href)=["\']([^"\']+)',t,re.I):
-            u=urljoin(base,html.unescape(m.group(1)))
-            if u not in refs: refs.append(u)
-          print('=== REFS ===')
-          for u in refs: print(u)
-          scripts=[u for u in refs if '.js' in u.lower()]
-          for i,u in enumerate(scripts[:80]):
-            r=subprocess.run(['curl','-LfsS',u,'-o',f'/tmp/dd/js/{i}.js'])
-            print('FETCH_JS',i,r.returncode,u)
-          print('=== INLINE URL/EXE CANDIDATES ===')
-          pats=[r'https?://[^"\'<> ]+',r'[^"\'<> ]+\.exe(?:\?[^"\'<> ]*)?',r'[^"\'<> ]+\.msi(?:\?[^"\'<> ]*)?']
-          for pat in pats:
-            vals=[]
-            for m in re.finditer(pat,t,re.I):
-              v=html.unescape(m.group(0))
-              if v not in vals: vals.append(v)
-            for v in vals[:120]: print(v)
+          for name,base in [('index','https://dd.163.com/'),('helper','https://act.ds.163.com/7cf1cfa6a9edf833/')]:
+            p=Path('/tmp/dd/'+name+'.html')
+            if not p.exists(): continue
+            t=p.read_text('utf8',errors='ignore')
+            refs=[]
+            for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
+              u=urljoin(base,html.unescape(m.group(1)))
+              if u not in refs: refs.append(u)
+            print('SCRIPTS',name,len(refs))
+            for i,u in enumerate(refs[:80]):
+              fn=f'/tmp/dd/site/{name}-{i}.js'
+              r=subprocess.run(['curl','-LfsS',u,'-o',fn])
+              print('FETCH',r.returncode,u)
           PY
+
+          echo '=== PUBLIC INSTALLER API PROBES ==='
+          for host in 'https://dd.163.com' 'https://api.dd.163.com' 'https://god.gameyw.netease.com'; do
+            for channel in 'yyslsjingling' 'OfficialWebsite' ''; do
+              enc="$channel"
+              url="$host/v1/teamchannelpkg/get_channel_download_link?channel=$enc"
+              code=$(curl -L -sS -o /tmp/dd/probe.json -w '%{http_code}' "$url" || true)
+              echo "PROBE $code $url"
+              if [ "$code" = 200 ]; then
+                python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/dd/probe.json')
+          t=p.read_text('utf8',errors='ignore') if p.exists() else ''
+          print('BODY_BYTES',len(t))
+          try:
+            o=json.loads(t)
+            # Print only non-secret public download metadata/URLs.
+            def walk(x,p=''):
+              if isinstance(x,dict):
+                for k,v in x.items():
+                  q=f'{p}.{k}' if p else k
+                  if isinstance(v,(dict,list)): walk(v,q)
+                  elif any(s in k.lower() for s in ['download','version','link','url','channel','code','msg']):
+                    print(q,repr(v)[:1000])
+              elif isinstance(x,list):
+                for i,v in enumerate(x[:20]): walk(v,f'{p}[{i}]')
+            walk(o)
+          except Exception:
+            print(t[:1200])
+          PY
+              fi
+            done
+          done
 
           python - <<'PY'
           from pathlib import Path
-          import re
-          files=list(Path('/tmp/dd/js').glob('*.js'))+[Path('/tmp/dd/index.html')]
-          terms=['download','installer','setup','version','update','yysls','燕云','地图','实时','map','plugin','game','tool','auto=1','utm_source']
-          url_re=re.compile(r'https?://[^"\'`<>\\ ]+',re.I)
-          print('=== ALL INTERESTING URLS ===')
+          import re, json
+          files=[Path('/tmp/dd/dd-link.js')]+list(Path('/tmp/dd/site').glob('*.js'))+[Path('/tmp/dd/helper.html'),Path('/tmp/dd/index.html')]
+          terms=[
+            'yysls','燕云','dd-link','openApp','openGame','gameRole','toBnAuthUrl',
+            'bridge','callHandler','registerHandler','postMessage','invoke','native','scheme',
+            'localhost','127.0.0.1','websocket','wss://','ws://','ipc','pipe','port',
+            'position','location','coordinate','realtime','sync','collect','treasure','progress','map',
+            'teamchannelpkg','get_channel_download_link','baseURL','mixteamversion'
+          ]
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
+          quoted_re=re.compile(r'["\']([^"\']{2,160})["\']')
+
+          print('\n=== FILE SIZES ===')
+          for p in files:
+            if p.exists(): print(p.name,p.stat().st_size)
+
+          print('\n=== INTERESTING URLS ===')
           urls=[]
           for p in files:
             if not p.exists(): continue
             t=p.read_text('utf8',errors='ignore')
             for m in url_re.finditer(t):
               u=m.group(0).rstrip('),;}')
-              if any(k in u.lower() for k in ['download','update','patch','client','setup','dd.163','166.net','163.com','exe','msi']):
+              low=u.lower()
+              if any(k in low for k in ['netease','163.com','166.net','16163','localhost','127.0.0.1','ws://','wss://','download','update']):
                 if u not in urls: urls.append(u)
-          for u in urls[:300]: print(u)
-          print('=== CONTEXTS ===')
+          for u in urls[:350]: print(u)
+
+          print('\n=== DD-LINK STRING CANDIDATES ===')
+          t=Path('/tmp/dd/dd-link.js').read_text('utf8',errors='ignore')
+          vals=[]
+          for m in quoted_re.finditer(t):
+            v=m.group(1)
+            lv=v.lower()
+            if any(k in lv for k in ['bridge','native','client','room','game','open','link','login','role','map','position','sync','ipc','socket','scheme','dd','url']):
+              if v not in vals: vals.append(v)
+          for v in vals[:300]: print(v)
+
+          print('\n=== FOCUSED CONTEXTS ===')
           for term in terms:
             shown=0
             for p in files:
               if not p.exists(): continue
               t=p.read_text('utf8',errors='ignore')
               for m in re.finditer(re.escape(term),t,re.I):
-                ctx=t[max(0,m.start()-600):min(len(t),m.start()+1300)].replace('\n',' ')
-                if term.lower() in {'map','game','tool'} and not any(k in ctx.lower() for k in ['yysls','燕云','download','plugin','dd.163','实时','地图']): continue
+                ctx=t[max(0,m.start()-850):min(len(t),m.start()+1900)].replace('\n',' ')
+                if term.lower() in {'map','sync','position','location','progress','port','native','bridge'}:
+                  if not any(k in ctx.lower() for k in ['dd','yysls','燕云','game','client','bridge','native','websocket','localhost','127.0.0.1','网易']):
+                    continue
                 print('TERM',term,'FILE',p.name)
-                print(ctx[:1900])
+                print(ctx[:2750])
                 shown+=1
-                if shown>=8: break
-              if shown>=8: break
+                if shown>=10: break
+              if shown>=10: break
           PY
