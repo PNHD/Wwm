@@ -116,7 +116,7 @@ jobs:
 
       - name: Browser smoke map, UID boundary, and sanitized snapshot import
         env:
-          RUNTIME_URL: ${{ steps.deploy.outputs.runtime_url }}
+          EXACT_URL: ${{ steps.deploy.outputs.exact_url }}
         run: |
           set -euo pipefail
           CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
@@ -124,7 +124,7 @@ jobs:
           npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
           cat > /tmp/smoke.cjs <<'NODE'
           const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
-          const base=process.env.RUNTIME_URL.replace(/\/$/,'');
+          const base=process.env.EXACT_URL.replace(/\/$/,'');
           const enc=o=>Buffer.from(JSON.stringify(o),'utf8').toString('base64url');
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -161,7 +161,6 @@ jobs:
             const forbidden=requests.filter(u=>/sdk-os\.mpsdk|wwmmap\.pages\.dev|sangtacviet|stv-appdomain|\/service\/(gameauth|call_client_method)/i.test(u));
             if(forbidden.length)fatal.push(`forbidden requests=${forbidden.join(',')}`);
 
-            // Select real current point IDs so the receiver test follows the live Official Map catalog.
             const liveIds=await page.evaluate(async()=>{
               const r=await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US',{credentials:'omit'});
               const j=await r.json();
@@ -191,4 +190,4 @@ jobs:
           })().catch(e=>{console.error('BROWSER_FATAL',e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync browser smoke passed: $RUNTIME_URL"
+          echo "WWMSync browser smoke passed: $EXACT_URL"
