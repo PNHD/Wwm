@@ -14,119 +14,79 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Extract Global official login contract
+      - name: Trace Global official shared auth/store chunks
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wwm
-          GLOBAL_JS='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js'
-          GLOBAL_MAP='https://www.wherewindsmeetgame.com/map/en/'
-          API='https://s2.easebar.com/39f12eda6b86452b'
-          curl -fsSL --max-time 30 "$GLOBAL_JS" -o /tmp/wwm/global.js
-          curl -fsSL --max-time 30 "$GLOBAL_MAP" -o /tmp/wwm/map.html
-          echo "GLOBAL_JS_BYTES $(wc -c < /tmp/wwm/global.js)"
-
-          echo '===== SOURCE MAP ====='
-          for u in "$GLOBAL_JS.map" "${GLOBAL_JS%/*}/pc-d3f0a0d4.js.map"; do
-            code=$(curl -sSL --max-time 20 -o /tmp/wwm/global.map -w '%{http_code}' "$u" || true)
-            echo "MAP_TRY HTTP_${code} $u BYTES_$(wc -c < /tmp/wwm/global.map 2>/dev/null || echo 0)"
-            if [ "$code" = 200 ]; then head -c 120 /tmp/wwm/global.map; echo; break; fi
+          ROOT='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js'
+          mkdir -p /tmp/g
+          for f in common-a15f2132.js index-1d9774f9.js index-be137abf.js vue.runtime.esm-bundler-11d7002a.js pc-d3f0a0d4.js; do
+            curl -fsSL --max-time 30 "$ROOT/$f" -o "/tmp/g/$f"
+            echo "$f $(wc -c < /tmp/g/$f)"
           done
 
-          echo '===== INLINE CONFIG / SDK ATTRIBUTES ====='
-          python3 - <<'PY'
-          import re, pathlib
-          s=pathlib.Path('/tmp/wwm/map.html').read_text('utf-8','ignore')
-          for needle in ['mpay','Mpay','sdk-os','appId','app_id','app_channel','channel','redirect','callback','unisdk','h72','easebar','s2.easebar']:
-              pos=0; hits=0
-              while hits<12:
-                  i=s.lower().find(needle.lower(),pos)
-                  if i<0: break
-                  print('HTMLCTX',needle,' '.join(s[max(0,i-500):i+900].split())[:1500])
-                  pos=i+len(needle); hits+=1
-          PY
-
-          echo '===== EXACT STORE/AUTH METHOD CONTEXT ====='
           python3 - <<'PY'
           import pathlib,re
-          s=pathlib.Path('/tmp/wwm/global.js').read_text('utf-8','ignore')
-          needles=['silentLogin','loginWithRole','updateToken','mapPoints','mapList','ursRoles','ursLogin','h72naLogin','user/info','point/finish','roleList','accessToken','Authorization','Bearer','token','MpayOSSDK','Mpay','unisdk_token','mpay','cookie','credentials','withCredentials','axios']
-          for needle in needles:
-              print('\n###',needle)
-              pos=0; hits=0
-              while hits<12:
-                  i=s.lower().find(needle.lower(),pos)
-                  if i<0: break
-                  ctx=' '.join(s[max(0,i-900):i+1500].split())
-                  print('CTX',ctx[:2500])
-                  pos=i+len(needle); hits+=1
-          print('\n### STRING_ROUTES')
-          for r in sorted(set(re.findall(r'/api/[A-Za-z0-9_?=&${}./:-]+',s))): print(r[:400])
-          PY
-
-          echo '===== HARMLESS POST VALIDATION ====='
-          for path in '/api/auth/ursRoles' '/api/auth/ursLogin' '/api/auth/h72naLogin' '/api/user/point/finish' '/api/map/point'; do
-            echo "-- $path empty-json"
-            curl -sS --max-time 15 -X POST "$API$path?lang=en-US" \
-              -H 'Origin: https://wwmsync.pages.dev' \
-              -H 'Content-Type: application/json' \
-              --data '{}' | head -c 1500; echo
-          done
-
-      - name: Extract CN official native bridge and DD download contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/wwm/cn
-          DS='https://g.166.net/res/a19/umi.e9951072.js'
-          YYSLS='https://g.166.net/res/a19/p__g__yysls.8e3f9c6a.async.js'
-          curl -fsSL --max-time 30 "$DS" -o /tmp/wwm/cn/ds.js
-          curl -fsSL --max-time 30 "$YYSLS" -o /tmp/wwm/cn/yysls.js
-          curl -fsSL --max-time 30 'https://dd.163.com/' -o /tmp/wwm/cn/dd.html
-          echo "DS_BYTES $(wc -c < /tmp/wwm/cn/ds.js) YYSLS_BYTES $(wc -c < /tmp/wwm/cn/yysls.js)"
-
-          echo '===== CN DS BRIDGE EXACT CONTEXT ====='
-          python3 - <<'PY'
-          import pathlib,re
-          files=[pathlib.Path('/tmp/wwm/cn/ds.js'),pathlib.Path('/tmp/wwm/cn/yysls.js')]
-          needles=['getGmbridgeUnisdkTicketLogin','getGasTicketLogin','gm://getUserTicket','UniSDKJSBridge','postMsgToNative','useGodlikeJsBridge','Godlike','isGodWebGame','GOD_GAME','ticketMethod','GL-Uid','getRecentLoginGameList','yysls','实时地图','共创大地图','位置','同步']
-          for p in files:
+          needles=['silentLogin','loginWithRole','updateToken','mapPoints','mapList','ursRoles','ursLogin','h72naLogin','/api/auth/','/api/user/','/api/map/','MpayOSSDK','mpay','unisdk_token','token','roleList','Authorization','withCredentials','credentials','X-','headers','finished','finishPointsNum']
+          for p in pathlib.Path('/tmp/g').glob('*.js'):
               s=p.read_text('utf-8','ignore')
-              print('\nFILE',p.name)
-              for needle in needles:
-                  pos=0; hits=0
-                  while hits<8:
-                      i=s.lower().find(needle.lower(),pos)
+              hits=[n for n in needles if n.lower() in s.lower()]
+              if not hits: continue
+              print('\n===== FILE',p.name,'HITS',','.join(hits),'=====')
+              for n in hits:
+                  pos=0; count=0
+                  while count<10:
+                      i=s.lower().find(n.lower(),pos)
                       if i<0: break
-                      print('CNCTX',needle,' '.join(s[max(0,i-1000):i+1800].split())[:3000])
-                      pos=i+len(needle); hits+=1
+                      print('CTX',n,' '.join(s[max(0,i-1200):i+2200].split())[:3500])
+                      pos=i+len(n); count+=1
+              routes=sorted(set(re.findall(r'["\']([^"\']*(?:/api/(?:auth|user|map)/)[^"\']*)["\']',s)))
+              for r in routes: print('ROUTE_LITERAL',r[:800])
           PY
 
-          echo '===== DD SCRIPT/DOWNLOAD DISCOVERY ====='
+          echo '===== INVALID FIELD PROBES ====='
+          API='https://s2.easebar.com/39f12eda6b86452b'
+          for spec in \
+            'ursRoles:{"token":"x"}' \
+            'ursRoles:{"unisdkToken":"x"}' \
+            'ursLogin:{"roleId":"x"}' \
+            'ursLogin:{"server":"x","roleId":"x"}' \
+            'h72naLogin:{"ticket":"x"}'; do
+            name=${spec%%:*}; body=${spec#*:}
+            echo "-- $name $body"
+            curl -sS --max-time 15 -X POST "$API/api/auth/$name?lang=en-US" -H 'Content-Type: application/json' -H 'Origin: https://wwmsync.pages.dev' --data "$body" | head -c 1200; echo
+          done
+
+      - name: Resolve official DD Windows client and inspect package statically
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dd
+          CHUNK='https://static.dd.163.com/frontendddwebsitenext/_next/static/chunks/1733-eab8b6d336eae216.js'
+          curl -fsSL --max-time 30 "$CHUNK" -o /tmp/dd/chunk.js
+          echo '===== DD API CONSTANTS / DOWNLOAD METHOD ====='
           python3 - <<'PY'
-          import re,urllib.parse,urllib.request,pathlib
-          html=pathlib.Path('/tmp/wwm/cn/dd.html').read_text('utf-8','ignore')
-          urls=[]
-          for u in re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I):
-              u=urllib.parse.urljoin('https://dd.163.com/',u).rstrip('\\')
-              if u not in urls: urls.append(u)
-          print('DD_SCRIPTS',len(urls))
-          for u in urls:
-              if 'static.dd.163.com' not in u: continue
-              try:
-                  req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
-                  s=urllib.request.urlopen(req,timeout=20).read(5_000_000).decode('utf-8','ignore')
-              except Exception as e:
-                  print('ERR',u,type(e).__name__); continue
-              matches=[]
-              for pattern in [r'https?://[^"\'<>\s]+',r'/api/[^"\'<>\s]+',r'/v\d+/[^"\'<>\s]+']:
-                  for x in re.findall(pattern,s):
-                      if any(k in x.lower() for k in ('download','update','version','client','windows','exe','msi','setup','package','release')):
-                          matches.append(x.rstrip('\\'))
-              if matches:
-                  print('DD_FILE',u)
-                  for x in sorted(set(matches))[:100]: print('DDREF',x[:1000])
-              for needle in ['windows','downloadUrl','download_url','latestVersion','installer','setup.exe','网易DD','燕云十六声','yysls']:
-                  i=s.lower().find(needle.lower())
-                  if i>=0: print('DDCTX',needle,' '.join(s[max(0,i-800):i+1500].split())[:2400])
+          import pathlib
+          s=pathlib.Path('/tmp/dd/chunk.js').read_text('utf-8','ignore')
+          for n in ['75609:function','get_channel_download_link','setDownloadContext','baseURL','cc.163.com','api.cc','x64_download_link','x32_download_link']:
+              pos=0; c=0
+              while c<8:
+                  i=s.find(n,pos)
+                  if i<0: break
+                  print('DDCTX',n,' '.join(s[max(0,i-1400):i+2600].split())[:4200])
+                  pos=i+len(n); c+=1
           PY
+
+          # Probe likely official API roots without credentials; endpoint is the public website's own download resolver.
+          for host in 'https://api.cc.163.com' 'https://api.dd.163.com' 'https://dd.163.com'; do
+            echo "===== HOST $host ====="
+            for path in '/v1/teamchannelpkg/get_channel_download_link' '/v1/mixteamversion/setDownloadContext'; do
+              echo "-- $path GET"
+              curl -sS --max-time 15 -D /tmp/dd/h -o /tmp/dd/b -w 'HTTP_%{http_code}\n' "$host$path" || true
+              grep -iE '^(content-type:|location:|server:)' /tmp/dd/h | tail -n 10 || true
+              head -c 1000 /tmp/dd/b; echo
+              echo "-- $path POST {}"
+              curl -sS --max-time 15 -X POST -H 'Content-Type: application/json' --data '{}' -D /tmp/dd/h -o /tmp/dd/b -w 'HTTP_%{http_code}\n' "$host$path" || true
+              head -c 1000 /tmp/dd/b; echo
+            done
+          done
