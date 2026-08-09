@@ -1,4 +1,4 @@
-name: Trace Global Map Ticket And Completion Session
+name: Trace Official Global Map Auth Store
 
 on:
   push:
@@ -11,86 +11,102 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trace official Global role to map ticket flow
+      - name: Fetch map chunks and extract auth/progress contract
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wwm/mapjs
+          mkdir -p /tmp/wwm/chunks
+          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803'
+          curl -fsSL "$root/js/pc-d3f0a0d4.js" -o /tmp/wwm/chunks/pc-d3f0a0d4.js
 
-          tool='https://www.wherewindsmeetgame.com/m/zt/20251121182818'
-          curl -fsSL "$tool/js/index-67f2100d.js" -o /tmp/wwm/global-index.js
-          curl -fsSL "$tool/js/app-9b07739a.js" -o /tmp/wwm/global-app.js
-          curl -fsSL "$tool/js/uniLogin-422132ba.js" -o /tmp/wwm/global-unilogin.js || true
-
-          map='https://www.wherewindsmeetgame.com/map/en/'
-          curl -fsSL -D /tmp/wwm/map.headers "$map" -o /tmp/wwm/map.html
           python - <<'PY'
           from pathlib import Path
-          from urllib.parse import urljoin
-          import re, html, subprocess
-          base='https://www.wherewindsmeetgame.com/map/en/'
-          t=Path('/tmp/wwm/map.html').read_text('utf8',errors='ignore')
-          print('MAP_HTML_BYTES',len(t))
-          assets=[]
-          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
-            u=urljoin(base,html.unescape(m.group(1)))
-            if u not in assets: assets.append(u)
-          print('MAP_SCRIPTS')
-          for i,u in enumerate(assets):
-            print(i,u)
-            subprocess.run(['curl','-fsSL',u,'-o',f'/tmp/wwm/mapjs/{i}.js'],check=False)
+          import re, subprocess
+          root='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/'
+          out=Path('/tmp/wwm/chunks')
+          seen={p.name for p in out.glob('*.js')}
+          for round_no in range(4):
+            names=[]
+            for p in list(out.glob('*.js')):
+              t=p.read_text('utf8',errors='ignore')
+              pats=[
+                r'["\']\./([A-Za-z0-9_.-]+\.js)["\']',
+                r'import\(["\']\./([A-Za-z0-9_.-]+\.js)["\']\)',
+                r'["\']js/([A-Za-z0-9_.-]+\.js)["\']',
+              ]
+              for pat in pats:
+                for m in re.finditer(pat,t):
+                  n=m.group(1)
+                  if n not in seen and n not in names: names.append(n)
+            if not names: break
+            print('ROUND',round_no,'DISCOVERED',len(names))
+            for n in names[:160]:
+              r=subprocess.run(['curl','-fsSL',root+n,'-o',str(out/n)])
+              print('FETCH',r.returncode,n)
+              if r.returncode==0: seen.add(n)
+          print('TOTAL_JS',len(list(out.glob('*.js'))))
+          print('FILES')
+          for p in sorted(out.glob('*.js')):
+            print(p.name,p.stat().st_size)
           PY
 
           python - <<'PY'
           from pathlib import Path
           import re, json
-
-          groups={
-            'GLOBAL_TOOL':[Path('/tmp/wwm/global-index.js'),Path('/tmp/wwm/global-app.js'),Path('/tmp/wwm/global-unilogin.js')],
-            'OFFICIAL_MAP':list(Path('/tmp/wwm/mapjs').glob('*.js')),
-          }
-          terms=['ticket','goToMap','roleList','roleLogin','roleInfo','access_token','finished','finish','point/finish','map/points','map/list','ursLogin','h72naLogin','auth','login','sdkuid','sessionid']
-          route_re=re.compile(r'["\'](/[^"\']{1,180})["\']')
+          files=list(Path('/tmp/wwm/chunks').glob('*.js'))
+          terms=['mapPoints','silentLogin','loginWithRole','roleList','updateToken','userinfo','finished','point/finish','user/point','map/points','map/list','ticket','h72na','access_token','pointFinish','finishPoint','toggleFinish','finish']
+          api_like=re.compile(r'["\'](/(?:api/)?[^"\']{1,150})["\']')
           url_re=re.compile(r'https?://[^"\'`<>\\ ]+',re.I)
 
-          for label,files in groups.items():
-            files=[p for p in files if p.exists()]
-            print('\n==========',label,'FILES',[(p.name,p.stat().st_size) for p in files],'==========')
-            routes=[]; urls=[]
+          routes=[]; urls=[]
+          for p in files:
+            t=p.read_text('utf8',errors='ignore')
+            for m in api_like.finditer(t):
+              v=m.group(1)
+              if any(k in v.lower() for k in ['map','point','user','role','login','auth','ticket','finish','token']):
+                if v not in routes: routes.append(v)
+            for m in url_re.finditer(t):
+              v=m.group(0).rstrip('),;')
+              if any(k in v.lower() for k in ['s2.easebar','wherewindsmeet','mpsdk','api']):
+                if v not in urls: urls.append(v)
+          print('\n=== ROUTES ===')
+          for v in routes[:400]: print(v)
+          print('\n=== URLS ===')
+          for v in urls[:200]: print(v)
+
+          for term in terms:
+            hits=[]
             for p in files:
               t=p.read_text('utf8',errors='ignore')
-              for m in route_re.finditer(t):
-                v=m.group(1)
-                if any(k in v.lower() for k in ['ticket','map','role','user','point','auth','login','finish','token']):
-                  if v not in routes: routes.append(v)
-              for m in url_re.finditer(t):
-                v=m.group(0).rstrip('),;')
-                if any(k in v.lower() for k in ['easebar','wherewindsmeet','unisdk','map']):
-                  if v not in urls: urls.append(v)
-            print('ROUTES',json.dumps(routes[:300],ensure_ascii=False))
-            print('URLS',json.dumps(urls[:120],ensure_ascii=False))
+              for m in re.finditer(re.escape(term),t,re.I):
+                s=t[max(0,m.start()-850):min(len(t),m.start()+1800)].replace('\n',' ')
+                # focus noisy generic "finish" only when map/point/user context appears
+                if term.lower()=='finish' and not any(k in s.lower() for k in ['point','map','user','finished']):
+                  continue
+                hits.append((p.name,s[:2650]))
+                if len(hits)>=10: break
+              if len(hits)>=10: break
+            if hits:
+              print('\n=== TERM',term,'===')
+              for name,s in hits:
+                print('FILE',name)
+                print(s)
 
-            for term in terms:
-              hits=[]
-              for p in files:
-                t=p.read_text('utf8',errors='ignore')
-                for m in re.finditer(re.escape(term),t,re.I):
-                  s=t[max(0,m.start()-700):min(len(t),m.start()+1500)].replace('\n',' ')
-                  hits.append((p.name,s[:2200]))
-                  if len(hits)>=12: break
-                if len(hits)>=12: break
-              if hits:
-                print('\nTERM',term,'COUNT_SHOWN',len(hits))
-                for name,s in hits:
-                  print('FILE',name)
-                  print(s)
+          # Find likely API wrappers: s2.easebar base +/- 1200 chars.
+          print('\n=== API BASE CONTEXTS ===')
+          for p in files:
+            t=p.read_text('utf8',errors='ignore')
+            for m in re.finditer(r's2\.easebar\.com',t,re.I):
+              print('FILE',p.name)
+              print(t[max(0,m.start()-1000):min(len(t),m.start()+2200)].replace('\n',' ')[:3200])
 
-          # Pull out every short route near the API wrapper in Global tool.
-          gt=Path('/tmp/wwm/global-index.js').read_text('utf8',errors='ignore')
-          print('\n========== GLOBAL TOOL API STRINGS =========')
-          vals=[]
-          for m in re.finditer(r'["\'](/[^"\']{1,100})["\']',gt):
-            v=m.group(1)
-            if v not in vals and re.match(r'^/[A-Za-z0-9_./-]+$',v): vals.append(v)
-          for v in vals: print(v)
+          # Find exact property constructions containing finished.
+          print('\n=== FINISHED OBJECT CONTEXTS ===')
+          for p in files:
+            t=p.read_text('utf8',errors='ignore')
+            for m in re.finditer(r'finished',t,re.I):
+              s=t[max(0,m.start()-1400):min(len(t),m.start()+2600)].replace('\n',' ')
+              if any(k in s.lower() for k in ['map/points','point/finish','pointlist','mappoint','categorypoints','request','axios']):
+                print('FILE',p.name)
+                print(s[:4000])
           PY
