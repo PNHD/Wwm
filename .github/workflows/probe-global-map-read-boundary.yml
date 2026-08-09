@@ -22,7 +22,6 @@ jobs:
           cat > /tmp/probe.py <<'PY'
           import json, subprocess
           from pathlib import Path
-          from urllib.parse import urlencode
 
           MAP='https://s2.easebar.com/39f12eda6b86452b'
           DATA='https://s2.easebar.com/78ae9d90792a3e9b'
@@ -38,15 +37,14 @@ jobs:
             p=subprocess.run(cmd,capture_output=True,text=True)
             status,_,effective=p.stdout.partition('\t')
             rawh=hfile.read_text('utf8',errors='ignore') if hfile.exists() else ''
-            rawb=bfile.read_bytes() if bfile.exists() else b''
-            # only final response header block after redirects
+            rawb=bfile.read_text('utf8',errors='replace') if bfile.exists() else ''
             blocks=[x for x in rawh.replace('\r','').split('\n\n') if x.strip()]
             block=blocks[-1] if blocks else ''
             hdr={}
             for line in block.splitlines()[1:]:
               if ':' in line:
                 k,v=line.split(':',1); hdr[k.strip().lower()]=v.strip()
-            return {'http':status.strip(),'effective':effective.strip(),'rc':p.returncode,'headers':hdr,'body':rawb.decode('utf8',errors='replace')[:5000]}
+            return {'http':status.strip(),'effective':effective.strip(),'rc':p.returncode,'headers':hdr,'body':rawb}
 
           endpoints={
             'map_list': f'{MAP}/api/map/list?lang=en-US',
@@ -55,18 +53,16 @@ jobs:
             'data_sso_ticket': f'{DATA}/sso/ticket?appKey=h72na_map',
           }
           for name,url in endpoints.items():
-            r=curl(url,headers={'Origin':ORIGINS[0]})
-            out['gets'][name]=r
+            out['gets'][name]=curl(url,headers={'Origin':ORIGINS[0]})
 
-          # Inspect public point schema without mutating any state.
           try:
             obj=json.loads(out['gets']['map_points_1']['body'])
             data=obj.get('data') or {}
-            points=[]
+            points=[]; categories=[]
             def walk(x):
               if isinstance(x,dict):
-                if ('id' in x or 'pointId' in x) and any(k in x for k in ('lat','lng','name','finished','category')):
-                  points.append(x)
+                if 'pointList' in x and isinstance(x.get('pointList'),list): categories.append(x)
+                if ('id' in x or 'pointId' in x) and 'lat' in x and 'lng' in x: points.append(x)
                 for v in x.values(): walk(v)
               elif isinstance(x,list):
                 for v in x: walk(v)
@@ -74,14 +70,20 @@ jobs:
             key_counts={}
             for p in points:
               for k in p: key_counts[k]=key_counts.get(k,0)+1
-            finished_present=sum('finished' in p for p in points)
-            finished_true=sum(p.get('finished') is True or p.get('finished')==1 for p in points)
-            finished_false=sum(p.get('finished') is False or p.get('finished')==0 for p in points)
             ids=[p.get('id',p.get('pointId')) for p in points if p.get('id',p.get('pointId')) is not None]
-            out['schema']={'point_count_detected':len(points),'keys':dict(sorted(key_counts.items())),'finished_present':finished_present,'finished_true':finished_true,'finished_false':finished_false,'sample_ids':ids[:5]}
+            out['schema']={
+              'point_count_detected':len(points),
+              'keys':dict(sorted(key_counts.items())),
+              'finished_present':sum('finished' in p for p in points),
+              'finished_true':sum(p.get('finished') is True or p.get('finished')==1 for p in points),
+              'finished_false':sum(p.get('finished') is False or p.get('finished')==0 for p in points),
+              'category_count_detected':len(categories),
+              'category_finishPointsNum_nonzero':sum(bool(c.get('finishPointsNum')) for c in categories),
+              'category_finishPointsNum_sum':sum(int(c.get('finishPointsNum') or 0) for c in categories),
+              'sample_ids':ids[:5]
+            }
             if ids:
-              detail=curl(f'{MAP}/api/map/point?pointId={ids[0]}&lang=en-US',headers={'Origin':ORIGINS[0]})
-              out['gets']['map_point_detail']=detail
+              out['gets']['map_point_detail']=curl(f'{MAP}/api/map/point?pointId={ids[0]}&lang=en-US',headers={'Origin':ORIGINS[0]})
           except Exception as e:
             out['schema_error']=repr(e)
 
@@ -101,12 +103,14 @@ jobs:
               keep={k:v for k,v in r['headers'].items() if k.startswith('access-control-') or k in ('vary','server','allow')}
               out['cors'].append({'origin':origin,'target':name,'http':r['http'],'headers':keep,'body':r['body'][:500]})
 
+          # Keep evidence compact: preserve full public points response separately, previews elsewhere.
+          Path('evidence/map-points-1-public.json').write_text(out['gets']['map_points_1']['body'],'utf8')
+          for r in out['gets'].values(): r['body']=r['body'][:2000]
           Path('evidence/global-map-read-boundary.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),'utf8')
           print('PUBLIC_SCHEMA',json.dumps(out.get('schema',{}),ensure_ascii=False))
           for name,r in out['gets'].items():
             print('GET',name,'HTTP',r['http'],'ACAO',r['headers'].get('access-control-allow-origin'),'ACAC',r['headers'].get('access-control-allow-credentials'),'BODY',r['body'][:240].replace('\n',' '))
-          for r in out['cors']:
-            print('CORS',json.dumps(r,ensure_ascii=False))
+          for r in out['cors']: print('CORS',json.dumps(r,ensure_ascii=False))
           PY
           python /tmp/probe.py
 
@@ -114,6 +118,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: global-map-read-boundary
-          path: evidence/global-map-read-boundary.json
+          path: evidence/
           if-no-files-found: error
           retention-days: 7
