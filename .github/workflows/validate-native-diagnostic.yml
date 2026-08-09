@@ -19,27 +19,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run local bridge diagnostic in safe CI environment
+      - name: Run static launcher/pipe diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v4.json'
-          .\wwmsync-diagnostic.ps1 -Seconds 5 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v5.json'
+          .\wwmsync-diagnostic.ps1 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v4') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v5') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
           if ($j.safety.packetCapture -ne $false) { throw 'packetCapture boundary failed' }
           if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
+          if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
+          if ($j.safety.pipeWrite -ne $false) { throw 'pipeWrite boundary failed' }
           if ($j.safety.credentialCollection -ne $false) { throw 'credentialCollection boundary failed' }
-          if ($j.safety.registryRead -ne $true) { throw 'registryRead contract failed' }
           if ($j.safety.registryWrite -ne $false) { throw 'registryWrite boundary failed' }
           if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
-          if ($j.observationSeconds -ne 5) { throw 'Observation duration mismatch.' }
-          if ($null -eq $j.uriProtocols) { throw 'uriProtocols missing' }
-          if ($null -eq $j.after.network.selectedProcessSockets) { throw 'selectedProcessSockets missing' }
-          if ($null -eq $j.after.network.loopbackOrRelevantListeners) { throw 'loopback listener view missing' }
-          if ($null -eq $j.after.namedPipes) { throw 'namedPipes missing' }
-          Write-Host "VALID diagnostic schema=$($j.schema) protocols=$(@($j.uriProtocols).Count) pipes=$(@($j.after.namedPipes).Count) sockets=$(@($j.after.network.selectedProcessSockets).Count)"
+          if ($j.safety.staticFileRead -ne $true) { throw 'staticFileRead contract failed' }
+          if ($null -eq $j.summary) { throw 'summary missing' }
+          if ($null -eq $j.needles) { throw 'needles missing' }
+          Write-Host "VALID diagnostic schema=$($j.schema) candidates=$($j.summary.candidateFiles) hits=$($j.summary.totalHits)"
