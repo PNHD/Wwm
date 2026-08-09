@@ -1,32 +1,17 @@
 [CmdletBinding()]
 param(
-  [ValidateRange(10, 300)]
-  [int]$Seconds = 45,
-  [string]$OutputPath = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'wwmsync-diagnostic.json')
+  [ValidateRange(5, 180)]
+  [int]$Seconds = 30,
+  [string]$GameExe = '',
+  [string]$OutputPath = (Join-Path $env:USERPROFILE 'Downloads\wwmsync-diagnostic.json')
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
 
-# WWMSync native-bridge diagnostic.
-# Read-only by design: no process memory access, injection, packet capture,
-# credential/token collection, registry writes, or network probing.
-# Keep this file ASCII-only for Windows PowerShell 5.1 compatibility.
-
-$keywords = @(
-  'wherewinds', 'where winds', 'wwm', 'yysls', 'yanyun',
-  'netease', 'everstone', 'unisdk', 'h72', 'yan yun'
-)
-
-function Test-InterestingText {
-  param([string]$Text)
-  if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-  $lower = $Text.ToLowerInvariant()
-  foreach ($k in $keywords) {
-    if ($lower.Contains($k.ToLowerInvariant())) { return $true }
-  }
-  return $false
-}
+# WWMSync targeted native diagnostic v2.
+# Read-only: no process-memory reads, injection, packet capture, active network probes,
+# credential collection, registry writes, or game-file modification.
 
 function Protect-Text {
   param([string]$Text)
@@ -34,262 +19,233 @@ function Protect-Text {
   $s = [string]$Text
   if ($env:USERPROFILE) { $s = $s.Replace($env:USERPROFILE, '<USERPROFILE>') }
   if ($env:USERNAME) { $s = $s -replace [regex]::Escape($env:USERNAME), '<USER>' }
-  $s = $s -replace '(?i)(access[_-]?token|refresh[_-]?token|session(?:id)?|authorization|cookie|password|passwd|secret|ticket)=([^\s&"]+)', '$1=<REDACTED>'
-  $s = $s -replace '(?i)([?&](?:token|access_token|refresh_token|sessionid|ticket|code)=)[^&\s]+', '$1<REDACTED>'
-  $s = $s -replace '[A-Fa-f0-9]{32,}', '<LONG_HEX>'
-  $s = $s -replace '[A-Za-z0-9_\-]{48,}', '<LONG_TOKEN>'
+  $s = $s -replace '(?i)(token|ticket|session|password|passwd|secret|authorization)=\S+', '$1=<REDACTED>'
+  $s = $s -replace '[A-Fa-f0-9]{40,}', '<LONG_HEX>'
+  $s = $s -replace '[A-Za-z0-9_-]{64,}', '<LONG_TOKEN>'
   return $s
 }
 
-function Get-ProcessMap {
-  $map = @{}
-  foreach ($p in Get-Process) {
-    $processId = [int]$p.Id
-    $map[$processId] = [string]$p.ProcessName
-  }
-  return $map
+function Write-Json {
+  param($Object)
+  $parent = Split-Path -Parent $OutputPath
+  if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+  $Object | ConvertTo-Json -Depth 10 | Set-Content -Path $OutputPath -Encoding UTF8
 }
 
-function Get-CandidateProcesses {
-  $out = @()
-  foreach ($p in Get-Process) {
-    $name = [string]$p.ProcessName
-    $company = $null
-    $product = $null
-    $description = $null
-    try {
-      $company = [string]$p.MainModule.FileVersionInfo.CompanyName
-      $product = [string]$p.MainModule.FileVersionInfo.ProductName
-      $description = [string]$p.MainModule.FileVersionInfo.FileDescription
-    } catch {}
-    $haystack = "$name $company $product $description"
-    if (Test-InterestingText $haystack) {
-      $out += [ordered]@{
-        pid = [int]$p.Id
+function Get-RootHint {
+  param([string]$ExePath)
+  if ([string]::IsNullOrWhiteSpace($ExePath)) { return '' }
+  $p = Split-Path -Parent $ExePath
+  for ($i = 0; $i -lt 3; $i++) {
+    if ($p) { $p = Split-Path -Parent $p }
+  }
+  return $p
+}
+
+function Get-ProcessSnapshot {
+  param([string]$ExePath)
+  $all = @(Get-CimInstance Win32_Process)
+  $exeName = if ($ExePath) { [IO.Path]::GetFileName($ExePath) } else { 'wwm.exe' }
+  $rootHint = Get-RootHint $ExePath
+  $selected = @()
+
+  foreach ($p in $all) {
+    $path = [string]$p.ExecutablePath
+    $name = [string]$p.Name
+    $cmd = [string]$p.CommandLine
+    $match = $false
+
+    if ($ExePath -and $path -and ($path -ieq $ExePath)) { $match = $true }
+    elseif ($name -ieq $exeName) { $match = $true }
+    elseif ($rootHint -and $path -and $path.StartsWith($rootHint, [StringComparison]::OrdinalIgnoreCase)) { $match = $true }
+    elseif ($rootHint -and $cmd -and $cmd.IndexOf($rootHint, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $match = $true }
+
+    if ($match) {
+      $selected += [ordered]@{
+        pid = [int]$p.ProcessId
+        parentPid = [int]$p.ParentProcessId
         name = Protect-Text $name
-        company = Protect-Text $company
-        product = Protect-Text $product
-        description = Protect-Text $description
+        executablePath = Protect-Text $path
+        commandLine = Protect-Text $cmd
       }
     }
   }
-  return @($out | Sort-Object pid -Unique)
+
+  # Include direct children of selected processes, even when they run outside the game directory.
+  $known = @{}
+  foreach ($x in $selected) { $known[[int]$x.pid] = $true }
+  $added = $true
+  while ($added) {
+    $added = $false
+    foreach ($p in $all) {
+      $pidValue = [int]$p.ProcessId
+      $ppid = [int]$p.ParentProcessId
+      if ($known.ContainsKey($pidValue)) { continue }
+      if ($known.ContainsKey($ppid)) {
+        $known[$pidValue] = $true
+        $selected += [ordered]@{
+          pid = $pidValue
+          parentPid = $ppid
+          name = Protect-Text ([string]$p.Name)
+          executablePath = Protect-Text ([string]$p.ExecutablePath)
+          commandLine = Protect-Text ([string]$p.CommandLine)
+        }
+        $added = $true
+      }
+    }
+  }
+
+  return @($selected | Sort-Object pid -Unique)
 }
 
-function Get-LocalEndpoints {
-  $proc = Get-ProcessMap
+function Get-NetworkSnapshot {
+  param($Processes)
+  $pids = @{}
+  foreach ($p in @($Processes)) { $pids[[string]$p.pid] = [string]$p.name }
   $rows = @()
-
-  if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
-    foreach ($c in Get-NetTCPConnection) {
-      $addr = [string]$c.LocalAddress
-      $isLoopback = $addr -in @('127.0.0.1','::1')
-      $isListener = [string]$c.State -eq 'Listen'
-      $ownerPid = [int]$c.OwningProcess
-      $pname = $proc[$ownerPid]
-      $candidate = Test-InterestingText $pname
-      if ($isLoopback -or ($isListener -and $candidate)) {
-        $rows += [ordered]@{
-          protocol = 'tcp'
-          localAddress = $addr
-          localPort = [int]$c.LocalPort
-          state = [string]$c.State
-          pid = $ownerPid
-          process = Protect-Text $pname
-        }
+  foreach ($line in @(netstat -ano 2>$null)) {
+    $parts = @($line.Trim() -split '\s+' | Where-Object { $_ -ne '' })
+    if ($parts.Count -lt 4) { continue }
+    $proto = $parts[0].ToUpperInvariant()
+    if ($proto -eq 'TCP' -and $parts.Count -ge 5) {
+      $pid = $parts[4]
+      if ($pids.ContainsKey($pid)) {
+        $rows += [ordered]@{ protocol='tcp'; local=$parts[1]; remote=$parts[2]; state=$parts[3]; pid=[int]$pid; process=$pids[$pid] }
+      }
+    } elseif ($proto -eq 'UDP' -and $parts.Count -ge 4) {
+      $pid = $parts[3]
+      if ($pids.ContainsKey($pid)) {
+        $rows += [ordered]@{ protocol='udp'; local=$parts[1]; remote=$parts[2]; state=$null; pid=[int]$pid; process=$pids[$pid] }
       }
     }
   }
-
-  if (Get-Command Get-NetUDPEndpoint -ErrorAction SilentlyContinue) {
-    foreach ($c in Get-NetUDPEndpoint) {
-      $addr = [string]$c.LocalAddress
-      $isLoopback = $addr -in @('127.0.0.1','::1')
-      $ownerPid = [int]$c.OwningProcess
-      $pname = $proc[$ownerPid]
-      $candidate = Test-InterestingText $pname
-      if ($isLoopback -or $candidate) {
-        $rows += [ordered]@{
-          protocol = 'udp'
-          localAddress = $addr
-          localPort = [int]$c.LocalPort
-          state = $null
-          pid = $ownerPid
-          process = Protect-Text $pname
-        }
-      }
-    }
-  }
-
-  return @($rows | Sort-Object protocol, localPort, pid -Unique)
+  return @($rows | Sort-Object protocol, pid, local, remote -Unique)
 }
 
-function Get-SafePipeName {
-  param([string]$Name)
-  $s = Protect-Text $Name
-  $s = $s -replace '(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '<GUID>'
-  $s = $s -replace '\d{7,}', '<LONG_NUMBER>'
-  return $s
-}
-
-function Get-InterestingPipes {
-  $out = @()
+function Get-PrintableStrings {
+  param([string]$Path)
   try {
-    foreach ($item in Get-ChildItem -Path '\\.\pipe\') {
-      $name = [string]$item.Name
-      if (Test-InterestingText $name) {
-        $out += (Get-SafePipeName $name)
-      }
-    }
-  } catch {}
-  return @($out | Sort-Object -Unique)
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -gt 131072) { return @() }
+    $text = [Text.Encoding]::UTF8.GetString($bytes)
+    $hits = @([regex]::Matches($text, '[ -~]{4,}') | ForEach-Object { Protect-Text $_.Value.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+    return @($hits | Select-Object -First 120)
+  } catch { return @() }
 }
 
-function Get-InterestingServices {
+function Get-StaticBridgeFiles {
+  param([string]$ExePath)
+  if ([string]::IsNullOrWhiteSpace($ExePath)) { return @() }
+  $dir = Split-Path -Parent $ExePath
+  if (-not (Test-Path $dir)) { return @() }
   $out = @()
-  try {
-    foreach ($s in Get-CimInstance Win32_Service) {
-      $haystack = "$($s.Name) $($s.DisplayName) $($s.Description)"
-      if (Test-InterestingText $haystack) {
-        $out += [ordered]@{
-          name = Protect-Text ([string]$s.Name)
-          displayName = Protect-Text ([string]$s.DisplayName)
-          state = [string]$s.State
-          startMode = [string]$s.StartMode
-          pid = [int]$s.ProcessId
-        }
-      }
+  foreach ($f in @(Get-ChildItem -LiteralPath $dir -File)) {
+    if ($f.Name -notmatch '(?i)(protocol|uni|sdk|webview|bridge|ipc|mpay|netease|cef|helper)') { continue }
+    $entry = [ordered]@{
+      name = [string]$f.Name
+      length = [int64]$f.Length
+      lastWriteUtc = $f.LastWriteTimeUtc.ToString('o')
+      printableStrings = @()
     }
-  } catch {}
-  return @($out | Sort-Object name -Unique)
-}
-
-function Get-UriProtocols {
-  $out = @()
-  $roots = @('Registry::HKEY_CURRENT_USER\Software\Classes', 'Registry::HKEY_LOCAL_MACHINE\Software\Classes')
-  foreach ($root in $roots) {
-    if (-not (Test-Path $root)) { continue }
-    foreach ($key in Get-ChildItem $root) {
-      $urlProtocol = Get-ItemPropertyValue -Path $key.PSPath -Name 'URL Protocol'
-      if ($null -eq $urlProtocol) { continue }
-      $commandPath = Join-Path $key.PSPath 'shell\open\command'
-      $command = Get-ItemPropertyValue -Path $commandPath -Name '(default)'
-      $name = [string]$key.PSChildName
-      if (Test-InterestingText "$name $command") {
-        $scope = 'machine'
-        if ($root -like '*CURRENT_USER*') { $scope = 'user' }
-        $out += [ordered]@{
-          scope = $scope
-          protocol = Protect-Text $name
-          command = Protect-Text ([string]$command)
-        }
-      }
+    if ($f.Length -le 131072 -and ($f.Extension -in @('.txt','.data','.ini','.cfg','.json','.xml','') -or $f.Name -match '(?i)protocol|readme|webview_support')) {
+      $entry.printableStrings = @(Get-PrintableStrings $f.FullName)
     }
+    $out += $entry
   }
-  return @($out | Sort-Object scope, protocol -Unique)
-}
-
-function Get-Snapshot {
-  return [ordered]@{
-    atUtc = [DateTime]::UtcNow.ToString('o')
-    candidateProcesses = @(Get-CandidateProcesses)
-    localEndpoints = @(Get-LocalEndpoints)
-    interestingPipes = @(Get-InterestingPipes)
-    interestingServices = @(Get-InterestingServices)
-  }
-}
-
-function To-KeySet {
-  param($Items, [scriptblock]$Key)
-  $set = @{}
-  foreach ($i in @($Items)) {
-    $keyValue = & $Key $i
-    $set[[string]$keyValue] = $i
-  }
-  return $set
+  return @($out | Sort-Object name)
 }
 
 function Get-Delta {
   param($Before, $After)
-  $epKey = { param($x) "$($x.protocol)|$($x.localAddress)|$($x.localPort)|$($x.pid)|$($x.process)" }
-  $procKey = { param($x) "$($x.pid)|$($x.name)|$($x.product)" }
-  $svcKey = { param($x) "$($x.name)|$($x.state)|$($x.pid)" }
-
-  $bE = To-KeySet $Before.localEndpoints $epKey
-  $aE = To-KeySet $After.localEndpoints $epKey
-  $bP = To-KeySet $Before.candidateProcesses $procKey
-  $aP = To-KeySet $After.candidateProcesses $procKey
-  $bS = To-KeySet $Before.interestingServices $svcKey
-  $aS = To-KeySet $After.interestingServices $svcKey
-  $bPipe = @{}
-  foreach ($x in @($Before.interestingPipes)) { $bPipe[[string]$x] = $x }
-  $aPipe = @{}
-  foreach ($x in @($After.interestingPipes)) { $aPipe[[string]$x] = $x }
-
+  $b = @{}
+  foreach ($x in @($Before.network)) { $b["$($x.protocol)|$($x.local)|$($x.remote)|$($x.state)|$($x.pid)"] = $x }
+  $a = @{}
+  foreach ($x in @($After.network)) { $a["$($x.protocol)|$($x.local)|$($x.remote)|$($x.state)|$($x.pid)"] = $x }
+  $bp = @{}
+  foreach ($x in @($Before.processes)) { $bp[[string]$x.pid] = $x }
+  $ap = @{}
+  foreach ($x in @($After.processes)) { $ap[[string]$x.pid] = $x }
   return [ordered]@{
-    addedEndpoints = @($aE.Keys | Where-Object { -not $bE.ContainsKey($_) } | ForEach-Object { $aE[$_] })
-    removedEndpoints = @($bE.Keys | Where-Object { -not $aE.ContainsKey($_) } | ForEach-Object { $bE[$_] })
-    addedProcesses = @($aP.Keys | Where-Object { -not $bP.ContainsKey($_) } | ForEach-Object { $aP[$_] })
-    removedProcesses = @($bP.Keys | Where-Object { -not $aP.ContainsKey($_) } | ForEach-Object { $bP[$_] })
-    addedPipes = @($aPipe.Keys | Where-Object { -not $bPipe.ContainsKey($_) } | Sort-Object)
-    removedPipes = @($bPipe.Keys | Where-Object { -not $aPipe.ContainsKey($_) } | Sort-Object)
-    changedServices = @($aS.Keys | Where-Object { -not $bS.ContainsKey($_) } | ForEach-Object { $aS[$_] })
+    addedNetwork = @($a.Keys | Where-Object { -not $b.ContainsKey($_) } | ForEach-Object { $a[$_] })
+    removedNetwork = @($b.Keys | Where-Object { -not $a.ContainsKey($_) } | ForEach-Object { $b[$_] })
+    addedProcesses = @($ap.Keys | Where-Object { -not $bp.ContainsKey($_) } | ForEach-Object { $ap[$_] })
+    removedProcesses = @($bp.Keys | Where-Object { -not $ap.ContainsKey($_) } | ForEach-Object { $bp[$_] })
   }
 }
 
-Write-Host ''
-Write-Host 'WWMSync native bridge diagnostic (READ-ONLY)' -ForegroundColor Cyan
-Write-Host 'Keep Where Winds Meet running.'
-Write-Host "For the next $Seconds seconds, move your character and open/close the in-game map once."
-Write-Host 'No memory reads, injection, packet capture, login cookies, passwords, or tokens are collected.'
-Write-Host ''
-
-$before = Get-Snapshot
-$protocols = @(Get-UriProtocols)
-
-for ($left = $Seconds; $left -gt 0; $left--) {
-  Write-Progress -Activity 'Observing safe Windows IPC surfaces' -Status "$left seconds remaining" -PercentComplete ([int](100 * ($Seconds - $left) / $Seconds))
-  Start-Sleep -Seconds 1
+if ($GameExe) {
+  try { $GameExe = [IO.Path]::GetFullPath($GameExe) } catch {}
 }
-Write-Progress -Activity 'Observing safe Windows IPC surfaces' -Completed
-
-$after = Get-Snapshot
-$delta = Get-Delta $before $after
 
 $result = [ordered]@{
-  schema = 'wwmsync-native-diagnostic-v1'
+  schema = 'wwmsync-native-diagnostic-v2'
+  status = 'starting'
   generatedAtUtc = [DateTime]::UtcNow.ToString('o')
   observationSeconds = $Seconds
-  machine = [ordered]@{
-    os = [Environment]::OSVersion.VersionString
-    architecture = $env:PROCESSOR_ARCHITECTURE
-    powershell = $PSVersionTable.PSVersion.ToString()
-  }
+  requestedGameExe = Protect-Text $GameExe
   safety = [ordered]@{
     memoryRead = $false
     injection = $false
     packetCapture = $false
-    networkProbe = $false
+    activeNetworkProbe = $false
     credentialCollection = $false
     registryWrite = $false
+    gameFileWrite = $false
   }
-  uriProtocols = $protocols
-  before = $before
-  after = $after
-  delta = $delta
+  staticBridgeFiles = @()
+  before = $null
+  after = $null
+  delta = $null
 }
 
-$parent = Split-Path -Parent $OutputPath
-if ($parent -and -not (Test-Path $parent)) {
-  New-Item -ItemType Directory -Force -Path $parent | Out-Null
+# Write immediately so the user always gets a JSON even if a later Windows query stalls.
+Write-Json $result
+
+Write-Host ''
+Write-Host 'WWMSync targeted diagnostic v2 (READ-ONLY)' -ForegroundColor Cyan
+Write-Host "Output created immediately: $OutputPath"
+Write-Host "Game executable: $GameExe"
+Write-Host ''
+
+$result.staticBridgeFiles = @(Get-StaticBridgeFiles $GameExe)
+$beforeProcesses = @(Get-ProcessSnapshot $GameExe)
+$before = [ordered]@{
+  atUtc = [DateTime]::UtcNow.ToString('o')
+  processes = $beforeProcesses
+  network = @(Get-NetworkSnapshot $beforeProcesses)
 }
-$result | ConvertTo-Json -Depth 9 | Set-Content -Path $OutputPath -Encoding UTF8
+$result.before = $before
+$result.status = 'observing'
+Write-Json $result
+
+Write-Host "Matched game/related processes: $(@($beforeProcesses).Count)"
+Write-Host "Observed game-owned sockets: $(@($before.network).Count)"
+Write-Host "Static bridge candidates: $(@($result.staticBridgeFiles).Count)"
+Write-Host "For the next $Seconds seconds: move the character, open the in-game map, then close it."
+
+for ($left = $Seconds; $left -gt 0; $left--) {
+  Write-Progress -Activity 'Observing WWM process and socket metadata' -Status "$left seconds remaining" -PercentComplete ([int](100 * ($Seconds - $left) / $Seconds))
+  Start-Sleep -Seconds 1
+}
+Write-Progress -Activity 'Observing WWM process and socket metadata' -Completed
+
+$afterProcesses = @(Get-ProcessSnapshot $GameExe)
+$after = [ordered]@{
+  atUtc = [DateTime]::UtcNow.ToString('o')
+  processes = $afterProcesses
+  network = @(Get-NetworkSnapshot $afterProcesses)
+}
+$result.after = $after
+$result.delta = Get-Delta $before $after
+$result.status = 'complete'
+$result.generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+Write-Json $result
 
 Write-Host ''
 Write-Host 'Diagnostic complete.' -ForegroundColor Green
-Write-Host "Output: $OutputPath"
-Write-Host "Changed local endpoints: $(@($delta.addedEndpoints).Count + @($delta.removedEndpoints).Count)"
-Write-Host "Changed relevant pipes: $(@($delta.addedPipes).Count + @($delta.removedPipes).Count)"
-Write-Host "Detected related URI protocols: $(@($protocols).Count)"
+Write-Host "JSON: $OutputPath"
+Write-Host "JSON EXISTS: $(Test-Path $OutputPath)"
+Write-Host "Added sockets: $(@($result.delta.addedNetwork).Count)"
+Write-Host "Removed sockets: $(@($result.delta.removedNetwork).Count)"
 Write-Host ''
-Write-Host 'Send only wwmsync-diagnostic.json back to ChatGPT for protocol analysis.'
+Write-Host 'Upload only wwmsync-diagnostic.json to ChatGPT.'
