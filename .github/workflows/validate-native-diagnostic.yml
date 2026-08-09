@@ -29,12 +29,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'wwm_lite'
           $local = Join-Path $root 'LocalData'
-          New-Item -ItemType Directory -Force -Path $local | Out-Null
+          $emptyLocal = Join-Path $env:RUNNER_TEMP 'empty-localappdata'
+          $emptyRoam = Join-Path $env:RUNNER_TEMP 'empty-appdata'
+          New-Item -ItemType Directory -Force -Path $local,$emptyLocal,$emptyRoam | Out-Null
+          $env:LOCALAPPDATA = $emptyLocal
+          $env:APPDATA = $emptyRoam
           $probe = Join-Path $local 'probe.log'
           Set-Content -Path $probe -Value 'before'
           $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v8.json'
-          $job = Start-Job -ScriptBlock { param($p) Start-Sleep -Milliseconds 700; Add-Content -LiteralPath $p -Value 'after' } -ArgumentList $probe
-          .\wwmsync-diagnostic-v8.ps1 -GameRoot $root -Seconds 2 -OutputPath $out
+          $job = Start-Job -ScriptBlock { param($p) Start-Sleep -Milliseconds 900; Add-Content -LiteralPath $p -Value 'after' } -ArgumentList $probe
+          .\wwmsync-diagnostic-v8.ps1 -GameRoot $root -Seconds 3 -OutputPath $out
           Receive-Job $job -Wait | Out-Null
           Remove-Job $job -Force
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
