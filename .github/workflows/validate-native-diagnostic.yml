@@ -1,0 +1,38 @@
+name: Validate WWMSync Native Diagnostic
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - wwmsync-diagnostic.ps1
+      - .github/workflows/validate-native-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run diagnostic in safe CI environment
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic.json'
+          .\wwmsync-diagnostic.ps1 -Seconds 10 -OutputPath $out
+          if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
+          $j = Get-Content $out -Raw | ConvertFrom-Json
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v1') { throw 'Unexpected schema.' }
+          if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
+          if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
+          if ($j.safety.packetCapture -ne $false) { throw 'packetCapture boundary failed' }
+          if ($j.safety.networkProbe -ne $false) { throw 'networkProbe boundary failed' }
+          if ($j.safety.credentialCollection -ne $false) { throw 'credentialCollection boundary failed' }
+          if ($j.safety.registryWrite -ne $false) { throw 'registryWrite boundary failed' }
+          if ($j.observationSeconds -ne 10) { throw 'Observation duration mismatch.' }
+          Write-Host "VALID diagnostic schema=$($j.schema) protocols=$(@($j.uriProtocols).Count)"
