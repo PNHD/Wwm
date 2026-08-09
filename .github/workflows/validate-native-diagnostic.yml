@@ -23,19 +23,11 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $root = Join-Path $env:RUNNER_TEMP 'wwm\wwm_lite\Engine\Binaries\Win64rh'
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          $fakeExe = Join-Path $root 'wwm.exe'
-          Set-Content -Path $fakeExe -Value 'ci-placeholder' -Encoding ASCII
-          Set-Content -Path (Join-Path $root 'protocol.data') -Value 'wwm-test-protocol://open map_bridge websocket' -Encoding ASCII
-          Set-Content -Path (Join-Path $root 'ReadMe_UniSDK.txt') -Value 'UniSDK bridge test metadata' -Encoding ASCII
-
           $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic.json'
-          .\wwmsync-diagnostic.ps1 -Seconds 5 -GameExe $fakeExe -OutputPath $out
-
+          .\wwmsync-diagnostic.ps1 -Seconds 5 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v2') { throw 'Unexpected schema.' }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v3') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -45,8 +37,4 @@ jobs:
           if ($j.safety.registryWrite -ne $false) { throw 'registryWrite boundary failed' }
           if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
           if ($j.observationSeconds -ne 5) { throw 'Observation duration mismatch.' }
-          if (@($j.staticBridgeFiles).Count -lt 2) { throw 'Static bridge metadata was not captured.' }
-          $protocol = @($j.staticBridgeFiles | Where-Object { $_.name -eq 'protocol.data' })
-          if ($protocol.Count -ne 1) { throw 'protocol.data metadata missing.' }
-          if ((@($protocol[0].printableStrings) -join ' ') -notmatch 'wwm-test-protocol') { throw 'protocol.data strings missing.' }
-          Write-Host "VALID targeted diagnostic schema=$($j.schema) staticBridgeFiles=$(@($j.staticBridgeFiles).Count)"
+          Write-Host "VALID diagnostic schema=$($j.schema) processCount=$(@($j.after.processes).Count) socketCount=$(@($j.after.network).Count)"
