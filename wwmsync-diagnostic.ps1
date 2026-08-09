@@ -13,27 +13,10 @@ $ProgressPreference = 'SilentlyContinue'
 # credential collection, or game-file modification.
 
 $Needles = @(
-  'wwm_launcher_server',
-  'launcher_server',
-  'find_self_pos',
-  'quickLocate',
-  'showPosition',
-  'map_pos_ok',
-  'map_pos_fail',
-  'personalLink',
-  'personal.html',
-  'pcEntry',
-  'call_client_method',
-  'start_game_sync',
-  'h72_map_accessToken',
-  'point_finished',
-  'CreateNamedPipe',
-  'ConnectNamedPipe',
-  'CallNamedPipe',
-  'NamedPipe',
-  'WebView',
-  'UniSDK',
-  'protocol'
+  'wwm_launcher_server','launcher_server','find_self_pos','quickLocate','showPosition',
+  'map_pos_ok','map_pos_fail','personalLink','personal.html','pcEntry','call_client_method',
+  'start_game_sync','h72_map_accessToken','point_finished','CreateNamedPipe',
+  'ConnectNamedPipe','CallNamedPipe','NamedPipe','WebView','UniSDK','protocol'
 )
 
 function Protect-Text([string]$Text) {
@@ -46,6 +29,13 @@ function Protect-Text([string]$Text) {
   $s = $s -replace '[A-Fa-f0-9]{40,}', '<LONG_HEX>'
   $s = $s -replace '[A-Za-z0-9_-]{64,}', '<LONG_TOKEN>'
   return $s
+}
+
+function Clean-Context([string]$Text) {
+  if ($null -eq $Text) { return '' }
+  $s = $Text -replace '[^\x20-\x7E]', ' '
+  $s = $s -replace '\s+', ' '
+  return Protect-Text $s.Trim()
 }
 
 function Write-Json($Object) {
@@ -62,8 +52,7 @@ function Get-InstallRoot([string]$ExePath) {
 }
 
 function Add-UniquePath($List,[string]$Path) {
-  if (-not $Path) { return }
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
   foreach ($existing in $List) { if ([string]$existing -ieq $Path) { return } }
   [void]$List.Add($Path)
 }
@@ -88,109 +77,67 @@ function Get-CandidateFiles([string]$ExePath) {
     foreach ($f in @(Get-ChildItem -LiteralPath $root -File -Recurse -ErrorAction SilentlyContinue | Where-Object {
       $_.Name -match '(?i)^(launcher|wwm).*\.exe$' -or
       $_.Name -match '(?i)(unisdk.*(protocol|webview|roost|orbit)|webview_support|uniwer|mpay).*\.dll$'
-    } | Select-Object -First 80)) {
+    } | Select-Object -First 60)) {
       Add-UniquePath $out $f.FullName
     }
   }
-
   return @($out)
 }
 
-function Get-SafeAsciiContext([byte[]]$Bytes,[int]$Start,[int]$Length) {
-  if ($Bytes.Length -eq 0) { return '' }
-  $s = [Math]::Max(0,$Start)
-  $e = [Math]::Min($Bytes.Length,$Start+$Length)
-  if ($e -le $s) { return '' }
-  $slice = New-Object byte[] ($e-$s)
-  [Array]::Copy($Bytes,$s,$slice,0,$slice.Length)
-  $text = [Text.Encoding]::ASCII.GetString($slice)
-  $text = $text -replace '[^\x20-\x7E]', ' '
-  $text = $text -replace '\s+', ' '
-  return Protect-Text $text.Trim()
-}
-
-function Find-BytePattern([byte[]]$Haystack,[byte[]]$Needle,[int]$MaxHits=16) {
-  $hits = @()
-  if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) { return $hits }
-  for ($i=0; $i -le $Haystack.Length-$Needle.Length; $i++) {
-    $ok = $true
-    for ($j=0; $j -lt $Needle.Length; $j++) {
-      if ($Haystack[$i+$j] -ne $Needle[$j]) { $ok=$false; break }
+function Find-StringHits([string]$Text,[string]$Needle,[string]$EncodingName,[int]$ByteScale=1,[int]$MaxHits=12) {
+  $hits=@()
+  if ([string]::IsNullOrEmpty($Text) -or [string]::IsNullOrEmpty($Needle)) { return $hits }
+  $from=0
+  while ($from -lt $Text.Length -and $hits.Count -lt $MaxHits) {
+    $idx=$Text.IndexOf($Needle,$from,[StringComparison]::Ordinal)
+    if ($idx -lt 0) { break }
+    $start=[Math]::Max(0,$idx-192)
+    $len=[Math]::Min(512,$Text.Length-$start)
+    $hits += [ordered]@{
+      needle=$Needle
+      encoding=$EncodingName
+      offset=[int64]($idx*$ByteScale)
+      context=(Clean-Context $Text.Substring($start,$len))
     }
-    if ($ok) {
-      $hits += $i
-      if ($hits.Count -ge $MaxHits) { break }
-      $i += [Math]::Max(0,$Needle.Length-1)
-    }
+    $from=$idx+[Math]::Max(1,$Needle.Length)
   }
   return $hits
 }
 
 function Scan-File([string]$Path) {
-  $item = Get-Item -LiteralPath $Path
-  $result = [ordered]@{
-    path = Protect-Text $Path
-    name = $item.Name
-    length = [int64]$item.Length
-    sha256 = $null
-    skipped = $false
-    hits = @()
+  $item=Get-Item -LiteralPath $Path
+  $result=[ordered]@{
+    path=Protect-Text $Path
+    name=$item.Name
+    length=[int64]$item.Length
+    sha256=$null
+    skipped=$false
+    hits=@()
   }
-  try { $result.sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash } catch {}
-
-  # Keep local diagnostics bounded. Relevant WWM binaries in this install are below this cap.
+  try { $result.sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash } catch {}
   if ($item.Length -gt 134217728) { $result.skipped=$true; return $result }
 
-  $bytes = $null
-  try { $bytes = [IO.File]::ReadAllBytes($Path) } catch { $result.skipped=$true; return $result }
-  foreach ($needle in $Needles) {
-    $ascii = [Text.Encoding]::ASCII.GetBytes($needle)
-    foreach ($offset in @(Find-BytePattern $bytes $ascii 12)) {
-      $result.hits += [ordered]@{
-        needle=$needle
-        encoding='ascii'
-        offset=[int64]$offset
-        context=(Get-SafeAsciiContext $bytes ([Math]::Max(0,$offset-192)) ([Math]::Min(512,$bytes.Length-[Math]::Max(0,$offset-192))))
-      }
-    }
+  try { $bytes=[IO.File]::ReadAllBytes($Path) } catch { $result.skipped=$true; return $result }
+  try { $asciiText=[Text.Encoding]::ASCII.GetString($bytes) } catch { $asciiText='' }
+  try { $utf16Text=[Text.Encoding]::Unicode.GetString($bytes) } catch { $utf16Text='' }
 
-    $utf16 = [Text.Encoding]::Unicode.GetBytes($needle)
-    foreach ($offset in @(Find-BytePattern $bytes $utf16 12)) {
-      $start=[Math]::Max(0,$offset-256)
-      $length=[Math]::Min(768,$bytes.Length-$start)
-      $slice=New-Object byte[] $length
-      [Array]::Copy($bytes,$start,$slice,0,$length)
-      $text=[Text.Encoding]::Unicode.GetString($slice)
-      $text=$text -replace '[^\x20-\x7E]', ' '
-      $text=$text -replace '\s+', ' '
-      $result.hits += [ordered]@{
-        needle=$needle
-        encoding='utf16le'
-        offset=[int64]$offset
-        context=(Protect-Text $text.Trim())
-      }
-    }
+  foreach($needle in $Needles) {
+    $result.hits += @(Find-StringHits $asciiText $needle 'ascii' 1 12)
+    $result.hits += @(Find-StringHits $utf16Text $needle 'utf16le' 2 12)
   }
   return $result
 }
 
-$seed = [ordered]@{
+$seed=[ordered]@{
   schema='wwmsync-native-diagnostic-v5'
   status='running'
   generatedAtUtc=[DateTime]::UtcNow.ToString('o')
   requestedGameExe=Protect-Text $GameExe
   installRoot=Protect-Text (Get-InstallRoot $GameExe)
   safety=[ordered]@{
-    memoryRead=$false
-    injection=$false
-    packetCapture=$false
-    activeNetworkProbe=$false
-    pipeConnect=$false
-    pipeWrite=$false
-    credentialCollection=$false
-    registryWrite=$false
-    gameFileWrite=$false
-    staticFileRead=$true
+    memoryRead=$false; injection=$false; packetCapture=$false; activeNetworkProbe=$false;
+    pipeConnect=$false; pipeWrite=$false; credentialCollection=$false; registryWrite=$false;
+    gameFileWrite=$false; staticFileRead=$true
   }
   needles=$Needles
   files=@()
@@ -202,7 +149,7 @@ Write-Host "JSON created immediately: $OutputPath"
 
 $candidates=@(Get-CandidateFiles $GameExe)
 $scanned=@()
-foreach($path in $candidates){
+foreach($path in $candidates) {
   Write-Host "Scanning: $path"
   $r=Scan-File $path
   $scanned += $r
@@ -211,7 +158,7 @@ foreach($path in $candidates){
 }
 
 $hitFiles=@($scanned | Where-Object { @($_.hits).Count -gt 0 })
-$hitCount=0; foreach($f in $scanned){$hitCount += @($f.hits).Count}
+$allHits=@($scanned | ForEach-Object { $_.hits })
 $seed.status='complete'
 $seed.generatedAtUtc=[DateTime]::UtcNow.ToString('o')
 $seed.files=$scanned
@@ -220,9 +167,10 @@ $seed.summary=[ordered]@{
   scannedFiles=@($scanned | Where-Object {-not $_.skipped}).Count
   skippedFiles=@($scanned | Where-Object {$_.skipped}).Count
   filesWithHits=$hitFiles.Count
-  totalHits=$hitCount
-  launcherPipeHits=@($scanned | ForEach-Object {$_.hits} | Where-Object {$_.needle -eq 'wwm_launcher_server'}).Count
+  totalHits=$allHits.Count
+  launcherPipeHits=@($allHits | Where-Object {$_.needle -eq 'wwm_launcher_server'}).Count
+  mapHandlerHits=@($allHits | Where-Object {$_.needle -in @('find_self_pos','quickLocate','showPosition','map_pos_ok','map_pos_fail','personalLink','pcEntry','call_client_method','start_game_sync')}).Count
 }
 Write-Json $seed
-Write-Host "Complete. files=$($seed.summary.scannedFiles) hits=$($seed.summary.totalHits) launcherPipeHits=$($seed.summary.launcherPipeHits)" -ForegroundColor Green
+Write-Host "Complete. files=$($seed.summary.scannedFiles) hits=$($seed.summary.totalHits) launcherPipeHits=$($seed.summary.launcherPipeHits) mapHandlerHits=$($seed.summary.mapHandlerHits)" -ForegroundColor Green
 Write-Host "Output: $OutputPath"
