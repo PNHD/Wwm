@@ -11,10 +11,11 @@ $ProgressPreference = 'SilentlyContinue'
 # WWMSync native-bridge diagnostic.
 # Read-only by design: no process memory access, injection, packet capture,
 # credential/token collection, registry writes, or network probing.
+# Keep this file ASCII-only for Windows PowerShell 5.1 compatibility.
 
 $keywords = @(
   'wherewinds', 'where winds', 'wwm', 'yysls', 'yanyun',
-  'netease', 'everstone', 'unisdk', 'h72', 'yan yun', '燕云', '燕雲'
+  'netease', 'everstone', 'unisdk', 'h72', 'yan yun'
 )
 
 function Test-InterestingText {
@@ -33,7 +34,7 @@ function Protect-Text {
   $s = [string]$Text
   if ($env:USERPROFILE) { $s = $s.Replace($env:USERPROFILE, '<USERPROFILE>') }
   if ($env:USERNAME) { $s = $s -replace [regex]::Escape($env:USERNAME), '<USER>' }
-  $s = $s -replace '(?i)(access[_-]?token|refresh[_-]?token|session(?:id)?|authorization|cookie|password|passwd|secret|ticket)=([^\s&"'']+)', '$1=<REDACTED>'
+  $s = $s -replace '(?i)(access[_-]?token|refresh[_-]?token|session(?:id)?|authorization|cookie|password|passwd|secret|ticket)=([^\s&"]+)', '$1=<REDACTED>'
   $s = $s -replace '(?i)([?&](?:token|access_token|refresh_token|sessionid|ticket|code)=)[^&\s]+', '$1<REDACTED>'
   $s = $s -replace '[A-Fa-f0-9]{32,}', '<LONG_HEX>'
   $s = $s -replace '[A-Za-z0-9_\-]{48,}', '<LONG_TOKEN>'
@@ -43,7 +44,8 @@ function Protect-Text {
 function Get-ProcessMap {
   $map = @{}
   foreach ($p in Get-Process) {
-    $map[[int]$p.Id] = [string]$p.ProcessName
+    $processId = [int]$p.Id
+    $map[$processId] = [string]$p.ProcessName
   }
   return $map
 }
@@ -83,7 +85,8 @@ function Get-LocalEndpoints {
       $addr = [string]$c.LocalAddress
       $isLoopback = $addr -in @('127.0.0.1','::1')
       $isListener = [string]$c.State -eq 'Listen'
-      $pname = $proc[[int]$c.OwningProcess]
+      $ownerPid = [int]$c.OwningProcess
+      $pname = $proc[$ownerPid]
       $candidate = Test-InterestingText $pname
       if ($isLoopback -or ($isListener -and $candidate)) {
         $rows += [ordered]@{
@@ -91,7 +94,7 @@ function Get-LocalEndpoints {
           localAddress = $addr
           localPort = [int]$c.LocalPort
           state = [string]$c.State
-          pid = [int]$c.OwningProcess
+          pid = $ownerPid
           process = Protect-Text $pname
         }
       }
@@ -102,7 +105,8 @@ function Get-LocalEndpoints {
     foreach ($c in Get-NetUDPEndpoint) {
       $addr = [string]$c.LocalAddress
       $isLoopback = $addr -in @('127.0.0.1','::1')
-      $pname = $proc[[int]$c.OwningProcess]
+      $ownerPid = [int]$c.OwningProcess
+      $pname = $proc[$ownerPid]
       $candidate = Test-InterestingText $pname
       if ($isLoopback -or $candidate) {
         $rows += [ordered]@{
@@ -110,7 +114,7 @@ function Get-LocalEndpoints {
           localAddress = $addr
           localPort = [int]$c.LocalPort
           state = $null
-          pid = [int]$c.OwningProcess
+          pid = $ownerPid
           process = Protect-Text $pname
         }
       }
@@ -172,8 +176,10 @@ function Get-UriProtocols {
       $command = Get-ItemPropertyValue -Path $commandPath -Name '(default)'
       $name = [string]$key.PSChildName
       if (Test-InterestingText "$name $command") {
+        $scope = 'machine'
+        if ($root -like '*CURRENT_USER*') { $scope = 'user' }
         $out += [ordered]@{
-          scope = $(if ($root -like '*CURRENT_USER*') { 'user' } else { 'machine' })
+          scope = $scope
           protocol = Protect-Text $name
           command = Protect-Text ([string]$command)
         }
@@ -184,7 +190,7 @@ function Get-UriProtocols {
 }
 
 function Get-Snapshot {
-  [ordered]@{
+  return [ordered]@{
     atUtc = [DateTime]::UtcNow.ToString('o')
     candidateProcesses = @(Get-CandidateProcesses)
     localEndpoints = @(Get-LocalEndpoints)
@@ -196,7 +202,10 @@ function Get-Snapshot {
 function To-KeySet {
   param($Items, [scriptblock]$Key)
   $set = @{}
-  foreach ($i in @($Items)) { $set[(& $Key $i)] = $i }
+  foreach ($i in @($Items)) {
+    $keyValue = & $Key $i
+    $set[[string]$keyValue] = $i
+  }
   return $set
 }
 
@@ -206,13 +215,18 @@ function Get-Delta {
   $procKey = { param($x) "$($x.pid)|$($x.name)|$($x.product)" }
   $svcKey = { param($x) "$($x.name)|$($x.state)|$($x.pid)" }
 
-  $bE = To-KeySet $Before.localEndpoints $epKey; $aE = To-KeySet $After.localEndpoints $epKey
-  $bP = To-KeySet $Before.candidateProcesses $procKey; $aP = To-KeySet $After.candidateProcesses $procKey
-  $bS = To-KeySet $Before.interestingServices $svcKey; $aS = To-KeySet $After.interestingServices $svcKey
-  $bPipe = @{}; foreach ($x in @($Before.interestingPipes)) { $bPipe[[string]$x] = $x }
-  $aPipe = @{}; foreach ($x in @($After.interestingPipes)) { $aPipe[[string]$x] = $x }
+  $bE = To-KeySet $Before.localEndpoints $epKey
+  $aE = To-KeySet $After.localEndpoints $epKey
+  $bP = To-KeySet $Before.candidateProcesses $procKey
+  $aP = To-KeySet $After.candidateProcesses $procKey
+  $bS = To-KeySet $Before.interestingServices $svcKey
+  $aS = To-KeySet $After.interestingServices $svcKey
+  $bPipe = @{}
+  foreach ($x in @($Before.interestingPipes)) { $bPipe[[string]$x] = $x }
+  $aPipe = @{}
+  foreach ($x in @($After.interestingPipes)) { $aPipe[[string]$x] = $x }
 
-  [ordered]@{
+  return [ordered]@{
     addedEndpoints = @($aE.Keys | Where-Object { -not $bE.ContainsKey($_) } | ForEach-Object { $aE[$_] })
     removedEndpoints = @($bE.Keys | Where-Object { -not $aE.ContainsKey($_) } | ForEach-Object { $bE[$_] })
     addedProcesses = @($aP.Keys | Where-Object { -not $bP.ContainsKey($_) } | ForEach-Object { $aP[$_] })
@@ -266,7 +280,9 @@ $result = [ordered]@{
 }
 
 $parent = Split-Path -Parent $OutputPath
-if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+if ($parent -and -not (Test-Path $parent)) {
+  New-Item -ItemType Directory -Force -Path $parent | Out-Null
+}
 $result | ConvertTo-Json -Depth 9 | Set-Content -Path $OutputPath -Encoding UTF8
 
 Write-Host ''
