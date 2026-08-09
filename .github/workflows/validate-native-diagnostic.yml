@@ -6,6 +6,7 @@ on:
       - feature/wwm-native-sync-v2
     paths:
       - wwmsync-diagnostic.ps1
+      - wwmsync-diagnostic-v5.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -24,7 +25,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v5.json'
-          .\wwmsync-diagnostic.ps1 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
+          .\wwmsync-diagnostic-v5.ps1 -GameExe 'C:\nonexistent\wwm.exe' -OutputPath $out
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
           if ($j.schema -ne 'wwmsync-native-diagnostic-v5') { throw "Unexpected schema: $($j.schema)" }
