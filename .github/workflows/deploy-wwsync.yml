@@ -101,7 +101,8 @@ jobs:
           grep -Fq 'characterUid' /tmp/root.html
           grep -Fq 'syncButton' /tmp/root.html
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
-          ! grep -Eq 'MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/service/gameauth|/service/call_client_method|start_game_sync|wwmmap\.pages\.dev' /tmp/root.html /tmp/app.js
+          grep -Fq "syncSaved" /tmp/app.js
+          ! grep -Eq 'syncBlocked|MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/service/gameauth|/service/call_client_method|start_game_sync|wwmmap\.pages\.dev' /tmp/root.html /tmp/app.js
           node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWMSync') process.exit(1)"
 
           fetch 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' /tmp/official.json
@@ -144,7 +145,8 @@ jobs:
             await page.click('#syncButton');
             const status=(await page.locator('#syncStatus').textContent()).trim();
             const stored=await page.evaluate(()=>localStorage.getItem('wwmsync:uid'));
-            if(!/chưa thể|không thể/i.test(status))fatal.push(`sync boundary status=${status}`);
+            if(!/đã được lưu cục bộ/i.test(status)||!/chưa có kết nối|chưa có.*handshake/i.test(status))fatal.push(`UID-only status=${status}`);
+            if(/allow|game đang chạy|đã kết nối/i.test(status))fatal.push(`misleading game-state claim=${status}`);
             if(stored!=='1234567890')fatal.push(`stored uid=${stored}`);
             if(page.url()!==before)fatal.push(`unexpected navigation ${before} -> ${page.url()}`);
             const forbidden=requests.filter(u=>/sdk-os\.mpsdk|wwmmap\.pages\.dev|sangtacviet|stv-appdomain|\/service\/(gameauth|call_client_method)/i.test(u));
