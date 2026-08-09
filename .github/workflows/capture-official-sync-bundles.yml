@@ -1,0 +1,52 @@
+name: Capture Official Sync Bundles
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/capture-official-sync-bundles.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download official first-party bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          get(){ echo "GET $2"; curl -LfsS --compressed --connect-timeout 5 --max-time 25 -A "$ua" "$2" -o "evidence/$1"; wc -c "evidence/$1"; }
+
+          get global-map-page.html 'https://www.wherewindsmeetgame.com/map/en/'
+          get global-map-app.js 'https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/pc-d3f0a0d4.js'
+          get global-map-common.js 'https://www.wherewindsmeetgame.com/pc/zt/20260526175803/js/common-a15f2132.js'
+
+          get global-data-page.html 'https://www.wherewindsmeetgame.com/m/2025h5sjgj/en/'
+          get global-data-app.js 'https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/app-9b07739a.js'
+          get global-data-index.js 'https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/index-67f2100d.js'
+          get global-data-en.js 'https://www.wherewindsmeetgame.com/m/zt/20251121182818/js/en-20afced0.js'
+
+          get cn-dd-page.html 'https://dd.163.com/?utm_source=yyslsjingling&auto=1'
+          get cn-dd-page.js 'https://static.dd.163.com/frontendddwebsitenext/_next/static/chunks/app/page-5361b6d5a300bc52.js'
+          get cn-dd-link.js 'https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js'
+
+          get cn-helper-page.html 'https://act.ds.163.com/7cf1cfa6a9edf833/'
+          get cn-helper-index.js 'https://ds.res.netease.com/online/bundle/static/js/index.f8638524.js'
+          get cn-helper-detail.js 'https://ds.res.netease.com/online/bundle/static/js/async/detail/page.64a262ca.js'
+          get cn-helper-async.js 'https://ds.res.netease.com/online/bundle/static/js/async/804.b27db3a3.js'
+          get cn-ds-sdk.js 'https://ds.res.netease.com/online/pkg/ds-js-sdk/1.0.87/ds-js-sdk.min.js'
+
+          sha256sum evidence/* > evidence/SHA256SUMS.txt
+
+      - name: Upload raw official bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-sync-raw-bundles
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
