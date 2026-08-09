@@ -40,7 +40,9 @@ function Get-ChunkSnapshot([string]$Path,[int]$ChunkBytes,[string]$Phase,[int]$O
   $fs=$null
   $sha=$null
   try {
-    $fs = New-Object System.IO.FileStream($Path,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+    $shareValue = ([int][System.IO.FileShare]::ReadWrite) -bor ([int][System.IO.FileShare]::Delete)
+    $share = [System.IO.FileShare]$shareValue
+    $fs = New-Object System.IO.FileStream($Path,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,$share)
     $buffer = New-Object byte[] $ChunkBytes
     while ($true) {
       $read=$fs.Read($buffer,0,$buffer.Length)
