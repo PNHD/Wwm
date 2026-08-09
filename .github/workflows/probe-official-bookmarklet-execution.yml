@@ -1,0 +1,54 @@
+name: Probe Official Map Bookmarklet Execution
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/probe-official-bookmarklet-execution.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify user-initiated javascript URL can run on official map
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/probe.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:1280,height:800}});
+            const consoleLines=[];
+            page.on('console',m=>consoleLines.push(`${m.type()}: ${m.text()}`));
+            const res=await page.goto('https://www.wherewindsmeetgame.com/map/en/',{waitUntil:'domcontentloaded',timeout:60000});
+            if(!res?.ok()) throw new Error(`official map HTTP ${res?.status()}`);
+            await page.waitForTimeout(1500);
+            const origin=await page.evaluate(()=>location.origin);
+            if(origin!=='https://www.wherewindsmeetgame.com') throw new Error(`unexpected origin ${origin}`);
+
+            // Emulate a bookmarklet navigation rather than page.evaluate-ing the payload directly.
+            const result=await page.evaluate(async()=>{
+              document.documentElement.removeAttribute('data-wwmsync-bookmarklet-probe');
+              location.href='javascript:(()=>{document.documentElement.dataset.wwmsyncBookmarkletProbe="ok";void 0})()';
+              await new Promise(r=>setTimeout(r,250));
+              return {
+                marker:document.documentElement.dataset.wwmsyncBookmarkletProbe||'',
+                tokenCookieVisible:document.cookie.split(';').some(x=>x.trim().startsWith('h72na_map_accessToken=')),
+                cookieApiType:typeof document.cookie
+              };
+            });
+            console.log('BOOKMARKLET_RESULT',JSON.stringify(result));
+            console.log('CONSOLE_LINES',JSON.stringify(consoleLines.filter(x=>/content security|refused|javascript/i.test(x)).slice(0,20)));
+            await browser.close();
+            if(result.marker!=='ok') process.exit(1);
+          })().catch(e=>{console.error('BOOKMARKLET_FATAL',e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/probe.cjs
