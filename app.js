@@ -190,7 +190,7 @@ async function ensureMap(){
   if(state.map){state.map.remove();state.map=null}
   const bounds=leafletBounds(cfg);
   state.map=L.map('map',{center:[cfg.center[1],cfg.center[0]],zoom:cfg.initialZoom,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,maxBounds:bounds,maxBoundsViscosity:.85,zoomControl:true,attributionControl:false,preferCanvas:true});
-  L.tileLayer(`${MAP_ASSET_ROOT}data/map/${cfg.mapName}/en/{z}/{y}_${x}.jpg`.replace('${x}','{x}'),{tileSize:256,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,noWrap:true,bounds,keepBuffer:3}).addTo(state.map);
+  L.tileLayer(`${MAP_ASSET_ROOT}data/map/${cfg.mapName}/en/{z}/{y}_{x}.jpg`,{tileSize:256,minZoom:cfg.minZoom,maxZoom:cfg.maxZoom,noWrap:true,bounds,keepBuffer:3}).addTo(state.map);
   state.pointRenderer=L.canvas({padding:.5});
   state.pointLayer=L.layerGroup().addTo(state.map);
 }
@@ -200,7 +200,7 @@ function renderPoints(){
   state.pointLayer.clearLayers();
   for(const point of filteredPoints()){
     const[lng,lat]=pointCoordinates(point);
-    const marker=L.circleMarker([lat,lng],{renderer:state.pointRenderer,radius:5,color:'#101418',weight:1.2,fillColor:point.finished?'#62d6a8':'#e4b55c',fillOpacity:point.finished?.65:.92});
+    const marker=L.circleMarker([lat,lng],{renderer:state.pointRenderer,radius:5,color:'#101418',weight:1.2,fillColor:point.finished?'#62d6a8':'#e4b55c',fillOpacity:point.finished?0.65:0.92});
     marker.bindPopup(`<div class="popup-title">${escapeHtml(point.name||'')}</div><div class="popup-meta">${escapeHtml(point.categoryName||'')}</div><div class="${point.finished?'popup-done':'popup-open'}">${t(point.finished?'pointCompleted':'pointNotCompleted')}</div>`);
     marker.addTo(state.pointLayer);
   }
