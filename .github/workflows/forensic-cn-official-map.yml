@@ -1,4 +1,4 @@
-name: Trace NetEase DD WWM Realtime Interface
+name: Locate Official NetEase DD WWM Client Assets
 
 on:
   push:
@@ -11,117 +11,76 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Trace public DD route chunks and source maps
+      - name: Inspect public DD landing and client asset references
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/dd
-          base='https://g.166.net/res/a19'
-          files=(
-            '7295.b568775a.async.js'
-            '8645.2e1dc741.async.js'
-            '2204.28632699.async.js'
-            '6466.616526a1.async.js'
-            '9301.6d938f8a.async.js'
-            '3224.15a6d646.async.js'
-            '9014.f7a84cf6.async.js'
-            '5686.b7529da8.async.js'
-            '3098.d21225b3.async.js'
-            '3127.9030b033.async.js'
-            '9356.cd5f1eac.async.js'
-            '6316.5cd9d09d.async.js'
-            'p__g__yysls.8e3f9c6a.async.js'
-          )
-          for f in "${files[@]}"; do
-            curl -fsSL "$base/$f" -o "/tmp/dd/$f"
-            echo "JS $f $(wc -c < /tmp/dd/$f)"
-            sm=$(grep -oE 'sourceMappingURL=[^[:space:]]+' "/tmp/dd/$f" | tail -1 | cut -d= -f2 || true)
-            if [ -n "$sm" ]; then
-              echo "SOURCEMAP_REF $f $sm"
-              curl -fsSL "$base/$sm" -o "/tmp/dd/$f.map" || true
-            else
-              curl -fsSL "$base/$f.map" -o "/tmp/dd/$f.map" || true
-            fi
-            [ -s "/tmp/dd/$f.map" ] && echo "MAP $f $(wc -c < /tmp/dd/$f.map)" || true
+          mkdir -p /tmp/dd/js
+          for u in \
+            'https://dd.163.com/?utm_source=yyslsjingling&auto=1' \
+            'https://dd.163.com/' \
+            'http://dd.163.com/?utm_source=yyslsjingling&auto=1'; do
+            echo "=== GET $u ==="
+            curl -LfsS -D /tmp/dd/headers "$u" -o /tmp/dd/index.html && break || true
           done
-
-          curl -fsSL 'https://ds.163.com/g/yysls' -o /tmp/dd/landing.html || true
+          sed -n '1,40p' /tmp/dd/headers || true
+          echo "HTML_BYTES $(wc -c < /tmp/dd/index.html 2>/dev/null || echo 0)"
 
           python - <<'PY'
           from pathlib import Path
-          import re, json
+          from urllib.parse import urljoin
+          import re, html, subprocess
+          p=Path('/tmp/dd/index.html')
+          t=p.read_text('utf8',errors='ignore') if p.exists() else ''
+          base='https://dd.163.com/'
+          refs=[]
+          for m in re.finditer(r'(?:src|href)=["\']([^"\']+)',t,re.I):
+            u=urljoin(base,html.unescape(m.group(1)))
+            if u not in refs: refs.append(u)
+          print('=== REFS ===')
+          for u in refs: print(u)
+          scripts=[u for u in refs if '.js' in u.lower()]
+          for i,u in enumerate(scripts[:80]):
+            r=subprocess.run(['curl','-LfsS',u,'-o',f'/tmp/dd/js/{i}.js'])
+            print('FETCH_JS',i,r.returncode,u)
+          print('=== INLINE URL/EXE CANDIDATES ===')
+          pats=[r'https?://[^"\'<> ]+',r'[^"\'<> ]+\.exe(?:\?[^"\'<> ]*)?',r'[^"\'<> ]+\.msi(?:\?[^"\'<> ]*)?']
+          for pat in pats:
+            vals=[]
+            for m in re.finditer(pat,t,re.I):
+              v=html.unescape(m.group(0))
+              if v not in vals: vals.append(v)
+            for v in vals[:120]: print(v)
+          PY
 
-          js=list(Path('/tmp/dd').glob('*.js'))
-          print('=== FILES ===')
-          for p in js: print(p.name,p.stat().st_size)
-
-          needles=[
-            'yysls','燕云十六声','实时','位置','坐标','地图','同步','宝箱','探索','收集','进度','角色',
-            'realtime','position','location','coordinate','map','sync','collect','progress','role',
-            'callHandler','registerHandler','postMsgToNative','WebViewJavascriptBridge','UniSDKJSBridge',
-            'Godlike','gmbridge','ngwebview','getMyInfo','isGodWebGame','GOD_GAME',
-            'localhost','127.0.0.1','websocket','wss://','ws://','act.ds.163.com'
-          ]
-          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
-          method_re=re.compile(r'(?:callHandler|registerHandler|postMsgToNative)\s*\(\s*["\']([^"\']+)',re.I)
-          object_method_re=re.compile(r'(?:methodId|method|action|cmd|eventName|type)\s*[:=]\s*["\']([^"\']{2,100})["\']',re.I)
-
-          all_methods=[]; all_urls=[]
-          for p in js:
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          files=list(Path('/tmp/dd/js').glob('*.js'))+[Path('/tmp/dd/index.html')]
+          terms=['download','installer','setup','version','update','yysls','燕云','地图','实时','map','plugin','game','tool','auto=1','utm_source']
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+',re.I)
+          print('=== ALL INTERESTING URLS ===')
+          urls=[]
+          for p in files:
+            if not p.exists(): continue
             t=p.read_text('utf8',errors='ignore')
-            for rx in [method_re,object_method_re]:
-              for m in rx.finditer(t):
-                v=m.group(1)
-                if v not in all_methods: all_methods.append(v)
             for m in url_re.finditer(t):
-              v=m.group(0).rstrip('),;')
-              if v not in all_urls: all_urls.append(v)
-          print('\n=== METHOD CANDIDATES ===')
-          for v in all_methods: print(v)
-          print('\n=== URLS ===')
-          for v in all_urls: print(v)
-
-          print('\n=== FOCUSED CONTEXTS ===')
-          for term in needles:
+              u=m.group(0).rstrip('),;}')
+              if any(k in u.lower() for k in ['download','update','patch','client','setup','dd.163','166.net','163.com','exe','msi']):
+                if u not in urls: urls.append(u)
+          for u in urls[:300]: print(u)
+          print('=== CONTEXTS ===')
+          for term in terms:
             shown=0
-            for p in js:
+            for p in files:
+              if not p.exists(): continue
               t=p.read_text('utf8',errors='ignore')
               for m in re.finditer(re.escape(term),t,re.I):
-                ctx=t[max(0,m.start()-700):min(len(t),m.start()+1500)].replace('\n',' ')
-                low=ctx.lower()
-                # For generic words require WWM/native context to keep output useful.
-                if term.lower() in {'map','sync','role','position','location','progress','collect'}:
-                  if not any(k in low for k in ['yysls','燕云','bridge','godlike','gmbridge','webview','实时','地图','宝箱','探索']):
-                    continue
+                ctx=t[max(0,m.start()-600):min(len(t),m.start()+1300)].replace('\n',' ')
+                if term.lower() in {'map','game','tool'} and not any(k in ctx.lower() for k in ['yysls','燕云','download','plugin','dd.163','实时','地图']): continue
                 print('TERM',term,'FILE',p.name)
-                print(ctx[:2200])
+                print(ctx[:1900])
                 shown+=1
                 if shown>=8: break
               if shown>=8: break
-
-          print('\n=== SOURCEMAP INSPECTION ===')
-          for mp in Path('/tmp/dd').glob('*.map'):
-            try:
-              obj=json.loads(mp.read_text('utf8',errors='ignore'))
-            except Exception:
-              continue
-            sources=obj.get('sources') or []
-            contents=obj.get('sourcesContent') or []
-            interesting=[]
-            for i,s in enumerate(sources):
-              ss=s.lower()
-              if any(k in ss for k in ['yysls','map','bridge','game','position','sync','collect','role']):
-                interesting.append((i,s))
-            print('MAPFILE',mp.name,'SOURCES',len(sources),'INTERESTING',len(interesting))
-            for i,s in interesting[:100]: print('SOURCE',i,s)
-            for i,s in interesting[:30]:
-              if i>=len(contents) or not contents[i]: continue
-              c=contents[i]
-              if any(k.lower() in c.lower() for k in needles):
-                print('SOURCE_CONTENT',s)
-                for term in needles:
-                  m=re.search(re.escape(term),c,re.I)
-                  if m:
-                    print(c[max(0,m.start()-900):min(len(c),m.start()+2200)][:3100])
-                    break
           PY
