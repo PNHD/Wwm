@@ -1,0 +1,99 @@
+name: Forensic Official WWM Sync
+
+on:
+  push:
+    branches: [feature/wwmsync-native-official]
+    paths: ['.github/workflows/forensic-official-sync.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Probe public official surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wwm
+          probe() {
+            name="$1"; url="$2"
+            echo "===== ${name} ====="
+            code=$(curl -L --max-time 25 --connect-timeout 10 -sS -D "/tmp/wwm/${name}.headers" -o "/tmp/wwm/${name}.body" -w '%{http_code}' "$url" || true)
+            echo "HTTP ${code} URL ${url}"
+            grep -iE '^(HTTP/|location:|content-type:|server:|access-control-|set-cookie:)' "/tmp/wwm/${name}.headers" | sed -E 's/(set-cookie:).*/\1 [redacted]/I' | tail -n 30 || true
+            echo "BODY_BYTES $(wc -c < "/tmp/wwm/${name}.body" 2>/dev/null || echo 0)"
+          }
+
+          probe global_map 'https://www.wherewindsmeetgame.com/map/en/'
+          probe global_api_list 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US'
+          probe global_api_points 'https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US'
+          probe global_user_info 'https://s2.easebar.com/39f12eda6b86452b/api/user/info?lang=en-US'
+          probe global_auth_roles 'https://s2.easebar.com/39f12eda6b86452b/api/auth/ursRoles?lang=en-US'
+          probe cn_ds 'https://ds.163.com/g/yysls'
+          probe cn_bb 'https://bb.ds.163.com/'
+          probe cn_game 'https://www.yysls.cn/'
+
+          echo '===== Global HTML scripts ====='
+          python3 - <<'PY'
+          import re, pathlib, urllib.parse
+          html=pathlib.Path('/tmp/wwm/global_map.body').read_text('utf-8','ignore')
+          for s in re.findall(r'<script[^>]+src=["\']([^"\']+)', html, re.I):
+              print(urllib.parse.urljoin('https://www.wherewindsmeetgame.com/map/en/', s))
+          PY
+
+          echo '===== Global public bundle contracts ====='
+          python3 - <<'PY'
+          import re, pathlib, urllib.parse, urllib.request
+          html=pathlib.Path('/tmp/wwm/global_map.body').read_text('utf-8','ignore')
+          urls=[]
+          for s in re.findall(r'<script[^>]+src=["\']([^"\']+)', html, re.I):
+              u=urllib.parse.urljoin('https://www.wherewindsmeetgame.com/map/en/', s)
+              if u.startswith('https://www.wherewindsmeetgame.com/'):
+                  urls.append(u)
+          pats=re.compile(r'(.{0,120}(?:/api/(?:auth|user|map)/[^"\'`\\\s<>]{0,100}|ursRoles|ursLogin|user/point/finish|finished|WebSocket|wss?://|bridge|native|position|roleId|character).{0,180})', re.I)
+          seen=set()
+          for i,u in enumerate(urls[:12]):
+              try:
+                  req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  data=urllib.request.urlopen(req,timeout=20).read(8_000_000).decode('utf-8','ignore')
+              except Exception as e:
+                  print('FETCH_ERR',u,type(e).__name__); continue
+              print('SCRIPT',u,'BYTES',len(data))
+              for m in pats.findall(data):
+                  x=' '.join(m.split())
+                  if x not in seen:
+                      seen.add(x); print('MATCH',x[:500])
+          PY
+
+          echo '===== CN public references ====='
+          python3 - <<'PY'
+          import re, pathlib
+          for name in ('cn_ds','cn_bb','cn_game'):
+              p=pathlib.Path('/tmp/wwm/'+name+'.body')
+              text=p.read_text('utf-8','ignore') if p.exists() else ''
+              print('SOURCE',name,'BYTES',len(text))
+              refs=set(re.findall(r'https?://[^"\'<>\s]+',text))
+              for u in sorted(refs):
+                  if any(k in u.lower() for k in ('ds.163','netease','163.com','yysls','download','adl.')):
+                      print('REF',u[:500])
+              for pat in ('实时地图','共创大地图','网易DD','网易贝贝','贝贝','位置','同步','地图','download','\.exe','\.msi','act.ds.163.com'):
+                  if re.search(pat,text,re.I): print('HAS',pat)
+          PY
+
+          echo '===== Public API method/CORS probes ====='
+          for path in \
+            '/api/user/point/finish' \
+            '/api/map/point' \
+            '/api/auth/ursRoles' \
+            '/api/auth/ursLogin'; do
+            echo "-- $path"
+            curl -sS --max-time 15 -o /dev/null -D - -X OPTIONS \
+              -H 'Origin: https://wwmsync.pages.dev' \
+              -H 'Access-Control-Request-Method: POST' \
+              "https://s2.easebar.com/39f12eda6b86452b${path}" \
+              | grep -iE '^(HTTP/|allow:|access-control-|server:)' || true
+          done
