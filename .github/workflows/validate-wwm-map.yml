@@ -46,9 +46,10 @@ jobs:
           grep -F "https://s2.easebar.com/39f12eda6b86452b" app.js
           grep -F "data/map/" app.js
           grep -F "wwmsync:uid" app.js
-          grep -F "syncBlocked" app.js
-          if grep -RInE 'MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/api/auth/ursRoles|/api/auth/ursLogin|h72_map_accessToken|wwmmap\.pages\.dev|/service/gameauth|/service/call_client_method|start_game_sync|sangtacvietcdn|stv-appdomain|MapGenie|mapgenie|17173|localhost:63333|GET_GAME_STATE' index.html app.js sw.js manifest.webmanifest; then
-            echo 'Retired or private sync dependency leaked into active runtime.' >&2
+          grep -F "syncSaved" app.js
+          grep -F "Game connector: chưa kết nối" app.js
+          if grep -RInE 'syncBlocked|MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/api/auth/ursRoles|/api/auth/ursLogin|h72_map_accessToken|wwmmap\.pages\.dev|/service/gameauth|/service/call_client_method|start_game_sync|sangtacvietcdn|stv-appdomain|MapGenie|mapgenie|17173|localhost:63333|GET_GAME_STATE' index.html app.js sw.js manifest.webmanifest; then
+            echo 'Retired, misleading, or private sync dependency leaked into active runtime.' >&2
             exit 1
           fi
 
