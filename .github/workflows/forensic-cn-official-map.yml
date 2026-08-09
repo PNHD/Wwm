@@ -1,4 +1,4 @@
-name: Resolve Official Data Tool Token Persistence
+name: Trace Official CN Realtime Map Bridge
 
 on:
   push:
@@ -9,23 +9,93 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Resolve token persistence
+      - name: Trace public official CN and Global clients
         shell: bash
         run: |
           set -euo pipefail
-          root='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
-          curl -fsSL "$root/index-67f2100d.js" -o /tmp/i.js
-          curl -fsSL "$root/app-9b07739a.js" -o /tmp/a.js
+          mkdir -p /tmp/wwm
+
+          echo '=== CN DD LANDING ==='
+          curl -fsSL -D /tmp/wwm/cn.headers 'https://ds.163.com/g/yysls' -o /tmp/wwm/cn.html || true
+          sed -n '1,20p' /tmp/wwm/cn.headers || true
+          python - <<'PY'
+          from pathlib import Path
+          import re, html
+          p=Path('/tmp/wwm/cn.html')
+          t=p.read_text('utf8',errors='ignore') if p.exists() else ''
+          print('CN_HTML_BYTES',len(t))
+          urls=[]
+          for m in re.finditer(r'(?:src|href)=["\']([^"\']+)',t,re.I):
+            u=html.unescape(m.group(1))
+            if u not in urls: urls.append(u)
+          print('CN_ASSETS')
+          for u in urls[:120]: print(u)
+          for pat in [r'https?://[^"\'<> ]+',r'wss?://[^"\'<> ]+',r'127\.0\.0\.1[^"\'<> ]*',r'localhost[^"\'<> ]*']:
+            vals=[]
+            for m in re.finditer(pat,t,re.I):
+              v=m.group(0)
+              if v not in vals: vals.append(v)
+            if vals:
+              print('CN_INLINE',pat)
+              for v in vals[:80]: print(v)
+          PY
+
+          echo '=== FETCH CN JS ASSETS ==='
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urljoin, urlparse
+          import re, subprocess, html
+          base='https://ds.163.com/g/yysls'
+          t=Path('/tmp/wwm/cn.html').read_text('utf8',errors='ignore') if Path('/tmp/wwm/cn.html').exists() else ''
+          out=[]
+          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)',t,re.I):
+            u=urljoin(base,html.unescape(m.group(1)))
+            if u not in out: out.append(u)
+          for i,u in enumerate(out[:40]):
+            fn=f'/tmp/wwm/cn-{i}.js'
+            r=subprocess.run(['curl','-fsSL',u,'-o',fn])
+            print('CN_JS',i,r.returncode,u)
+          PY
+
+          echo '=== GLOBAL OFFICIAL DATA TOOL ==='
+          grow='https://www.wherewindsmeetgame.com/m/zt/20251121182818/js'
+          curl -fsSL "$grow/index-67f2100d.js" -o /tmp/wwm/global-index.js
+          curl -fsSL "$grow/app-9b07739a.js" -o /tmp/wwm/global-app.js
+
           python - <<'PY'
           from pathlib import Path
           import re
-          for fn in ['i.js','a.js']:
-            t=Path('/tmp/'+fn).read_text('utf8',errors='ignore')
-            print('\nFILE',fn)
-            pats=[r'state\s*:\s*\(\)\s*=>\s*\(\{[^}]{0,1200}token[^}]{0,1200}\}\)',r'updateToken[^,}]{0,800}',r'defineStore[^;]{0,2200}',r'persist[^;]{0,1800}',r'["\'][^"\']{0,50}token[^"\']{0,50}["\']']
-            for pat in pats:
-              ms=list(re.finditer(pat,t,re.I|re.S))
-              print('PAT',pat,'COUNT',len(ms))
-              for m in ms[:8]: print(t[max(0,m.start()-350):min(len(t),m.start()+1900)].replace('\n',' ')[:2250])
+
+          files=list(Path('/tmp/wwm').glob('*.js'))
+          print('JS_FILES',[(p.name,p.stat().st_size) for p in files])
+          terms=['websocket','wss://','ws://','localhost','127.0.0.1','ipc','bridge','realtime','realTime','sync','location','position','role','character','gameId','game_id','yysls','燕云','地图','map/points','user/point','finished','accessToken','updateToken']
+          url_re=re.compile(r'https?://[^"\'`<>\\ ]+|wss?://[^"\'`<>\\ ]+',re.I)
+          api_re=re.compile(r'["\'](/[^"\']{1,160})["\']')
+
+          for p in files:
+            t=p.read_text('utf8',errors='ignore')
+            print('\n### FILE',p.name,'BYTES',len(t))
+            urls=[]
+            for m in url_re.finditer(t):
+              u=m.group(0).rstrip('),;')
+              if u not in urls: urls.append(u)
+            if urls:
+              print('URLS')
+              for u in urls[:120]: print(u)
+            routes=[]
+            for m in api_re.finditer(t):
+              s=m.group(1)
+              if any(k in s.lower() for k in ['api','map','sync','role','game','user','point','auth','token','position','location','socket','bridge']):
+                if s not in routes: routes.append(s)
+            if routes:
+              print('ROUTES')
+              for s in routes[:160]: print(s)
+            for term in terms:
+              hits=[m.start() for m in re.finditer(re.escape(term),t,re.I)]
+              if not hits: continue
+              print('TERM',term,'COUNT',len(hits))
+              for pos in hits[:4]:
+                print(t[max(0,pos-260):min(len(t),pos+650)].replace('\n',' ')[:920])
           PY
