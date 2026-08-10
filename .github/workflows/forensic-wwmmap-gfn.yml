@@ -1,0 +1,194 @@
+name: Forensic WWMMAP GFN Sync Contract
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/forensic-wwmmap-gfn.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch public WWMMAP frontend and extract sync contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wwmmap-gfn"
+          python - <<'PY'
+          import hashlib, html.parser, json, os, re, ssl, urllib.parse, urllib.request
+          from pathlib import Path
+
+          OUT = Path(os.environ['RUNNER_TEMP']) / 'wwmmap-gfn'
+          UA = 'WWMSync-public-frontend-forensic/1.0'
+          pages = [
+              'https://wwmmap.pages.dev/map',
+              'https://wwmmap.pages.dev/legacy-map',
+              'https://wwmmap.pages.dev/'
+          ]
+          needles = [
+              '/service/gameauth', '/service/call_client_method', 'start_game_sync',
+              'gameauth', 'call_client_method', 'game_sync', 'sync_server',
+              'wwmmapsync', 'wwmsync-', 'sangtacvietcdn', 'stv-appdomain',
+              'WebSocket', 'new WebSocket', 'ws://', 'wss://',
+              'Confirmation timed out', 'Only receive messages from friends',
+              'Daily Permission', 'Discord Account Binding', 'Verification Code',
+              'signature', 'Allow', 'relay', 'socket', 'character UID'
+          ]
+          # Generic path/url extraction is intentionally restricted to public frontend text.
+          endpoint_patterns = [
+              re.compile(r'''["']((?:https?|wss?)://[^"'\\\s<>]+)["']''', re.I),
+              re.compile(r'''["']((?:/service|/api)/[A-Za-z0-9_./?=&:-]+)["']''')
+          ]
+
+          class ScriptParser(html.parser.HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.scripts=[]; self.inline=[]; self._in=False; self._buf=[]
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() == 'script':
+                      d=dict(attrs); src=d.get('src')
+                      if src: self.scripts.append(src)
+                      else: self._in=True; self._buf=[]
+              def handle_data(self, data):
+                  if self._in: self._buf.append(data)
+              def handle_endtag(self, tag):
+                  if tag.lower() == 'script' and self._in:
+                      self.inline.append(''.join(self._buf)); self._in=False; self._buf=[]
+
+          def fetch(url):
+              req=urllib.request.Request(url, headers={'User-Agent':UA, 'Accept':'*/*'})
+              with urllib.request.urlopen(req, timeout=25, context=ssl.create_default_context()) as r:
+                  data=r.read(15_000_000)
+                  return int(getattr(r,'status',200)), dict(r.headers), data, r.geturl()
+
+          report={
+              'schema':'wwmsync-wwmmap-gfn-forensic-v1',
+              'safety':{
+                  'publicFrontendOnly':True,
+                  'credentialsUsed':False,
+                  'cookiesUsed':False,
+                  'privateRelayConnected':False,
+                  'websocketConnected':False,
+                  'gameApiInvoked':False,
+                  'requestMutation':False
+              },
+              'pages':[], 'resources':[], 'hits':[], 'candidateEndpoints':[]
+          }
+          seen=set(); resources=[]
+
+          for page_url in pages:
+              try:
+                  status,headers,data,final=fetch(page_url)
+                  text=data.decode('utf-8','replace')
+                  p=ScriptParser(); p.feed(text)
+                  page_name='page-' + hashlib.sha256(page_url.encode()).hexdigest()[:8] + '.html'
+                  (OUT/page_name).write_bytes(data)
+                  report['pages'].append({'url':page_url,'finalUrl':final,'status':status,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest().upper(),'scripts':len(p.scripts),'inlineScripts':len(p.inline)})
+                  # Inline script content is part of the public page and can contain API constants.
+                  for idx,s in enumerate(p.inline):
+                      if s.strip(): resources.append((f'{page_url}#inline-{idx}', s.encode('utf-8','replace')))
+                  for src in p.scripts:
+                      u=urllib.parse.urljoin(final,src)
+                      if u not in seen:
+                          seen.add(u)
+                          try:
+                              st,hh,dd,ff=fetch(u)
+                              resources.append((ff,dd))
+                              report['resources'].append({'url':ff,'status':st,'bytes':len(dd),'sha256':hashlib.sha256(dd).hexdigest().upper(),'contentType':hh.get('Content-Type') or hh.get('content-type')})
+                          except Exception as e:
+                              report['resources'].append({'url':u,'error':type(e).__name__ + ': ' + str(e)[:300]})
+              except Exception as e:
+                  report['pages'].append({'url':page_url,'error':type(e).__name__ + ': ' + str(e)[:300]})
+
+          # Include HTML itself in search corpus.
+          for page in list(OUT.glob('page-*.html')):
+              resources.append((page.name, page.read_bytes()))
+
+          endpoint_set=set()
+          for source,data in resources:
+              text=data.decode('utf-8','replace')
+              for pat in endpoint_patterns:
+                  for m in pat.finditer(text):
+                      v=m.group(1)
+                      # Never preserve query values from extracted URLs.
+                      if re.match(r'^(https?|wss?)://',v,re.I):
+                          try:
+                              u=urllib.parse.urlsplit(v)
+                              v=urllib.parse.urlunsplit((u.scheme,u.netloc,u.path,'',''))
+                          except Exception: pass
+                      endpoint_set.add(v[:500])
+              lower=text.lower()
+              for needle in needles:
+                  start=0; nlow=needle.lower(); count=0
+                  while True:
+                      i=lower.find(nlow,start)
+                      if i < 0: break
+                      ctx=text[max(0,i-450):min(len(text),i+900)]
+                      # Redact common auth-looking values if any happen to be embedded in public text.
+                      ctx=re.sub(r'(?i)(token|ticket|session|password|passwd|secret|authorization)([=:]\\s*)[^\\s,;}&\\]]+', r'\\1\\2<REDACTED>', ctx)
+                      ctx=re.sub(r'[A-Fa-f0-9]{48,}', '<LONG_HEX>', ctx)
+                      report['hits'].append({'source':source,'needle':needle,'index':i,'context':ctx})
+                      count+=1; start=i+len(needle)
+                      if count>=12: break
+
+          report['candidateEndpoints']=sorted(endpoint_set)
+          report['summary']={
+              'pageCount':len(report['pages']),
+              'resourceCount':len(report['resources']),
+              'hitCount':len(report['hits']),
+              'candidateEndpointCount':len(report['candidateEndpoints']),
+              'hitNeedles':sorted(set(h['needle'] for h in report['hits']))
+          }
+          (OUT/'wwmmap-gfn-forensic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          # Human-readable compact summary.
+          lines=['WWMMAP GFN PUBLIC FRONTEND FORENSIC','===================================','']
+          lines += [f"pages={report['summary']['pageCount']} resources={report['summary']['resourceCount']} hits={report['summary']['hitCount']} endpoints={report['summary']['candidateEndpointCount']}", '']
+          lines.append('HIT NEEDLES:')
+          lines += ['  - '+x for x in report['summary']['hitNeedles']]
+          lines.append('')
+          lines.append('SYNC-RELEVANT ENDPOINTS:')
+          for e in report['candidateEndpoints']:
+              if any(k in e.lower() for k in ['service','sync','gameauth','websocket','ws','sangtac','stv-appdomain']): lines.append('  '+e)
+          lines.append('')
+          lines.append('TOP SYNC HITS:')
+          wanted={'/service/gameauth','/service/call_client_method','start_game_sync','gameauth','call_client_method','wwmmapsync','sangtacvietcdn','stv-appdomain','WebSocket','wss://','Daily Permission','Only receive messages from friends'}
+          shown=0
+          for h in report['hits']:
+              if h['needle'] in wanted:
+                  lines.append(f"--- {h['needle']} @ {h['source']} [{h['index']}] ---")
+                  lines.append(h['context'].replace('\\n',' ')[:1600])
+                  shown+=1
+                  if shown>=60: break
+          (OUT/'report.txt').write_text('\n'.join(lines),encoding='utf-8')
+          print('\n'.join(lines[:220]))
+          PY
+
+          test -s "$RUNNER_TEMP/wwmmap-gfn/wwmmap-gfn-forensic.json"
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'wwmmap-gfn','wwmmap-gfn-forensic.json')
+          j=json.load(open(p,encoding='utf-8'))
+          assert j['schema']=='wwmsync-wwmmap-gfn-forensic-v1'
+          assert j['safety']['credentialsUsed'] is False
+          assert j['safety']['privateRelayConnected'] is False
+          assert j['safety']['websocketConnected'] is False
+          assert j['safety']['gameApiInvoked'] is False
+          print('VALID',j['summary'])
+          PY
+
+      - name: Upload forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmmap-gfn-forensic
+          path: ${{ runner.temp }}/wwmmap-gfn/
+          if-no-files-found: error
+          retention-days: 7
