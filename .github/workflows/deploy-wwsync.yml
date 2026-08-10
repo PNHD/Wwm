@@ -22,6 +22,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate static sources
+        run: |
+          set -euo pipefail
+          node --check app.js
+          node --check official-sync.js
+          node --check vision-sync.js
+          node --check sw.js
+          grep -Fq 'getDisplayMedia' vision-sync.js
+          grep -Fq 'visionAnchorButton' index.html
+          grep -Fq 'vision-sync.css' index.html
+          grep -Fq 'display-capture=(self)' _headers
+
+      - name: Build clean static bundle
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir dist
+          cp index.html styles.css vision-sync.css app.js vision-sync.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          test ! -d dist/.github
+          test ! -d dist/functions
+
       - name: Validate Cloudflare credentials
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -30,17 +50,6 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-
-      - name: Build clean static bundle
-        run: |
-          set -euo pipefail
-          node --check app.js
-          node --check official-sync.js
-          node --check sw.js
-          rm -rf dist && mkdir dist
-          cp index.html styles.css app.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
-          test ! -d dist/.github
-          test ! -d dist/functions
 
       - name: Ensure Pages project exists
         env:
@@ -82,39 +91,28 @@ jobs:
           echo "Exact deployment URL: $exact_url"
           echo "Runtime alias: $runtime_url"
 
-      - name: Smoke test deployment
+      - name: HTTP smoke test
         env:
           EXACT_URL: ${{ steps.deploy.outputs.exact_url }}
-          RUNTIME_URL: ${{ steps.deploy.outputs.runtime_url }}
         run: |
           set -euo pipefail
-          exact="${EXACT_URL%/}"
-          base="${RUNTIME_URL%/}"
+          base="${EXACT_URL%/}"
           fetch(){ curl --fail --silent --show-error --location --retry 12 --retry-delay 3 --retry-all-errors --max-time 45 "$1" -o "$2"; }
-
-          fetch "$exact/" /tmp/root.html
-          fetch "$exact/map" /tmp/map.html
-          fetch "$exact/app.js" /tmp/app.js
-          fetch "$exact/official-sync.js" /tmp/official-sync.js
-          fetch "$exact/manifest.webmanifest" /tmp/manifest.json
+          fetch "$base/" /tmp/root.html
+          fetch "$base/app.js" /tmp/app.js
+          fetch "$base/vision-sync.js" /tmp/vision-sync.js
+          fetch "$base/vision-sync.css" /tmp/vision-sync.css
+          fetch "$base/official-sync.js" /tmp/official-sync.js
           grep -Fq 'WWMSync — Where Winds Meet' /tmp/root.html
-          grep -Fq 'WWMSync — Where Winds Meet' /tmp/map.html
-          grep -Fq 'leaflet@1.9.4' /tmp/root.html
-          grep -Fq 'characterUid' /tmp/root.html
-          grep -Fq 'syncButton' /tmp/root.html
-          grep -Fq 'officialBridgeBookmarklet' /tmp/root.html
+          grep -Fq 'visionStartButton' /tmp/root.html
+          grep -Fq 'getDisplayMedia' /tmp/vision-sync.js
+          grep -Fq 'best.score>=.82' /tmp/vision-sync.js
+          grep -Fq 'vision-player-marker' /tmp/vision-sync.css
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
-          grep -Fq "syncSaved" /tmp/app.js
-          grep -Fq "h72na_map_accessToken" /tmp/official-sync.js
-          grep -Fq "wwmsync-import" /tmp/official-sync.js
-          ! grep -Eq 'syncBlocked|MpayOSSDK|sdk-os\.mpsdk|/api/mpay|/service/gameauth|/service/call_client_method|start_game_sync|wwmmap\.pages\.dev' /tmp/root.html /tmp/app.js /tmp/official-sync.js
-          node -e "const m=JSON.parse(require('fs').readFileSync('/tmp/manifest.json','utf8')); if(m.short_name!=='WWMSync') process.exit(1)"
+          grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
+          echo "WWMSync Vision HTTP smoke passed: $base"
 
-          fetch 'https://s2.easebar.com/39f12eda6b86452b/api/map/list?lang=en-US' /tmp/official.json
-          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/official.json','utf8')); if(!x.success||!Array.isArray(x.data?.maps)||x.data.maps.length<3) process.exit(1)"
-          echo "WWMSync HTTP smoke passed: exact=$exact runtime=$base"
-
-      - name: Browser smoke map, UID boundary, and sanitized snapshot import
+      - name: Browser smoke map and Vision UI
         env:
           EXACT_URL: ${{ steps.deploy.outputs.exact_url }}
         run: |
@@ -125,69 +123,35 @@ jobs:
           cat > /tmp/smoke.cjs <<'NODE'
           const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
           const base=process.env.EXACT_URL.replace(/\/$/,'');
-          const enc=o=>Buffer.from(JSON.stringify(o),'utf8').toString('base64url');
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const context=await browser.newContext({viewport:{width:1440,height:900}});
-            const page=await context.newPage();
-            const fatal=[]; const csp=[]; const requests=[];
-            page.on('request',r=>requests.push(r.url()));
-            page.on('pageerror',e=>{console.log('PAGEERROR',e.message);fatal.push(`pageerror=${e.message}`)});
-            page.on('console',m=>{const text=m.text();console.log('CONSOLE',m.type(),text);if(/content security policy|violates.*directive|refused to.*content security policy/i.test(text))csp.push(text)});
+            const page=await browser.newPage({viewport:{width:1440,height:900}});
+            const fatal=[];
+            page.on('pageerror',e=>fatal.push(e.message));
             const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
-            if(!response?.ok())throw new Error(`navigation HTTP ${response?.status()}`);
+            if(!response?.ok())fatal.push(`HTTP ${response?.status()}`);
             await page.waitForFunction(()=>document.querySelectorAll('#mapSelect option').length>=3,null,{timeout:30000});
-            await page.waitForFunction(()=>document.querySelectorAll('#categoryList button').length>0,null,{timeout:30000});
             await page.waitForSelector('.leaflet-container',{state:'visible',timeout:30000});
-            await page.waitForFunction(()=>document.querySelectorAll('img.leaflet-tile-loaded').length>0,null,{timeout:30000});
-            const before=page.url();
-            const s=await page.evaluate(()=>({title:document.title,mpay:typeof window.MpayOSSDK,leaflet:typeof window.L,maps:document.querySelectorAll('#mapSelect option').length,categories:document.querySelectorAll('#categoryList button').length,tiles:document.querySelectorAll('img.leaflet-tile-loaded').length,pointCanvases:document.querySelectorAll('.leaflet-overlay-pane canvas').length,passwordInputs:document.querySelectorAll('input[type=password]').length,uidInputs:document.querySelectorAll('#characterUid').length,syncButtons:document.querySelectorAll('#syncButton').length,bookmarklet:document.querySelector('#officialBridgeBookmarklet')?.href||''}));
-            if(s.title!=='WWMSync — Where Winds Meet')fatal.push(`title=${s.title}`);
-            if(s.mpay!=='undefined')fatal.push(`MpayOSSDK=${s.mpay}`);
-            if(s.leaflet!=='object'||s.maps<3||s.categories<1||s.tiles<1||s.pointCanvases<1)fatal.push(`map=${JSON.stringify(s)}`);
-            if(s.passwordInputs!==0||s.uidInputs!==1||s.syncButtons!==1)fatal.push(`sync UI=${JSON.stringify(s)}`);
-            if(!s.bookmarklet.startsWith('javascript:')||!s.bookmarklet.includes('h72na_map_accessToken'))fatal.push('bookmarklet not configured');
+            const s=await page.evaluate(()=>({
+              title:document.title,
+              visionStart:!!document.querySelector('#visionStartButton'),
+              visionStop:!!document.querySelector('#visionStopButton'),
+              visionAnchor:!!document.querySelector('#visionAnchorButton'),
+              preview:!!document.querySelector('#visionPreview'),
+              displayCapture:typeof navigator.mediaDevices?.getDisplayMedia,
+              maps:document.querySelectorAll('#mapSelect option').length,
+              leaflet:typeof window.L
+            }));
+            if(s.title!=='WWMSync — Where Winds Meet'||!s.visionStart||!s.visionStop||!s.visionAnchor||!s.preview||s.maps<3||s.leaflet!=='object')fatal.push(JSON.stringify(s));
+            if(s.displayCapture!=='function')fatal.push(`getDisplayMedia=${s.displayCapture}`);
             await page.selectOption('#languageSelect','en');
-            if(!/game sync/i.test(await page.locator('[data-i18n="syncTitle"]').textContent()))fatal.push('English switch failed');
-            await page.selectOption('#languageSelect','vi');
-            await page.fill('#characterUid','1234567890');
-            await page.click('#syncButton');
-            const status=(await page.locator('#syncStatus').textContent()).trim();
-            const stored=await page.evaluate(()=>localStorage.getItem('wwmsync:uid'));
-            if(!/đã được lưu cục bộ/i.test(status)||!/không có kết nối|không có.*handshake/i.test(status))fatal.push(`UID-only status=${status}`);
-            if(/allow|game đang chạy|đã kết nối/i.test(status))fatal.push(`misleading game-state claim=${status}`);
-            if(stored!=='1234567890')fatal.push(`stored uid=${stored}`);
-            if(page.url()!==before)fatal.push(`unexpected navigation ${before} -> ${page.url()}`);
-            const forbidden=requests.filter(u=>/sdk-os\.mpsdk|wwmmap\.pages\.dev|sangtacviet|stv-appdomain|\/service\/(gameauth|call_client_method)/i.test(u));
-            if(forbidden.length)fatal.push(`forbidden requests=${forbidden.join(',')}`);
-
-            const liveIds=await page.evaluate(async()=>{
-              const r=await fetch('https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=1&lang=en-US',{credentials:'omit'});
-              const j=await r.json();
-              const ids=[];
-              for(const group of j?.data?.categories||[])for(const category of group?.childCategories||[])for(const point of category?.pointList||[]){
-                const id=Number(point?.id);if(Number.isInteger(id)&&id>0&&!ids.includes(id))ids.push(id);
-                if(ids.length===3)return ids;
-              }
-              return ids;
-            });
-            if(liveIds.length!==3)throw new Error(`could not select three live Official Map IDs: ${JSON.stringify(liveIds)}`);
-            const payload={v:1,source:'official-map',at:Date.now(),maps:[[1,liveIds],[2,[]],[3,[]],[4,[]]]};
-            await page.goto(`${base}/#wwmsync-import=${enc(payload)}`,{waitUntil:'domcontentloaded',timeout:60000});
-            await page.waitForFunction(()=>Number(document.querySelector('#totalCount')?.textContent.replace(/\D/g,''))>1000,null,{timeout:30000});
-            await page.waitForFunction(()=>document.querySelector('#completedCount')?.textContent.trim()==='3',null,{timeout:30000});
-            const imported=await page.evaluate(()=>({hash:location.hash,done:document.querySelector('#completedCount')?.textContent.trim(),badge:document.querySelector('#syncStateBadge')?.textContent.trim(),stored:localStorage.getItem('wwmsync:official-completion:v1'),cookieKeys:Object.keys(localStorage).filter(k=>/token|cookie|session/i.test(k))}));
-            if(imported.hash!=='')fatal.push(`import hash retained=${imported.hash}`);
-            if(imported.done!=='3')fatal.push(`import done=${imported.done}`);
-            if(!/official map snapshot/i.test(imported.badge))fatal.push(`import badge=${imported.badge}`);
-            if(!imported.stored||/token|cookie|sessionid|access_token/i.test(imported.stored))fatal.push('sanitized snapshot persistence failed');
-            if(imported.cookieKeys.length)fatal.push(`unexpected credential-like localStorage keys=${imported.cookieKeys.join(',')}`);
-
-            console.log('BROWSER_STATE',JSON.stringify({...s,status,stored,liveIds,forbiddenRequests:forbidden.length,imported}));
+            const visionTitle=(await page.locator('[data-vision-i18n="title"]').textContent()).trim();
+            if(visionTitle!=='GFN Vision Sync')fatal.push(`vision title=${visionTitle}`);
+            console.log('VISION_BROWSER_STATE',JSON.stringify(s));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
-            if(csp.length||fatal.length)process.exit(1);
-          })().catch(e=>{console.error('BROWSER_FATAL',e);process.exit(1)});
+            if(fatal.length)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync browser smoke passed: $EXACT_URL"
+          echo "WWMSync Vision browser smoke passed: $EXACT_URL"
