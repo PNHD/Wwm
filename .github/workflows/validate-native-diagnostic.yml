@@ -17,6 +17,7 @@ on:
       - wwmsync-diagnostic-v13.ps1
       - wwmsync-diagnostic-v14.ps1
       - wwmsync-diagnostic-v15.ps1
+      - wwmsync-diagnostic-v16.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -30,47 +31,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run full package inventory diagnostic in safe CI environment
+      - name: Run LuaText archive/index diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'wwm_lite'
-          $content = Join-Path $root 'Content\Packs'
-          $bin = Join-Path $root 'Engine\Binaries\Win64rh'
-          New-Item -ItemType Directory -Force -Path $content,$bin | Out-Null
+          $patch = Join-Path $root 'LocalData\Patch'
+          New-Item -ItemType Directory -Force -Path $patch,(Join-Path $patch 'Other'),(Join-Path $patch 'LuaText\patch') | Out-Null
 
-          # Opaque game-like package with an uncommon extension.
-          [IO.File]::WriteAllBytes((Join-Path $content 'game_scripts.npk'), [byte[]](0x4E,0x50,0x4B,0x30,0x01,0x02,0x03,0x04))
-          # ZIP magic under a non-obvious extension.
-          [IO.File]::WriteAllBytes((Join-Path $content 'resource.blk'), [byte[]](0x50,0x4B,0x03,0x04,0x00,0x00,0x00,0x00))
-          # No-extension opaque file.
-          [IO.File]::WriteAllBytes((Join-Path $content 'manifest_blob'), [Text.Encoding]::ASCII.GetBytes('MANIFEST'))
-          # PE magic fixture.
-          [IO.File]::WriteAllBytes((Join-Path $bin 'fixture.dll'), [byte[]](0x4D,0x5A,0x90,0x00,0x03,0x00))
+          $mk = Join-Path $env:RUNNER_TEMP 'make-v16-fixture.py'
+          @'
+          import os,sqlite3,struct,sys
+          p=sys.argv[1]
+          def entry(payload):
+              # v16 boundary fixture: u32 length, 3 flag bytes, then LuaT marker.
+              body=b'\xF6\x03\x1B'+b'LuaT'+payload
+              return struct.pack('<I',len(body))+body
+          mpk=os.path.join(p,'LT1.mpk')
+          blobs=[entry(b'alpha'),entry(b'beta'),entry(b'gamma')]
+          open(mpk,'wb').write(b''.join(blobs))
+          # version=3, count=3, three 20-byte records + 16-byte footer.
+          info=struct.pack('<II',3,3)
+          off=0
+          for i,b in enumerate(blobs):
+              info+=struct.pack('<IIIII',100+i,len(b),off,1,0); off+=len(b)
+          info+=b'F'*16
+          open(os.path.join(p,'LT1.mpkinfo'),'wb').write(info)
+          open(os.path.join(p,'Other','lua_zstd.dict'),'wb').write(b'EZST-fixture')
+          open(os.path.join(p,'LuaText','patch','patch_patcher.lua'),'wb').write(entry(b'patch'))
+          open(os.path.join(p,'Other','lua_config.json'),'w',encoding='utf8').write('{"fixture":true}')
+          db=os.path.join(p,'Patch.mpkdb')
+          c=sqlite3.connect(db)
+          c.execute('create table assets(id integer primary key, path text, mpk text, offset integer, size integer)')
+          c.execute('insert into assets(path,mpk,offset,size) values (?,?,?,?)',('LuaText/client/remote_sync.lua','LT1.mpk',0,len(blobs[0])))
+          c.commit();c.close()
+          '@ | Set-Content -LiteralPath $mk -Encoding UTF8
+          python $mk $patch
 
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v15.json'
-          .\wwmsync-diagnostic-v15.ps1 -GameRoot $root -OutputPath $out
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v16.json'
+          .\wwmsync-diagnostic-v16.ps1 -GameRoot $root -OutputPath $out
 
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v15') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v16') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
-          if ($j.safety.fileMetadataRead -ne $true) { throw 'fileMetadataRead contract failed' }
-          if ($j.safety.first32BytesRead -ne $true) { throw 'first32BytesRead contract failed' }
-          if ($j.safety.fullFileContentRead -ne $false) { throw 'fullFileContentRead boundary failed' }
-          if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
-          if ($j.safety.processHandleRead -ne $false) { throw 'processHandleRead boundary failed' }
-          if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
-          if ($j.safety.packetCapture -ne $false) { throw 'packetCapture boundary failed' }
-          if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
-          if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
-          if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
-          if ($j.summary.fileCount -ne 4) { throw "Expected 4 fixture files, got $($j.summary.fileCount)" }
-          if ($j.summary.uniqueExtensionCount -lt 4) { throw 'Expected uncommon/no-extension inventory' }
-          $files=@($j.result.files)
-          if (-not ($files | Where-Object { $_.extension -eq '.npk' -and $_.magic -eq 'UNKNOWN' })) { throw 'NPK opaque fixture missing' }
-          if (-not ($files | Where-Object { $_.extension -eq '.blk' -and $_.magic -eq 'ZIP' })) { throw 'ZIP magic fixture missing' }
-          if (-not ($files | Where-Object { $_.extension -eq '<none>' })) { throw 'No-extension fixture missing' }
-          if (-not ($files | Where-Object { $_.extension -eq '.dll' -and $_.magic -eq 'PE' })) { throw 'PE fixture missing' }
-          if ($j.summary.packageCandidateCount -lt 2) { throw "Expected package candidates, got $($j.summary.packageCandidateCount)" }
-          Write-Host "VALID diagnostic schema=$($j.schema) files=$($j.summary.fileCount) extensions=$($j.summary.uniqueExtensionCount) packages=$($j.summary.packageCandidateCount)"
+          if ($j.safety.staticFileRead -ne $true) { throw 'staticFileRead contract failed' }
+          if ($j.safety.sqliteReadOnly -ne $true -or $j.safety.sqliteQueryOnly -ne $true) { throw 'SQLite safety contract failed' }
+          if ($j.safety.memoryRead -ne $false -or $j.safety.injection -ne $false -or $j.safety.packetCapture -ne $false) { throw 'Unsafe boundary failed' }
+          if ($j.safety.gameFileWrite -ne $false -or $j.safety.databaseWrite -ne $false -or $j.safety.extractionWrite -ne $false) { throw 'Write boundary failed' }
+          if ($j.summary.ltPairCount -ne 1) { throw "Expected LT pair=1, got $($j.summary.ltPairCount)" }
+          if ($j.summary.exactIndexLayoutCount -ne 1) { throw 'Expected exact mpkinfo layout' }
+          if ($j.summary.totalIndexedEntries -ne 3) { throw "Expected indexed=3, got $($j.summary.totalIndexedEntries)" }
+          if ($j.summary.totalLuaTMarkers -ne 3) { throw "Expected LuaT=3, got $($j.summary.totalLuaTMarkers)" }
+          if ($j.summary.lengthPlus4BoundaryMatches -lt 2) { throw "Expected record boundary matches, got $($j.summary.lengthPlus4BoundaryMatches)" }
+          if ($j.summary.patchDbQueryOnly -ne $true) { throw 'Patch DB query_only failed' }
+          if ($j.summary.patchDbTargetRowCount -lt 1) { throw 'Expected LuaText target row' }
+          Write-Host "VALID v16 LT=$($j.summary.ltPairCount) entries=$($j.summary.totalIndexedEntries) LuaT=$($j.summary.totalLuaTMarkers) DBhits=$($j.summary.patchDbTargetRowCount)"
