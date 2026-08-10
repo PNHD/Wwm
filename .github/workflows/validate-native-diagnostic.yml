@@ -14,6 +14,7 @@ on:
       - wwmsync-diagnostic-v10.ps1
       - wwmsync-diagnostic-v11.ps1
       - wwmsync-diagnostic-v12.ps1
+      - wwmsync-diagnostic-v13.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -27,65 +28,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run SQLite row-delta diagnostic in safe CI environment
+      - name: Run candidate BLOB diff diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = Join-Path $env:RUNNER_TEMP 'LocalDB'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $db = Join-Path $dir 'db_mp'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v12.json'
-          $mk = Join-Path $env:RUNNER_TEMP 'make-v12-fixture.py'
-          $set = Join-Path $env:RUNNER_TEMP 'set-v12-fixture.py'
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v13.json'
+          $mk = Join-Path $env:RUNNER_TEMP 'make-v13-fixture.py'
+          $mut = Join-Path $env:RUNNER_TEMP 'mutate-v13-fixture.py'
           @'
           import sqlite3, sys
           p=sys.argv[1]
           c=sqlite3.connect(p)
           c.execute('create table localdb (id varchar primary key, key varchar, scope varchar, content blob)')
           c.executemany('insert into localdb(id,key,scope,content) values (?,?,?,?)', [
-            ('stable-id','unrelated_setting','local',b'A'),
-            ('collect-id','map_collect_candidate','role',b'0'),
-            ('map-id','map_show_collections','role',b'0')
+            ('stable-id','unrelated_setting','local',b'STABLE'),
+            ('candidate-id','red_list_cache_10000Bag','role',bytes.fromhex('0102030405060708090A0B0C0D0E0F101112'))
           ])
           c.commit(); c.close()
           '@ | Set-Content -LiteralPath $mk -Encoding UTF8
           @'
           import sqlite3, sys
-          p,row,value=sys.argv[1],sys.argv[2],sys.argv[3].encode()
+          p=sys.argv[1]
+          extra=bytes.fromhex('A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1')
           c=sqlite3.connect(p)
-          c.execute('update localdb set content=? where id=?',(value,row))
+          old=c.execute("select content from localdb where id='candidate-id'").fetchone()[0]
+          c.execute("update localdb set content=? where id='candidate-id'",(old+extra,))
           c.commit(); c.close()
-          '@ | Set-Content -LiteralPath $set -Encoding UTF8
+          '@ | Set-Content -LiteralPath $mut -Encoding UTF8
           python $mk $db
 
           $job = Start-Job -ScriptBlock {
             param($repo,$p,$o)
             Set-Location $repo
-            .\wwmsync-diagnostic-v12.ps1 -DbPath $p -StillSeconds 2 -AutoPhaseSeconds 8 -OutputPath $o
+            .\wwmsync-diagnostic-v13.ps1 -DbPath $p -AutoPhaseSeconds 8 -OutputPath $o
           } -ArgumentList $PWD.Path,$db,$out
 
           $deadline=(Get-Date).AddSeconds(30)
           while(-not (Test-Path $out)){
-            if((Get-Date) -gt $deadline){throw 'V12 did not start in time'}
+            if((Get-Date) -gt $deadline){throw 'V13 did not start in time'}
             Start-Sleep -Milliseconds 200
           }
-
-          # V12 writes its running JSON before baseline snapshot. Waiting 4 sec from
-          # that marker places this mutation after the 2-sec still baseline and
-          # safely inside the 8-sec collection window.
-          Start-Sleep -Seconds 4
-          python $set $db collect-id 1
-
-          # Collection snapshot occurs near t=10s; t=13s is safely inside the
-          # following 8-sec map-control window.
-          Start-Sleep -Seconds 9
-          python $set $db map-id 1
+          Start-Sleep -Seconds 3
+          python $mut $db
 
           Receive-Job $job -Wait
           Remove-Job $job -Force
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v12') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v13') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -94,12 +87,13 @@ jobs:
           if ($j.safety.databaseWrite -ne $false) { throw 'databaseWrite boundary failed' }
           if ($j.safety.sqliteReadOnly -ne $true) { throw 'sqliteReadOnly contract failed' }
           if ($j.safety.sqliteQueryOnly -ne $true) { throw 'sqliteQueryOnly contract failed' }
-          if ($j.safety.blobContentExport -ne $false) { throw 'blobContentExport boundary failed' }
           if ($j.summary.queryOnlyAll -ne $true) { throw 'Not all SQLite snapshots were query_only' }
-          if ($j.summary.stillChangedRows -ne 0) { throw "Expected still=0, got $($j.summary.stillChangedRows)" }
-          if ($j.summary.collectChangedRows -ne 1) { throw "Expected collect=1, got $($j.summary.collectChangedRows)" }
-          if ($j.summary.mapControlChangedRows -ne 1) { throw "Expected map=1, got $($j.summary.mapControlChangedRows)" }
-          if ($j.summary.collectExclusiveRowCount -ne 1) { throw "Expected exclusive=1, got $($j.summary.collectExclusiveRowCount)" }
-          if ($j.summary.interestingCollectExclusiveRowCount -ne 1) { throw "Expected interestingExclusive=1, got $($j.summary.interestingCollectExclusiveRowCount)" }
-          if (@($j.collectExclusiveRows)[0].key -ne 'map_collect_candidate') { throw 'Wrong collection-exclusive row detected' }
-          Write-Host "VALID diagnostic schema=$($j.schema) still=$($j.summary.stillChangedRows) collect=$($j.summary.collectChangedRows) map=$($j.summary.mapControlChangedRows) exclusive=$($j.summary.collectExclusiveRowCount)"
+          if ($j.summary.changedRowCount -ne 1) { throw "Expected changedRows=1, got $($j.summary.changedRowCount)" }
+          if ($j.summary.candidateChangedCount -ne 1) { throw "Expected candidateChanged=1, got $($j.summary.candidateChangedCount)" }
+          if ($j.summary.otherChangedRowCount -ne 0) { throw "Expected otherChanged=0, got $($j.summary.otherChangedRowCount)" }
+          if ($j.summary.appendOnlyCandidateCount -ne 1) { throw "Expected appendOnly=1, got $($j.summary.appendOnlyCandidateCount)" }
+          $d=@($j.candidateDiffs)[0]
+          if ($d.appendedBytes -ne 17) { throw "Expected appendedBytes=17, got $($d.appendedBytes)" }
+          if ($d.appendedHex -ne 'A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1') { throw "Unexpected appended hex: $($d.appendedHex)" }
+          if ($d.beforeLength -ne 18 -or $d.afterLength -ne 35) { throw 'Unexpected candidate lengths' }
+          Write-Host "VALID diagnostic schema=$($j.schema) changed=$($j.summary.changedRowCount) appended=$($d.appendedBytes)"
