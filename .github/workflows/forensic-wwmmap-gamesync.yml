@@ -1,0 +1,130 @@
+name: Forensic WWMMAP GameSyncer Module
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/forensic-wwmmap-gamesync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch GameSyncer module graph and extract protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/wwmmap-gamesync"
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import json, os, re, ssl, urllib.request, urllib.parse, hashlib
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'wwmmap-gamesync'
+          seeds=['https://wwmmap.pages.dev/js/map_2026/gamesync.js?v=4']
+          ua={'User-Agent':'WWMSync-public-frontend-forensic/1.0'}
+          queue=[(u,0) for u in seeds]; seen=set(); resources=[]; corpus=[]
+          imp=re.compile(r'''(?:import\s+(?:[^"']+?\s+from\s+)?|import\s*\()\s*["']([^"']+)["']''')
+          def fetch(u):
+            req=urllib.request.Request(u,headers=ua)
+            with urllib.request.urlopen(req,timeout=25,context=ssl.create_default_context()) as r:
+              return r.read(20_000_000),r.geturl(),dict(r.headers)
+          while queue:
+            u,depth=queue.pop(0)
+            if u in seen or depth>3: continue
+            seen.add(u)
+            try:
+              b,final,h=fetch(u); text=b.decode('utf-8','replace')
+              name=f'{len(resources):02d}-'+re.sub(r'[^A-Za-z0-9._-]+','_',urllib.parse.urlsplit(final).path.strip('/') or 'root')
+              if not name.endswith('.js'): name+='.js'
+              (out/name).write_bytes(b)
+              imports=[]
+              for m in imp.finditer(text):
+                spec=m.group(1); imports.append(spec)
+                if spec.startswith(('./','../','/')):
+                  dep=urllib.parse.urljoin(final,spec)
+                  # preserve any explicit version query from import, but don't invent one
+                  queue.append((dep,depth+1))
+              resources.append({'url':u,'finalUrl':final,'file':name,'depth':depth,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest().upper(),'imports':imports})
+              corpus.append((final,text))
+            except Exception as e:
+              resources.append({'url':u,'depth':depth,'error':type(e).__name__+': '+str(e)[:300]})
+
+          labels={
+            'service':r'/service/[A-Za-z0-9_./-]+',
+            'method_call':r'invokeClientMethod|call_client_method',
+            'start_sync':r'start_game_sync|start[_-]?sync|game[_-]?sync',
+            'stop_sync':r'stop_game_sync|stop[_-]?sync',
+            'ws':r'new\s+WebSocket|WebSocket\s*\(|wss?://',
+            'relay':r'wwmmapsync|sangtacvietcdn|stv-appdomain|wwmsync-[A-Za-z0-9._-]+',
+            'position':r'position|player[_-]?pos|gamePosition|coordinate|coords|\blat\b|\blng\b',
+            'collect':r'collect|finished|finish|point[_-]?id|marker[_-]?id',
+            'allow':r'Allow|confirmation|notification|friends|permission',
+            'server':r'server|region|singapore|japan|us|europe|relay',
+            'events':r'addEventListener\s*\(\s*["\']message|onmessage|onopen|onclose|send\s*\(',
+          }
+          hits=[]
+          for src,text in corpus:
+            for lab,p in labels.items():
+              rg=re.compile(p,re.I)
+              count=0
+              for m in rg.finditer(text):
+                ctx=text[max(0,m.start()-1300):min(len(text),m.end()+2800)]
+                ctx=re.sub(r'(?i)(token|ticket|session|password|passwd|secret|authorization)(\s*[:=]\s*)["\']?[^"\'\s,;}&\]]+',r'\1\2<REDACTED>',ctx)
+                hits.append({'label':lab,'source':src,'index':m.start(),'match':m.group(0)[:250],'context':ctx})
+                count+=1
+                if count>=120: break
+          strings=[]
+          lit=re.compile(r'(["\'])(.{1,240}?)\1')
+          for src,text in corpus:
+            for m in lit.finditer(text):
+              v=m.group(2)
+              if re.search(r'(?i)sync|service|client|method|socket|relay|server|position|collect|finish|point|allow|notify|permission|auth',v):
+                if re.search(r'(?i)token|password|secret',v): continue
+                strings.append({'source':src,'index':m.start(),'value':v[:240]})
+          seenlit=set(); strings=[x for x in strings if not ((x['source'],x['value']) in seenlit or seenlit.add((x['source'],x['value'])))]
+          report={'schema':'wwmsync-wwmmap-gamesync-forensic-v1','safety':{'publicFrontendOnly':True,'credentialsUsed':False,'cookiesUsed':False,'websocketConnected':False,'privateRelayConnected':False,'gameApiInvoked':False},'resources':resources,'hits':hits,'strings':strings}
+          report['summary']={'resourceCount':len(resources),'hitCount':len(hits),'labels':{k:sum(1 for h in hits if h['label']==k) for k in labels},'stringCount':len(strings)}
+          (out/'gamesync-forensic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          lines=['WWMMAP GAMESYNC MODULE FORENSIC','===============================',json.dumps(report['summary'],ensure_ascii=False,indent=2),'','MODULE GRAPH']
+          for r in resources: lines.append(json.dumps(r,ensure_ascii=False))
+          priority=['service','method_call','start_sync','stop_sync','ws','relay','events','position','collect','allow','server']
+          lines += ['','PROTOCOL HITS']
+          shown=0
+          for lab in priority:
+            for h in hits:
+              if h['label']!=lab: continue
+              lines += [f"\n--- {lab} @ {h['source']} [{h['index']}] {h['match']} ---",h['context'][:4500]]
+              shown+=1
+              if shown>=220: break
+            if shown>=220: break
+          lines += ['','SYNC STRING LITERALS']
+          for x in strings[:1000]: lines.append(f"{x['source']} [{x['index']}]: {x['value']}")
+          (out/'gamesync-report.txt').write_text('\n'.join(lines),encoding='utf-8')
+          print('\n'.join(lines[:500]))
+          PY
+          test -s "$OUT/gamesync-forensic.json"
+          python - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'wwmmap-gamesync','gamesync-forensic.json')
+          j=json.load(open(p,encoding='utf-8'))
+          assert j['schema']=='wwmsync-wwmmap-gamesync-forensic-v1'
+          assert j['safety']['credentialsUsed'] is False
+          assert j['safety']['websocketConnected'] is False
+          assert j['safety']['privateRelayConnected'] is False
+          assert j['safety']['gameApiInvoked'] is False
+          print('VALID',j['summary'])
+          PY
+      - name: Upload GameSyncer forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmmap-gamesync-forensic
+          path: ${{ runner.temp }}/wwmmap-gamesync/
+          if-no-files-found: error
+          retention-days: 7
