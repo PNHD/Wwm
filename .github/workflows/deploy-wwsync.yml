@@ -30,7 +30,13 @@ jobs:
           node --check vision-sync.js
           node --check sw.js
           grep -Fq 'getDisplayMedia' vision-sync.js
+          grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' vision-sync.js
+          grep -Fq 'state.marker.setLatLng(latlng)' vision-sync.js
+          grep -Fq 'if(result.moved){state.accepted++' vision-sync.js
+          grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' vision-sync.js
           grep -Fq 'visionAnchorButton' index.html
+          grep -Fq 'visionRawDelta' index.html
+          grep -Fq 'visionMarkerDelta' index.html
           grep -Fq 'vision-sync.css' index.html
           grep -Fq 'display-capture=(self)' _headers
 
@@ -105,12 +111,17 @@ jobs:
           fetch "$base/official-sync.js" /tmp/official-sync.js
           grep -Fq 'WWMSync — Where Winds Meet' /tmp/root.html
           grep -Fq 'visionStartButton' /tmp/root.html
+          grep -Fq 'visionRawDelta' /tmp/root.html
+          grep -Fq 'visionMarkerDelta' /tmp/root.html
           grep -Fq 'getDisplayMedia' /tmp/vision-sync.js
-          grep -Fq 'best.score>=.82' /tmp/vision-sync.js
+          grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' /tmp/vision-sync.js
+          grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
+          grep -Fq 'if(result.moved){state.accepted++' /tmp/vision-sync.js
+          grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' /tmp/vision-sync.js
           grep -Fq 'vision-player-marker' /tmp/vision-sync.css
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
           grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
-          echo "WWMSync Vision HTTP smoke passed: $base"
+          echo "WWMSync Vision propagation HTTP smoke passed: $base"
 
       - name: Browser smoke map and Vision UI
         env:
@@ -138,16 +149,25 @@ jobs:
               visionStop:!!document.querySelector('#visionStopButton'),
               visionAnchor:!!document.querySelector('#visionAnchorButton'),
               preview:!!document.querySelector('#visionPreview'),
+              rawDelta:!!document.querySelector('#visionRawDelta'),
+              correctedDelta:!!document.querySelector('#visionCorrectedDelta'),
+              cumulative:!!document.querySelector('#visionCumulative'),
+              markerDelta:!!document.querySelector('#visionMarkerDelta'),
+              holdReason:!!document.querySelector('#visionHoldReason'),
+              diagnosticsApi:typeof window.__WWMSYNC_VISION_DIAGNOSTICS__,
               displayCapture:typeof navigator.mediaDevices?.getDisplayMedia,
               maps:document.querySelectorAll('#mapSelect option').length,
               leaflet:typeof window.L
             }));
-            if(s.title!=='WWMSync — Where Winds Meet'||!s.visionStart||!s.visionStop||!s.visionAnchor||!s.preview||s.maps<3||s.leaflet!=='object')fatal.push(JSON.stringify(s));
+            if(s.title!=='WWMSync — Where Winds Meet'||!s.visionStart||!s.visionStop||!s.visionAnchor||!s.preview||!s.rawDelta||!s.correctedDelta||!s.cumulative||!s.markerDelta||!s.holdReason||s.maps<3||s.leaflet!=='object')fatal.push(JSON.stringify(s));
             if(s.displayCapture!=='function')fatal.push(`getDisplayMedia=${s.displayCapture}`);
+            if(s.diagnosticsApi!=='function')fatal.push(`diagnosticsApi=${s.diagnosticsApi}`);
+            const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
+            if(!d||d.accepted!==0||d.held!==0||typeof d.referenceZoom!=='number')fatal.push(`diagnostics=${JSON.stringify(d)}`);
             await page.selectOption('#languageSelect','en');
             const visionTitle=(await page.locator('[data-vision-i18n="title"]').textContent()).trim();
             if(visionTitle!=='GFN Vision Sync')fatal.push(`vision title=${visionTitle}`);
-            console.log('VISION_BROWSER_STATE',JSON.stringify(s));
+            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d}));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
             if(fatal.length)process.exit(1);
