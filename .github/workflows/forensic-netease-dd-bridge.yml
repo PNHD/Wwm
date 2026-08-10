@@ -1,0 +1,164 @@
+name: Forensic NetEase DD Game Bridge
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/forensic-netease-dd-bridge.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trace public DD and dd-link module graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/netease-dd-bridge"
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import hashlib, html.parser, json, os, re, ssl, urllib.parse, urllib.request
+          from pathlib import Path
+
+          out=Path(os.environ['RUNNER_TEMP'])/'netease-dd-bridge'
+          ua={'User-Agent':'WWMSync-first-party-interoperability-forensic/1.0'}
+          seeds=[
+            'https://dd.163.com/?utm_source=yyslsjingling&auto=1',
+            'https://cc.res.netease.com/act/sdk/dd-link/v1.2.0/index.js',
+            'https://dd.163.com/dd-wow-tools/index.html'
+          ]
+          max_depth=3; max_resources=160
+          queue=[(u,0,'seed') for u in seeds]; seen=set(); resources=[]; corpus=[]
+
+          class HP(html.parser.HTMLParser):
+            def __init__(self): super().__init__(); self.urls=[]
+            def handle_starttag(self,tag,attrs):
+              d=dict(attrs)
+              for k in ('src','href'):
+                v=d.get(k)
+                if v: self.urls.append(v)
+
+          js_import=re.compile(r'''(?:import\s+(?:[^"']+?\s+from\s+)?|import\s*\()\s*["']([^"']+)["']''')
+          js_chunks=re.compile(r'''["']([^"']*?(?:_next/static|static/chunks|act/sdk|dd-link)[^"']*?\.js(?:\?[^"']*)?)["']''',re.I)
+          sourcemap=re.compile(r'sourceMappingURL=([^\s*]+)')
+
+          def fetch(url):
+            req=urllib.request.Request(url,headers=ua)
+            with urllib.request.urlopen(req,timeout=25,context=ssl.create_default_context()) as r:
+              return r.read(25_000_000),r.geturl(),dict(r.headers)
+
+          while queue and len(resources)<max_resources:
+            url,depth,parent=queue.pop(0)
+            key=url.split('#',1)[0]
+            if key in seen or depth>max_depth: continue
+            seen.add(key)
+            try:
+              b,final,h=fetch(url); ct=(h.get('Content-Type') or h.get('content-type') or '').lower()
+              text=b.decode('utf-8','replace')
+              ext='.html' if 'html' in ct or '<html' in text[:1000].lower() else '.js' if 'javascript' in ct or final.split('?',1)[0].endswith('.js') else '.txt'
+              name=f'{len(resources):03d}-'+hashlib.sha256(final.encode()).hexdigest()[:10]+ext
+              (out/name).write_bytes(b)
+              rec={'url':url,'finalUrl':final,'parent':parent,'depth':depth,'file':name,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest().upper(),'contentType':ct}
+              resources.append(rec); corpus.append((final,text,name))
+
+              discovered=[]
+              if ext=='.html':
+                p=HP(); p.feed(text)
+                discovered += p.urls
+              if ext in ('.js','.html'):
+                discovered += [m.group(1) for m in js_import.finditer(text)]
+                discovered += [m.group(1) for m in js_chunks.finditer(text)]
+                sm=sourcemap.search(text)
+                if sm: discovered.append(sm.group(1))
+              # Also pull URLs that are clearly first-party JS or DD pages.
+              for m in re.finditer(r'''["'](https?://(?:[^"']*\.)?(?:163\.com|netease\.com)/[^"']+)["']''',text,re.I):
+                v=m.group(1)
+                if v.endswith('.js') or '.js?' in v or 'dd-link' in v or 'dd-wow-tools' in v: discovered.append(v)
+              for spec in discovered:
+                if spec.startswith(('data:','blob:','javascript:','#')): continue
+                dep=urllib.parse.urljoin(final,spec)
+                host=urllib.parse.urlsplit(dep).hostname or ''
+                if host.endswith(('163.com','netease.com')):
+                  queue.append((dep,depth+1,final))
+            except Exception as e:
+              resources.append({'url':url,'parent':parent,'depth':depth,'error':type(e).__name__+': '+str(e)[:400]})
+
+          labels={
+            'wwm':r'yysls|yyslsjingling|h72|where.?winds|燕云|燕雲',
+            'dd_link':r'dd-link|DDLink|ddLink|dd_link',
+            'wow_tools':r'dd-wow-tools|wow-tools',
+            'game_role':r'gameRole|toBnAuthUrl|roleId|role_id|serverId|server_id',
+            'teamlink':r'teamlink|teamchannel|channelpkg',
+            'ws':r'new\s+WebSocket|WebSocket\s*\(|wss?://',
+            'sync':r'real.?time|realtime|sync|同步',
+            'position':r'position|coordinate|coords|location|player.?pos|game.?pos',
+            'map_progress':r'collect|collection|finish|finished|progress|point.?id|marker.?id|treasure|地图|地圖',
+            'native_bridge':r'postMessage|postMsg|native|bridge|invoke|callMethod|call_method|sendMessage',
+            'api_path':r'/v\d+/[A-Za-z0-9_./?=&:-]+|/api/[A-Za-z0-9_./?=&:-]+',
+            'appid':r'app[_-]?id|appid|44204|100100|100795|10002341',
+            'heartbeat':r'heartbeat|keepalive|ping|pong|device',
+          }
+          hits=[]
+          for src,text,name in corpus:
+            for lab,patt in labels.items():
+              rg=re.compile(patt,re.I); count=0
+              for m in rg.finditer(text):
+                ctx=text[max(0,m.start()-1200):min(len(text),m.end()+2600)]
+                ctx=re.sub(r'(?i)(token|ticket|session|password|passwd|secret|authorization)(\s*[:=]\s*)["\']?[^"\'\s,;}&\]]+',r'\1\2<REDACTED>',ctx)
+                hits.append({'label':lab,'source':src,'file':name,'index':m.start(),'match':m.group(0)[:240],'context':ctx})
+                count+=1
+                if count>=100: break
+
+          # Extract first-party endpoints, stripping query values.
+          eps=set()
+          for src,text,name in corpus:
+            for m in re.finditer(r'''["']((?:https?|wss?)://[^"'\\\s<>]+)["']''',text,re.I):
+              raw=m.group(1)
+              try:
+                u=urllib.parse.urlsplit(raw); host=u.hostname or ''
+                if host.endswith(('163.com','netease.com')):
+                  eps.add(urllib.parse.urlunsplit((u.scheme,u.netloc,u.path,'','')))
+              except: pass
+          report={'schema':'wwmsync-netease-dd-bridge-forensic-v1','safety':{'publicFirstPartyResourcesOnly':True,'credentialsUsed':False,'cookiesUsed':False,'websocketConnected':False,'gameApiInvoked':False,'nativeClientInvoked':False},'resources':resources,'hits':hits,'endpoints':sorted(eps)}
+          report['summary']={'resourceCount':len(resources),'hitCount':len(hits),'labels':{k:sum(1 for h in hits if h['label']==k) for k in labels},'endpointCount':len(eps)}
+          (out/'dd-bridge-forensic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          lines=['NETEASE DD FIRST-PARTY BRIDGE FORENSIC','======================================',json.dumps(report['summary'],ensure_ascii=False,indent=2),'','RESOURCE GRAPH']
+          for r in resources: lines.append(json.dumps(r,ensure_ascii=False))
+          lines+=['','FIRST-PARTY ENDPOINTS']+sorted(eps)+['','PRIORITY HITS']
+          priority=['wwm','dd_link','wow_tools','game_role','native_bridge','teamlink','ws','sync','position','map_progress','appid','heartbeat','api_path']
+          shown=0
+          for lab in priority:
+            for h in hits:
+              if h['label']!=lab: continue
+              lines += [f"\n--- {lab} @ {h['source']} [{h['index']}] {h['match']} ---",h['context'][:4200]]
+              shown+=1
+              if shown>=260: break
+            if shown>=260: break
+          (out/'dd-bridge-report.txt').write_text('\n'.join(lines),encoding='utf-8')
+          print('\n'.join(lines[:600]))
+          PY
+          test -s "$OUT/dd-bridge-forensic.json"
+          python - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'netease-dd-bridge','dd-bridge-forensic.json')
+          j=json.load(open(p,encoding='utf-8'))
+          assert j['schema']=='wwmsync-netease-dd-bridge-forensic-v1'
+          assert j['safety']['credentialsUsed'] is False
+          assert j['safety']['websocketConnected'] is False
+          assert j['safety']['gameApiInvoked'] is False
+          print('VALID',j['summary'])
+          PY
+      - name: Upload DD bridge forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-dd-bridge-forensic
+          path: ${{ runner.temp }}/netease-dd-bridge/
+          if-no-files-found: error
+          retention-days: 7
