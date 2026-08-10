@@ -1,0 +1,80 @@
+name: Forensic NetEase DD Distribution
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/forensic-netease-dd-distribution.yml
+      - tools/forensics/netease_dd_static.py
+
+permissions:
+  contents: read
+
+jobs:
+  static-dd-distribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DD_ROOT: https://dd.163.com/
+      DD_FORENSIC_OUT: dd-forensic
+    steps:
+      - name: Checkout investigation branch
+        uses: actions/checkout@v4
+
+      - name: Install static extraction tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full innoextract cabextract binutils file
+          python3 --version
+          7z | head -n 3 || true
+          innoextract --version || true
+          node --version || true
+          npx --version || true
+
+      - name: Fetch official DD distribution and inspect statically
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/forensics/netease_dd_static.py
+
+      - name: Print decisive evidence in job log
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          echo '===== SUMMARY ====='
+          cat dd-forensic/report/summary.md 2>/dev/null || true
+          echo '===== DISTRIBUTION ====='
+          cat dd-forensic/report/distribution.json 2>/dev/null || true
+          echo '===== TOP COOCCURRENCE ====='
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('dd-forensic/report/scan.json')
+          if not p.exists():
+              raise SystemExit(0)
+          d = json.loads(p.read_text(encoding='utf-8'))
+          for key in ('game_transport_state_files', 'transport_state_files'):
+              print(f'-- {key} --')
+              for row in d.get(key, [])[:50]:
+                  print(json.dumps(row, ensure_ascii=False))
+          print('-- exact_loopback_urls --')
+          for x in d.get('exact_loopback_urls', [])[:100]: print(x)
+          print('-- named_pipes --')
+          for x in d.get('named_pipes', [])[:100]: print(x)
+          print('-- custom_schemes --')
+          for x in d.get('custom_schemes', [])[:100]: print(x)
+          PY
+
+      - name: Upload forensic reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-dd-static-forensic
+          path: dd-forensic/report/
+          if-no-files-found: warn
+          retention-days: 7
