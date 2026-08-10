@@ -1,0 +1,128 @@
+name: Deep Forensic WWMMAP GFN Sync Callsites
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/forensic-wwmmap-gfn-deep.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deep static inspection of public WWMMAP JS
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/wwmmap-gfn-deep"
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import json, os, re, ssl, urllib.request, urllib.parse, hashlib
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'wwmmap-gfn-deep'
+          urls=[
+            'https://wwmmap.pages.dev/js/auth_modal.js',
+            'https://wwmmap.pages.dev/js/map_2026/app.js?v=5',
+            'https://wwmmap.pages.dev/js/map_2026/gflatmap.js?v=1',
+            'https://wwmmap.pages.dev/js/app.js',
+            'https://wwmmap.pages.dev/map',
+            'https://wwmmap.pages.dev/legacy-map',
+            'https://wwmmap.pages.dev/'
+          ]
+          ua={'User-Agent':'WWMSync-public-frontend-forensic/1.0'}
+          records=[]; corpus=[]
+          def get(url):
+            req=urllib.request.Request(url,headers=ua)
+            with urllib.request.urlopen(req,timeout=25,context=ssl.create_default_context()) as r:
+              return r.read(20_000_000), r.geturl(), dict(r.headers)
+          for i,u in enumerate(urls):
+            try:
+              b,final,h=get(u); text=b.decode('utf-8','replace')
+              name=f'{i:02d}-'+re.sub(r'[^A-Za-z0-9._-]+','_',urllib.parse.urlsplit(final).path.strip('/') or 'root')
+              if not name.endswith(('.js','.html')): name += '.txt'
+              (out/name).write_bytes(b)
+              records.append({'url':u,'finalUrl':final,'file':name,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest().upper(),'contentType':h.get('Content-Type') or h.get('content-type')})
+              corpus.append((final,text))
+            except Exception as e: records.append({'url':u,'error':type(e).__name__+': '+str(e)[:300]})
+
+          patterns={
+            'invokeClientMethod_calls':re.compile(r'(?:WWMAuth\s*\.\s*)?invokeClientMethod\s*\((.{0,700})',re.I),
+            'call_client_method':re.compile(r'call_client_method',re.I),
+            'start_game_sync':re.compile(r'start_game_sync',re.I),
+            'game_sync':re.compile(r'game[_-]?sync|sync[_-]?game',re.I),
+            'websocket':re.compile(r'new\s+WebSocket|WebSocket\s*\(|wss?://',re.I),
+            'relay_hosts':re.compile(r'wwmmapsync|sangtacvietcdn|stv-appdomain|wwmsync-[a-z0-9.-]+',re.I),
+            'service_paths':re.compile(r'/service/[A-Za-z0-9_./-]+',re.I),
+            'sync_ui':re.compile(r'Đồng Bộ|dong bo|sync server|game sync|realtime|real-time',re.I),
+            'dynamic_import':re.compile(r'import\s*\(|\.js["\']|src\s*=|worker|sourceMappingURL',re.I),
+            'allow_notify':re.compile(r'Only receive messages from friends|Confirmation timed out|click Allow|Daily Permission|Allow when prompted',re.I),
+          }
+          hits=[]
+          for src,text in corpus:
+            for label,pat in patterns.items():
+              count=0
+              for m in pat.finditer(text):
+                s=max(0,m.start()-900); e=min(len(text),m.end()+1800)
+                ctx=text[s:e]
+                ctx=re.sub(r'(?i)(token|ticket|session|password|passwd|secret|authorization)(\s*[:=]\s*)["\']?[^"\'\s,;}&\]]+',r'\1\2<REDACTED>',ctx)
+                hits.append({'label':label,'source':src,'index':m.start(),'match':m.group(0)[:300],'context':ctx})
+                count+=1
+                if count>=80: break
+          # Extract string literals near sync/call terms, useful for method names hidden as constants.
+          literals=[]
+          litpat=re.compile(r'(["\'])(.{1,180}?)\1')
+          for src,text in corpus:
+            for m in litpat.finditer(text):
+              v=m.group(2)
+              if re.search(r'(?i)sync|client_method|gameauth|allow|relay|socket|server|position|collect|finish|map_|location',v):
+                if re.search(r'(?i)token|ticket|password|secret|authorization',v): continue
+                literals.append({'source':src,'index':m.start(),'value':v[:180]})
+          # Dedupe literals
+          seen=set(); ul=[]
+          for x in literals:
+            k=(x['source'],x['value'])
+            if k not in seen: seen.add(k); ul.append(x)
+          report={'schema':'wwmsync-wwmmap-gfn-deep-v1','safety':{'publicFrontendOnly':True,'credentialsUsed':False,'cookiesUsed':False,'websocketConnected':False,'privateRelayConnected':False,'gameApiInvoked':False},'resources':records,'hits':hits,'syncStringLiterals':ul[:1500]}
+          report['summary']={'resources':len(records),'hits':len(hits),'labels':{k:sum(1 for h in hits if h['label']==k) for k in patterns},'syncStringLiteralCount':len(ul)}
+          (out/'deep-forensic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          lines=['WWMMAP GFN DEEP STATIC FORENSIC','===============================',json.dumps(report['summary'],ensure_ascii=False,indent=2),'','CALLS / SYNC HITS']
+          priority=['invokeClientMethod_calls','start_game_sync','game_sync','websocket','relay_hosts','allow_notify','service_paths','sync_ui','dynamic_import']
+          shown=0
+          for lab in priority:
+            for h in hits:
+              if h['label']!=lab: continue
+              lines += [f"\n--- {lab} @ {h['source']} [{h['index']}] ---",h['context'][:3000]]
+              shown+=1
+              if shown>=180: break
+            if shown>=180: break
+          lines += ['','SYNC-RELATED STRING LITERALS']
+          for x in ul[:600]: lines.append(f"{x['source']} [{x['index']}]: {x['value']}")
+          (out/'deep-report.txt').write_text('\n'.join(lines),encoding='utf-8')
+          print('\n'.join(lines[:350]))
+          PY
+          test -s "$OUT/deep-forensic.json"
+          python - <<'PY'
+          import json,os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'wwmmap-gfn-deep','deep-forensic.json')
+          j=json.load(open(p,encoding='utf-8'))
+          assert j['schema']=='wwmsync-wwmmap-gfn-deep-v1'
+          assert j['safety']['credentialsUsed'] is False
+          assert j['safety']['websocketConnected'] is False
+          assert j['safety']['privateRelayConnected'] is False
+          assert j['safety']['gameApiInvoked'] is False
+          print('VALID',j['summary'])
+          PY
+      - name: Upload deep forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmmap-gfn-deep
+          path: ${{ runner.temp }}/wwmmap-gfn-deep/
+          if-no-files-found: error
+          retention-days: 7
