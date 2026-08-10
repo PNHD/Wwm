@@ -16,6 +16,7 @@ on:
       - wwmsync-diagnostic-v12.ps1
       - wwmsync-diagnostic-v13.ps1
       - wwmsync-diagnostic-v14.ps1
+      - wwmsync-diagnostic-v15.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -29,34 +30,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run static remote-method receiver diagnostic in safe CI environment
+      - name: Run full package inventory diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'wwm_lite'
-          $scriptDir = Join-Path $root 'Content\Scripts'
-          $binDir = Join-Path $root 'Engine\Binaries\Win64rh'
-          New-Item -ItemType Directory -Force -Path $scriptDir,$binDir | Out-Null
+          $content = Join-Path $root 'Content\Packs'
+          $bin = Join-Path $root 'Engine\Binaries\Win64rh'
+          New-Item -ItemType Directory -Force -Path $content,$bin | Out-Null
 
-          @'
-          -- synthetic interoperability fixture only
-          local rpc_name = "call_client_method"
-          local method = "start_game_sync"
-          local approval = "waiting_for_approval"
-          local remote = "remote_method"
-          '@ | Set-Content -LiteralPath (Join-Path $scriptDir 'remote_bridge.lua') -Encoding UTF8
+          # Opaque game-like package with an uncommon extension.
+          [IO.File]::WriteAllBytes((Join-Path $content 'game_scripts.npk'), [byte[]](0x4E,0x50,0x4B,0x30,0x01,0x02,0x03,0x04))
+          # ZIP magic under a non-obvious extension.
+          [IO.File]::WriteAllBytes((Join-Path $content 'resource.blk'), [byte[]](0x50,0x4B,0x03,0x04,0x00,0x00,0x00,0x00))
+          # No-extension opaque file.
+          [IO.File]::WriteAllBytes((Join-Path $content 'manifest_blob'), [Text.Encoding]::ASCII.GetBytes('MANIFEST'))
+          # PE magic fixture.
+          [IO.File]::WriteAllBytes((Join-Path $bin 'fixture.dll'), [byte[]](0x4D,0x5A,0x90,0x00,0x03,0x00))
 
-          [IO.File]::WriteAllBytes((Join-Path $binDir 'protocol.data'), [Text.Encoding]::ASCII.GetBytes('prefix invokeClientMethod connectionKey relayServerId suffix'))
-
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v14.json'
-          .\wwmsync-diagnostic-v14.ps1 -GameRoot $root -MaxFileMB 64 -OutputPath $out
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v15.json'
+          .\wwmsync-diagnostic-v15.ps1 -GameRoot $root -OutputPath $out
 
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v14') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v15') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
-          if ($j.safety.staticFileRead -ne $true) { throw 'staticFileRead contract failed' }
           if ($j.safety.fileMetadataRead -ne $true) { throw 'fileMetadataRead contract failed' }
+          if ($j.safety.first32BytesRead -ne $true) { throw 'first32BytesRead contract failed' }
+          if ($j.safety.fullFileContentRead -ne $false) { throw 'fullFileContentRead boundary failed' }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
           if ($j.safety.processHandleRead -ne $false) { throw 'processHandleRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
@@ -64,10 +65,12 @@ jobs:
           if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
           if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
           if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
-          if ($j.summary.scannedFiles -lt 2) { throw 'Expected fixture files were not scanned' }
-          if ($j.summary.primaryHits -lt 5) { throw "Expected high-signal hits missing: $($j.summary.primaryHits)" }
-          $needles=@($j.summary.hitNeedles) -join "`n"
-          if ($needles -notmatch 'start_game_sync') { throw 'start_game_sync fixture missing' }
-          if ($needles -notmatch 'call_client_method') { throw 'call_client_method fixture missing' }
-          if ($needles -notmatch 'invokeClientMethod') { throw 'invokeClientMethod fixture missing' }
-          Write-Host "VALID diagnostic schema=$($j.schema) scanned=$($j.summary.scannedFiles) hits=$($j.summary.totalHits)"
+          if ($j.summary.fileCount -ne 4) { throw "Expected 4 fixture files, got $($j.summary.fileCount)" }
+          if ($j.summary.uniqueExtensionCount -lt 4) { throw 'Expected uncommon/no-extension inventory' }
+          $files=@($j.result.files)
+          if (-not ($files | Where-Object { $_.extension -eq '.npk' -and $_.magic -eq 'UNKNOWN' })) { throw 'NPK opaque fixture missing' }
+          if (-not ($files | Where-Object { $_.extension -eq '.blk' -and $_.magic -eq 'ZIP' })) { throw 'ZIP magic fixture missing' }
+          if (-not ($files | Where-Object { $_.extension -eq '<none>' })) { throw 'No-extension fixture missing' }
+          if (-not ($files | Where-Object { $_.extension -eq '.dll' -and $_.magic -eq 'PE' })) { throw 'PE fixture missing' }
+          if ($j.summary.packageCandidateCount -lt 2) { throw "Expected package candidates, got $($j.summary.packageCandidateCount)" }
+          Write-Host "VALID diagnostic schema=$($j.schema) files=$($j.summary.fileCount) extensions=$($j.summary.uniqueExtensionCount) packages=$($j.summary.packageCandidateCount)"
