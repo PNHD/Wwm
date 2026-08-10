@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0a0f14">
-  <meta name="description" content="WWMSync — a clean Where Winds Meet companion map and sync capability shell.">
+  <meta name="description" content="WWMSync — Where Winds Meet companion map with browser-based GFN Vision Sync.">
   <title>WWMSync — Where Winds Meet</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -41,6 +41,32 @@
           </div>
         </section>
 
+        <section class="panel vision-panel" id="visionPanel">
+          <div class="section-head"><h2 data-vision-i18n="title">GFN Vision Sync</h2><span id="visionBadge" class="status-badge">OFF</span></div>
+          <p class="fineprint vision-intro" data-vision-i18n="intro">Chia sẻ cửa sổ GeForce NOW. WWMSync chỉ đọc pixel minimap cục bộ trong tab này; không upload video, không đọc memory/process/file/packet và không cần PowerShell companion.</p>
+          <div class="vision-actions">
+            <button id="visionStartButton" class="primary-button" type="button"><span>◉</span><span data-vision-i18n="start">Bắt đầu Vision Sync</span></button>
+            <button id="visionStopButton" class="secondary-button" type="button" disabled data-vision-i18n="stop">Dừng</button>
+          </div>
+          <div id="visionSetup" class="vision-setup hidden">
+            <canvas id="visionPreview" class="vision-preview" width="360" height="202" aria-label="Screen capture preview"></canvas>
+            <p class="fineprint" data-vision-i18n="roiHint">ROI mặc định ở minimap góc trên-trái. Bấm đúng tâm minimap trong preview nếu cần chỉnh.</p>
+            <button id="visionAnchorButton" class="secondary-button vision-anchor" type="button" disabled data-vision-i18n="anchor">Đặt vị trí hiện tại trên map</button>
+            <p class="fineprint" data-vision-i18n="anchorHint">Bấm nút rồi click đúng vị trí nhân vật hiện tại trên WWMSync map một lần.</p>
+            <div class="vision-metrics">
+              <div><span data-vision-i18n="confidence">Tin cậy</span><strong id="visionConfidence">0%</strong></div>
+              <div><span data-vision-i18n="accepted">Frame nhận</span><strong id="visionAccepted">0</strong></div>
+              <div><span data-vision-i18n="held">Frame giữ</span><strong id="visionHeld">0</strong></div>
+            </div>
+            <details class="vision-tuning">
+              <summary data-vision-i18n="advanced">Tinh chỉnh</summary>
+              <label class="range-row"><span data-vision-i18n="roiSize">Kích thước ROI</span><input id="visionRoiSize" type="range" min="0.12" max="0.34" step="0.01" value="0.20"><output id="visionRoiValue">20%</output></label>
+              <label class="range-row"><span data-vision-i18n="scale">Tỉ lệ di chuyển</span><input id="visionScale" type="range" min="0.25" max="6" step="0.05" value="1"><output id="visionScaleValue">1.00×</output></label>
+            </details>
+          </div>
+          <div id="visionStatus" class="vision-status" role="status" aria-live="polite">Vision Sync đang tắt.</div>
+        </section>
+
         <section class="panel progress-panel">
           <div class="section-head"><h2 data-i18n="progress">Tiến độ game</h2><span id="syncStateBadge" class="status-badge neutral">Chưa nhập snapshot.</span></div>
           <div class="progress-grid"><div><span data-i18n="completed">Đã hoàn thành</span><strong id="completedCount">0</strong></div><div><span data-i18n="totalPoints">Tổng điểm</span><strong id="totalCount">0</strong></div></div>
@@ -72,6 +98,7 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/vision-sync.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
