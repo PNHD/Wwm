@@ -15,6 +15,7 @@ on:
       - wwmsync-diagnostic-v11.ps1
       - wwmsync-diagnostic-v12.ps1
       - wwmsync-diagnostic-v13.ps1
+      - wwmsync-diagnostic-v14.ps1
       - .github/workflows/validate-native-diagnostic.yml
   workflow_dispatch:
 
@@ -28,72 +29,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run candidate BLOB diff diagnostic in safe CI environment
+      - name: Run static remote-method receiver diagnostic in safe CI environment
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $dir = Join-Path $env:RUNNER_TEMP 'LocalDB'
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          $db = Join-Path $dir 'db_mp'
-          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v13.json'
-          $mk = Join-Path $env:RUNNER_TEMP 'make-v13-fixture.py'
-          $mut = Join-Path $env:RUNNER_TEMP 'mutate-v13-fixture.py'
+          $root = Join-Path $env:RUNNER_TEMP 'wwm_lite'
+          $scriptDir = Join-Path $root 'Content\Scripts'
+          $binDir = Join-Path $root 'Engine\Binaries\Win64rh'
+          New-Item -ItemType Directory -Force -Path $scriptDir,$binDir | Out-Null
+
           @'
-          import sqlite3, sys
-          p=sys.argv[1]
-          c=sqlite3.connect(p)
-          c.execute('create table localdb (id varchar primary key, key varchar, scope varchar, content blob)')
-          c.executemany('insert into localdb(id,key,scope,content) values (?,?,?,?)', [
-            ('stable-id','unrelated_setting','local',b'STABLE'),
-            ('candidate-id','red_list_cache_10000Bag','role',bytes.fromhex('0102030405060708090A0B0C0D0E0F101112'))
-          ])
-          c.commit(); c.close()
-          '@ | Set-Content -LiteralPath $mk -Encoding UTF8
-          @'
-          import sqlite3, sys
-          p=sys.argv[1]
-          extra=bytes.fromhex('A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1')
-          c=sqlite3.connect(p)
-          old=c.execute("select content from localdb where id='candidate-id'").fetchone()[0]
-          c.execute("update localdb set content=? where id='candidate-id'",(old+extra,))
-          c.commit(); c.close()
-          '@ | Set-Content -LiteralPath $mut -Encoding UTF8
-          python $mk $db
+          -- synthetic interoperability fixture only
+          local rpc_name = "call_client_method"
+          local method = "start_game_sync"
+          local approval = "waiting_for_approval"
+          local remote = "remote_method"
+          '@ | Set-Content -LiteralPath (Join-Path $scriptDir 'remote_bridge.lua') -Encoding UTF8
 
-          $job = Start-Job -ScriptBlock {
-            param($repo,$p,$o)
-            Set-Location $repo
-            .\wwmsync-diagnostic-v13.ps1 -DbPath $p -AutoPhaseSeconds 8 -OutputPath $o
-          } -ArgumentList $PWD.Path,$db,$out
+          [IO.File]::WriteAllBytes((Join-Path $binDir 'protocol.data'), [Text.Encoding]::ASCII.GetBytes('prefix invokeClientMethod connectionKey relayServerId suffix'))
 
-          $deadline=(Get-Date).AddSeconds(30)
-          while(-not (Test-Path $out)){
-            if((Get-Date) -gt $deadline){throw 'V13 did not start in time'}
-            Start-Sleep -Milliseconds 200
-          }
-          Start-Sleep -Seconds 3
-          python $mut $db
+          $out = Join-Path $env:RUNNER_TEMP 'wwmsync-diagnostic-v14.json'
+          .\wwmsync-diagnostic-v14.ps1 -GameRoot $root -MaxFileMB 64 -OutputPath $out
 
-          Receive-Job $job -Wait
-          Remove-Job $job -Force
           if (-not (Test-Path $out)) { throw 'Diagnostic did not produce JSON.' }
           $j = Get-Content $out -Raw | ConvertFrom-Json
-          if ($j.schema -ne 'wwmsync-native-diagnostic-v13') { throw "Unexpected schema: $($j.schema)" }
+          if ($j.schema -ne 'wwmsync-native-diagnostic-v14') { throw "Unexpected schema: $($j.schema)" }
           if ($j.status -ne 'complete') { throw "Unexpected status: $($j.status)" }
+          if ($j.safety.staticFileRead -ne $true) { throw 'staticFileRead contract failed' }
+          if ($j.safety.fileMetadataRead -ne $true) { throw 'fileMetadataRead contract failed' }
           if ($j.safety.memoryRead -ne $false) { throw 'memoryRead boundary failed' }
+          if ($j.safety.processHandleRead -ne $false) { throw 'processHandleRead boundary failed' }
           if ($j.safety.injection -ne $false) { throw 'injection boundary failed' }
           if ($j.safety.packetCapture -ne $false) { throw 'packetCapture boundary failed' }
+          if ($j.safety.activeNetworkProbe -ne $false) { throw 'activeNetworkProbe boundary failed' }
           if ($j.safety.pipeConnect -ne $false) { throw 'pipeConnect boundary failed' }
-          if ($j.safety.databaseWrite -ne $false) { throw 'databaseWrite boundary failed' }
-          if ($j.safety.sqliteReadOnly -ne $true) { throw 'sqliteReadOnly contract failed' }
-          if ($j.safety.sqliteQueryOnly -ne $true) { throw 'sqliteQueryOnly contract failed' }
-          if ($j.summary.queryOnlyAll -ne $true) { throw 'Not all SQLite snapshots were query_only' }
-          if ($j.summary.changedRowCount -ne 1) { throw "Expected changedRows=1, got $($j.summary.changedRowCount)" }
-          if ($j.summary.candidateChangedCount -ne 1) { throw "Expected candidateChanged=1, got $($j.summary.candidateChangedCount)" }
-          if ($j.summary.otherChangedRowCount -ne 0) { throw "Expected otherChanged=0, got $($j.summary.otherChangedRowCount)" }
-          if ($j.summary.appendOnlyCandidateCount -ne 1) { throw "Expected appendOnly=1, got $($j.summary.appendOnlyCandidateCount)" }
-          $d=@($j.candidateDiffs)[0]
-          if ($d.appendedBytes -ne 17) { throw "Expected appendedBytes=17, got $($d.appendedBytes)" }
-          if ($d.appendedHex -ne 'A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1') { throw "Unexpected appended hex: $($d.appendedHex)" }
-          if ($d.beforeLength -ne 18 -or $d.afterLength -ne 35) { throw 'Unexpected candidate lengths' }
-          Write-Host "VALID diagnostic schema=$($j.schema) changed=$($j.summary.changedRowCount) appended=$($d.appendedBytes)"
+          if ($j.safety.gameFileWrite -ne $false) { throw 'gameFileWrite boundary failed' }
+          if ($j.summary.scannedFiles -lt 2) { throw 'Expected fixture files were not scanned' }
+          if ($j.summary.primaryHits -lt 5) { throw "Expected high-signal hits missing: $($j.summary.primaryHits)" }
+          $needles=@($j.summary.hitNeedles) -join "`n"
+          if ($needles -notmatch 'start_game_sync') { throw 'start_game_sync fixture missing' }
+          if ($needles -notmatch 'call_client_method') { throw 'call_client_method fixture missing' }
+          if ($needles -notmatch 'invokeClientMethod') { throw 'invokeClientMethod fixture missing' }
+          Write-Host "VALID diagnostic schema=$($j.schema) scanned=$($j.summary.scannedFiles) hits=$($j.summary.totalHits)"
