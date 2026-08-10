@@ -1,0 +1,35 @@
+name: Validate WWMMAP Protocol Trace
+
+on:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - wwmmap-protocol-trace.js
+      - .github/workflows/validate-wwmmap-protocol-trace.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: node --check wwmmap-protocol-trace.js
+      - name: Safety contract check
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "credentialCollection: false" wwmmap-protocol-trace.js
+          grep -q "packetCapture: false" wwmmap-protocol-trace.js
+          grep -q "tlsInterception: false" wwmmap-protocol-trace.js
+          grep -q "processMemoryRead: false" wwmmap-protocol-trace.js
+          grep -q "privateRelayReconnect: false" wwmmap-protocol-trace.js
+          grep -q "localStorageRead: false" wwmmap-protocol-trace.js
+          grep -q "cookieRead: false" wwmmap-protocol-trace.js
+          ! grep -Eq "document\\.cookie|localStorage\\.(getItem|setItem)|sessionStorage\\.(getItem|setItem)" wwmmap-protocol-trace.js
+          echo "WWMMAP protocol tracer safety contract OK"
