@@ -56,13 +56,23 @@
             <p class="fineprint" data-vision-i18n="anchorHint">Bấm nút rồi click đúng vị trí nhân vật hiện tại trên WWMSync map một lần.</p>
             <div class="vision-metrics">
               <div><span data-vision-i18n="confidence">Tin cậy</span><strong id="visionConfidence">0%</strong></div>
-              <div><span data-vision-i18n="accepted">Frame nhận</span><strong id="visionAccepted">0</strong></div>
+              <div><span data-vision-i18n="accepted">Frame có marker delta</span><strong id="visionAccepted">0</strong></div>
               <div><span data-vision-i18n="held">Frame giữ</span><strong id="visionHeld">0</strong></div>
+            </div>
+            <div class="vision-diagnostics" aria-live="polite">
+              <div class="vision-diagnostics-head"><strong data-vision-i18n="diagnostics">Motion diagnostics</strong><small>TEMP E2E</small></div>
+              <div class="vision-diagnostic-row"><span data-vision-i18n="rawDelta">Raw terrain dx/dy</span><code id="visionRawDelta">+0.000, +0.000 work px</code></div>
+              <div class="vision-diagnostic-row"><span data-vision-i18n="correctedDelta">Corrected player dx/dy</span><code id="visionCorrectedDelta">+0.000, +0.000 map px</code></div>
+              <div class="vision-diagnostic-row"><span data-vision-i18n="cumulative">Cumulative displacement</span><code id="visionCumulative">+0.000, +0.000 map px</code></div>
+              <div class="vision-diagnostic-row"><span data-vision-i18n="markerDelta">Marker Δ lat/lng</span><code id="visionMarkerDelta">+0.000, +0.000</code></div>
+              <div class="vision-diagnostic-row"><span data-vision-i18n="diagConfidence">Confidence</span><code id="visionDiagnosticConfidence">0% · corr 0.000 · energy 0.00</code></div>
+              <div class="vision-diagnostic-row hold"><span data-vision-i18n="holdReason">HOLD reason</span><code id="visionHoldReason">—</code></div>
             </div>
             <details class="vision-tuning">
               <summary data-vision-i18n="advanced">Tinh chỉnh</summary>
               <label class="range-row"><span data-vision-i18n="roiSize">Kích thước ROI</span><input id="visionRoiSize" type="range" min="0.12" max="0.34" step="0.01" value="0.20"><output id="visionRoiValue">20%</output></label>
               <label class="range-row"><span data-vision-i18n="scale">Tỉ lệ di chuyển</span><input id="visionScale" type="range" min="0.25" max="6" step="0.05" value="1"><output id="visionScaleValue">1.00×</output></label>
+              <label class="range-row"><span data-vision-i18n="orientation">Bù hướng minimap</span><input id="visionOrientation" type="range" min="-180" max="180" step="1" value="0"><output id="visionOrientationValue">0°</output></label>
             </details>
           </div>
           <div id="visionStatus" class="vision-status" role="status" aria-live="polite">Vision Sync đang tắt.</div>
