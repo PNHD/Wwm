@@ -255,7 +255,7 @@ const MAPS={
   3:{name:'Hexi',subtype:2,width:32768,tile:MAIN_TILE,geometryOk:false,bridge:[[-.0004418098354879717,-4.683316418019453e-7],[1.9615559186680637e-7,-.00044227024902754146],[-2.327163272561875,2.2942238497371226]],p95:.002151840429952529},
   4:{name:'Kaifeng Palace',subtype:4,width:8192,tile:SUB4_TILE,geometryOk:true,bridge:[[-.0018805015482138414,-4.2098541037416125e-9],[-4.85819355610425e-10,-.0018007017851145606],[-.8635958719320187,-2.492606921960836]],p95:5.344759512047002e-6}
 };
-const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36;
+const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20;
 const tileCache=new Map(),atlasCache=new Map();
 const state={busy:false,lastMapId:null,mode:'idle',status:'OFF',reason:'capture-inactive',coarseScore:0,coarseMargin:0,fineScore:0,fineMargin:0,angle:0,radius:0,absolute:null,pending:null,last:null,localFailures:0,fixes:0,lastRunAt:0,lastError:null};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -315,16 +315,18 @@ function gradientField(canvas){
   sample.sort((a,b)=>a-b);const p90=sample[Math.floor(sample.length*.9)]||1;return{w,h,mag,cos2,sin2,p90};
 }
 function roiSamples(canvas){
-  const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;c.getContext('2d',{alpha:false}).drawImage(canvas,0,0,ROI_N,ROI_N);const f=gradientField(c),mid=(ROI_N-1)/2,candidates=[];
-  for(let y=2;y<ROI_N-2;y++)for(let x=2;x<ROI_N-2;x++){const nx=(x-mid)/(ROI_N/2),ny=(y-mid)/(ROI_N/2),rr=Math.hypot(nx,ny);if(rr<.20||rr>.78)continue;const i=y*ROI_N+x,m=f.mag[i];if(m<Math.max(5,f.p90*.42))continue;candidates.push({x,y,nx,ny,mag:m,theta:.5*Math.atan2(f.sin2[i],f.cos2[i])})}
+  const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;c.getContext('2d',{alpha:false}).drawImage(canvas,0,0,ROI_N,ROI_N);const f=gradientField(c),mid=(ROI_N-1)/2,candidates=[],quiet=[];
+  for(let y=2;y<ROI_N-2;y++)for(let x=2;x<ROI_N-2;x++){const nx=(x-mid)/(ROI_N/2),ny=(y-mid)/(ROI_N/2),rr=Math.hypot(nx,ny);if(rr<.20||rr>.78)continue;const i=y*ROI_N+x,m=f.mag[i],theta=.5*Math.atan2(f.sin2[i],f.cos2[i]);if(m>=Math.max(5,f.p90*.42))candidates.push({x,y,nx,ny,mag:m,theta});else if(m<=Math.max(3,f.p90*.20))quiet.push({x,y,nx,ny,mag:m,theta,negative:true})}
   candidates.sort((a,b)=>b.mag-a.mag);const picked=[];for(const s of candidates){if(picked.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>4)){picked.push(s);if(picked.length>=SAMPLES)break}}
-  const top=picked[0]?.mag||1;for(const s of picked)s.weight=clamp(s.mag/top,.25,1);return{samples:picked,texture:f.p90};
+  const top=picked[0]?.mag||1;for(const s of picked)s.weight=clamp(s.mag/top,.25,1);
+  quiet.sort((a,b)=>a.mag-b.mag);const negative=[];for(const s of quiet){if(picked.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>3)&&negative.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>5)){s.weight=.38;negative.push(s);if(negative.length>=NEGATIVE_SAMPLES)break}}
+  return{samples:picked.concat(negative),positiveCount:picked.length,negativeCount:negative.length,texture:f.p90};
 }
 function template(samples,radius,angle){
-  const a=rad(angle),c=Math.cos(a),s=Math.sin(a);return samples.map(p=>{const rx=p.nx*c-p.ny*s,ry=p.nx*s+p.ny*c,e=p.theta+a;return{dx:rx*radius,dy:ry*radius,c2:Math.cos(2*e),s2:Math.sin(2*e),weight:p.weight}})
+  const a=rad(angle),c=Math.cos(a),s=Math.sin(a);return samples.map(p=>{const rx=p.nx*c-p.ny*s,ry=p.nx*s+p.ny*c,e=p.theta+a;return{dx:rx*radius,dy:ry*radius,c2:Math.cos(2*e),s2:Math.sin(2*e),weight:p.weight,negative:!!p.negative}})
 }
 function scoreAt(field,cx,cy,tpl){
-  let sum=0,weight=0,covered=0;for(const p of tpl){const x=Math.round(cx+p.dx),y=Math.round(cy+p.dy);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const i=y*field.w+x,strength=clamp(field.mag[i]/field.p90,0,1),align=.5+.5*(field.cos2[i]*p.c2+field.sin2[i]*p.s2);sum+=p.weight*strength*align;weight+=p.weight;covered++}
+  let sum=0,weight=0,covered=0;for(const p of tpl){const x=Math.round(cx+p.dx),y=Math.round(cy+p.dy);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const i=y*field.w+x,strength=clamp(field.mag[i]/field.p90,0,1);if(p.negative){sum+=p.weight*(1-strength);weight+=p.weight;covered++;continue}const align=.5+.5*(field.cos2[i]*p.c2+field.sin2[i]*p.s2);sum+=p.weight*strength*align;weight+=p.weight;covered++}
   return covered>=Math.ceil(tpl.length*.82)&&weight?sum/weight:-1;
 }
 function pushTop(top,item,limit=28){if(item.score<0)return;top.push(item);top.sort((a,b)=>b.score-a.score);if(top.length>limit)top.length=limit}
