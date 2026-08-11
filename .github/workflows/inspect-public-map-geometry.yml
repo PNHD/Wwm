@@ -1,0 +1,78 @@
+name: Inspect Public Map Geometry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/inspect-public-map-geometry.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Fetch public map pages and direct assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public-map-geometry
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urljoin
+          import html,re,subprocess,json
+          targets={
+            'dashen-public':'https://act.ds.163.com/6edef85118d3037a/',
+            'wwm-map':'https://act.ds.163.com/563a17016e1c64ab/'
+          }
+          ua='Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          script_re=re.compile(r'<script[^>]+src=["\']([^"\']+)',re.I)
+          link_re=re.compile(r'<link[^>]+href=["\']([^"\']+)',re.I)
+          terms=['updateMapPos','tileLayer','TileLayer','tileSize','setLatLng','setView','panTo','flyTo','setCenter','playerMarker','projection','project','unproject','CRS','worldPos','mapPos','offset','scale','ratio','bounds','minZoom','maxZoom']
+          out=[]
+          for name,url in targets.items():
+            root=Path('public-map-geometry')/name;root.mkdir(parents=True,exist_ok=True)
+            page=root/'page.html'
+            p=subprocess.run(['curl','-L','-sS','--compressed','--max-time','25','-A',ua,'-o',str(page),'-w','%{http_code}\t%{url_effective}',url],capture_output=True,text=True)
+            status,_,effective=p.stdout.partition('\t')
+            text=page.read_text('utf8',errors='ignore') if page.exists() else ''
+            refs=[]
+            for regex in (script_re,link_re):
+              for m in regex.finditer(text):
+                u=urljoin(effective.strip() or url,html.unescape(m.group(1)).replace('\\/','/'))
+                if u not in refs: refs.append(u)
+            files=[('page.html',effective.strip() or url,text)]
+            fetched=[]
+            for i,u in enumerate(refs[:60]):
+              suffix='.css' if '.css' in u.lower() else '.js' if '.js' in u.lower() else '.txt'
+              path=root/f'asset-{i:02d}{suffix}'
+              q=subprocess.run(['curl','-L','-sS','--compressed','--max-time','25','-A',ua,'-o',str(path),'-w','%{http_code}\t%{url_effective}',u],capture_output=True,text=True)
+              code,_,eff=q.stdout.partition('\t');fetched.append({'url':u,'http':code,'effective':eff.strip(),'bytes':path.stat().st_size if path.exists() else 0})
+              if path.exists() and path.stat().st_size<20000000: files.append((path.name,eff.strip() or u,path.read_text('utf8',errors='ignore')))
+            hits=[]
+            for fn,src,body in files:
+              for term in terms:
+                for m in list(re.finditer(re.escape(term),body,re.I))[:12]:
+                  ctx=' '.join(body[max(0,m.start()-800):min(len(body),m.end()+1400)].split())
+                  hits.append({'file':fn,'source':src,'term':term,'context':ctx})
+            out.append({'name':name,'url':url,'http':status,'effective':effective.strip(),'refs':refs,'fetched':fetched,'hits':hits})
+          Path('public-map-geometry/geometry.json').write_text(json.dumps({'targets':out},ensure_ascii=False,indent=2),'utf8')
+          lines=[]
+          for r in out:
+            lines += [f"## {r['name']} HTTP={r['http']} effective={r['effective']}"]
+            lines += [f"REF {x}" for x in r['refs']]
+            lines += [f"CTX {h['file']} [{h['term']}] {h['source']} :: {h['context']}" for h in r['hits']]
+          Path('public-map-geometry/report.txt').write_text('\n'.join(lines),'utf8')
+          print('\n'.join(lines[:220]))
+          if any(r['http']!='200' for r in out): raise SystemExit(2)
+          PY
+
+      - name: Upload geometry evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-map-geometry
+          path: public-map-geometry
+          if-no-files-found: error
+          retention-days: 7
