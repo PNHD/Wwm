@@ -255,7 +255,7 @@ const MAPS={
   3:{name:'Hexi',subtype:2,width:32768,tile:MAIN_TILE,geometryOk:false,bridge:[[-.0004418098354879717,-4.683316418019453e-7],[1.9615559186680637e-7,-.00044227024902754146],[-2.327163272561875,2.2942238497371226]],p95:.002151840429952529},
   4:{name:'Kaifeng Palace',subtype:4,width:8192,tile:SUB4_TILE,geometryOk:true,bridge:[[-.0018805015482138414,-4.2098541037416125e-9],[-4.85819355610425e-10,-.0018007017851145606],[-.8635958719320187,-2.492606921960836]],p95:5.344759512047002e-6}
 };
-const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=8;
+const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=12;
 const tileCache=new Map(),atlasCache=new Map();
 const state={busy:false,lastMapId:null,mode:'idle',status:'OFF',reason:'capture-inactive',coarseScore:0,coarseMargin:0,fineScore:0,fineMargin:0,angle:0,radius:0,absolute:null,pending:null,last:null,localFailures:0,fixes:0,lastRunAt:0,lastError:null};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -347,7 +347,7 @@ async function coarseMatch(samples,cfg){
   if(!top.length)return null;
   const seeds=[];
   for(const item of top){
-    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(20,Math.min(item.radius,seed.radius)*.7))){
+    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(20,Math.min(item.radius,seed.radius)*.7)||Math.abs(Math.log(item.radius/seed.radius))>=.24)){
       seeds.push(item);if(seeds.length>=COARSE_BEAM)break;
     }
   }
