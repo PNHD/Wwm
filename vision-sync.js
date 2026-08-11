@@ -255,7 +255,7 @@ const MAPS={
   3:{name:'Hexi',subtype:2,width:32768,tile:MAIN_TILE,geometryOk:false,bridge:[[-.0004418098354879717,-4.683316418019453e-7],[1.9615559186680637e-7,-.00044227024902754146],[-2.327163272561875,2.2942238497371226]],p95:.002151840429952529},
   4:{name:'Kaifeng Palace',subtype:4,width:8192,tile:SUB4_TILE,geometryOk:true,bridge:[[-.0018805015482138414,-4.2098541037416125e-9],[-4.85819355610425e-10,-.0018007017851145606],[-.8635958719320187,-2.492606921960836]],p95:5.344759512047002e-6}
 };
-const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=12;
+const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=24;
 const tileCache=new Map(),atlasCache=new Map();
 const state={busy:false,lastMapId:null,mode:'idle',status:'OFF',reason:'capture-inactive',coarseScore:0,coarseMargin:0,fineScore:0,fineMargin:0,angle:0,radius:0,absolute:null,pending:null,last:null,localFailures:0,fixes:0,lastRunAt:0,lastError:null};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -334,21 +334,26 @@ function distinctMargin(top,best,minDistance){const second=top.find(x=>x!==best&
 async function coarseMatch(samples,cfg){
   const atlas=await coarseAtlas(cfg),field=atlas.field,stride=cfg.width===32768?8:5,radii=cfg.width===32768?[6,9,13,18,25,34]:[5,8,12,17,24],angles=[0,45,90,135,180,225,270,315],templates=[];
   for(const r of radii)for(const a of angles)templates.push({radius:r,angle:a,tpl:template(samples,r,a)});
-  const top=[];
+  const topByRadius=new Map(radii.map(r=>[r,[]]));
   for(let y=stride;y<field.h-stride;y+=stride){
     for(let x=stride;x<field.w-stride;x+=stride){
       const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
-      let cellBest=null;
-      for(const t of templates){const score=scoreAt(field,x,y,t.tpl);if(!cellBest||score>cellBest.score)cellBest={x,y,radius:t.radius,angle:t.angle,score}}
-      if(cellBest)pushTop(top,cellBest,120);
+      for(const r of radii){
+        let scaleBest=null;
+        for(const t of templates){if(t.radius!==r)continue;const score=scoreAt(field,x,y,t.tpl);if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score}}
+        if(scaleBest)pushTop(topByRadius.get(r),scaleBest,48);
+      }
     }
     if(y%(stride*5)===0)await sleep(0);
   }
+  const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);
   if(!top.length)return null;
-  const seeds=[];
+  const seebs=[];
+  const perRadius=new Map();
   for(const item of top){
-    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(20,Math.min(item.radius,seed.radius)*.7)||Math.abs(Math.log(item.radius/seed.radius))>=.24)){
-      seeds.push(item);if(seeds.length>=COARSE_BEAM)break;
+    const used=perRadius.get(item.radius) || 0;if(used>=4)continue;
+    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,Math.min(item.radius,seed.radius)*.6)||Math.abs(Math.log(item.radius/seed.radius))>=.18)){
+      seeds.push(item);perRadius.set(item.radius,used+1);if(seeds.length>=24)break;
     }
   }
   const hypotheses=[];
