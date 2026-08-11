@@ -90,11 +90,12 @@ jobs:
             await page.evaluate(()=>window.__WWM_TEST_DRAW__(2,1));
             await page.waitForTimeout(900);
             const moved=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
-            const markerDelta=Math.hypot(Number(moved.markerDeltaLat)||0,Number(moved.markerDeltaLng)||0);
+            const markerMovement=anchored.markerLatLng&&moved.markerLatLng?Math.hypot(moved.markerLatLng.lat-anchored.markerLatLng.lat,moved.markerLatLng.lng-anchored.markerLatLng.lng):0;
             const ui=await page.evaluate(()=>({raw:!!document.querySelector('#visionRawDelta'),corrected:!!document.querySelector('#visionCorrectedDelta'),cumulative:!!document.querySelector('#visionCumulative'),marker:!!document.querySelector('#visionMarkerDelta'),hold:!!document.querySelector('#visionHoldReason')}));
-            console.log('VISION_INTEGRATION',JSON.stringify({target,applied,anchored,moved,markerDelta,ui}));
+            console.log('VISION_INTEGRATION',JSON.stringify({target,applied,anchored,moved,markerMovement,ui}));
             if(!(moved.accepted>=1))fatal.push(`accepted:${moved.accepted}`);
-            if(!(markerDelta>0))fatal.push(`markerDelta:${markerDelta}`);
+            if(!(markerMovement>0))fatal.push(`markerMovement:${markerMovement}`);
+            if(Math.hypot(Number(moved.accumX)||0,Number(moved.accumY)||0)<=0)fatal.push('no-cumulative-motion');
             if(moved.motionCalibration!=='absolute-matrix')fatal.push(`calibrationLost:${moved.motionCalibration}`);
             if(!Object.values(ui).every(Boolean))fatal.push(`diagnosticsUI:${JSON.stringify(ui)}`);
             console.log('INTEGRATION_FATAL',JSON.stringify(fatal));
