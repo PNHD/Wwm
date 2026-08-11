@@ -1,0 +1,158 @@
+name: Fit Public POI Geometry Bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/fit-public-poi-geometry.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch public Dashen and Global POI catalogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p poi-geometry/global
+          UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+            -H 'Content-Type: application/json;charset=UTF-8' \
+            -o poi-geometry/dashen-map12.json \
+            --data '{"mapId":"676d48a37d299d0811946ff1","subTypes":["1","2"],"mapZone":"map12"}' \
+            'https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+            -H 'Content-Type: application/json;charset=UTF-8' \
+            -o poi-geometry/dashen-map3.json \
+            --data '{"mapId":"676d48a37d299d0811946ff1","subTypes":["3"],"mapZone":"map3"}' \
+            'https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+            -H 'Content-Type: application/json;charset=UTF-8' \
+            -o poi-geometry/dashen-map4.json \
+            --data '{"mapId":"676d48a37d299d0811946ff1","subTypes":["4"],"mapZone":"map4"}' \
+            'https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          for id in 1 2 3 4; do
+            curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+              -H 'Accept-Language: en-US' \
+              -o "poi-geometry/global/map-${id}.json" \
+              "https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=${id}&lang=en-US"
+          done
+
+      - name: Inspect schemas and fit shared POIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, re
+          from pathlib import Path
+          import numpy as np
+
+          ROOT=Path('poi-geometry')
+          DASHEN_FILES=[ROOT/'dashen-map12.json',ROOT/'dashen-map3.json',ROOT/'dashen-map4.json']
+
+          def walk(v,path='root'):
+            if isinstance(v,dict):
+              yield path,v
+              for k,x in v.items(): yield from walk(x,f'{path}.{k}')
+            elif isinstance(v,list):
+              for i,x in enumerate(v): yield from walk(x,f'{path}[{i}]')
+
+          def first(d,keys):
+            for k in keys:
+              if k in d and d[k] not in (None,''): return d[k]
+            return None
+
+          def number(v):
+            try:
+              x=float(v)
+              return x if math.isfinite(x) else None
+            except: return None
+
+          # Capture point-like records without assuming an undocumented nesting shape.
+          dash=[]
+          schema=[]
+          for file in DASHEN_FILES:
+            j=json.loads(file.read_text('utf8'))
+            schema.append({'file':file.name,'bytes':file.stat().st_size,'topKeys':list(j) if isinstance(j,dict) else []})
+            for path,d in walk(j):
+              pid=first(d,['pointId','id','markerId'])
+              name=first(d,['pointName','name','title'])
+              x=number(first(d,['x','posX','pointX','worldX']))
+              y=number(first(d,['y','posY','pointY','worldY','z','worldZ']))
+              if pid is not None and name is not None and x is not None and y is not None:
+                dash.append({'file':file.name,'path':path,'id':str(pid),'name':str(name),'x':x,'y':y,'keys':sorted(d.keys())})
+
+          glob=[]
+          def global_coord(v):
+            try: return int(str(v),8)/1e5
+            except: return None
+          for mapid in range(1,5):
+            file=ROOT/'global'/f'map-{mapid}.json'; j=json.loads(file.read_text('utf8'))
+            for path,d in walk(j):
+              pid=first(d,['id','pointId'])
+              name=first(d,['name','pointName','title'])
+              lat=global_coord(d.get('lat')) if 'lat' in d else None
+              lng=global_coord(d.get('lng')) if 'lng' in d else None
+              if pid is not None and name is not None and lat is not None and lng is not None:
+                glob.append({'mapId':mapid,'path':path,'id':str(pid),'name':str(name),'lat':lat,'lng':lng,'keys':sorted(d.keys())})
+
+          def norm(s):
+            return re.sub(r'[^a-z0-9]+','',str(s).lower())
+
+          dash_by_id={p['id']:p for p in dash}
+          glob_by_id={p['id']:p for p in glob}
+          id_pairs=[(dash_by_id[k],glob_by_id[k]) for k in sorted(set(dash_by_id)&set(glob_by_id))]
+
+          dnames={}
+          for p in dash: dnames.setdefault(norm(p['name']),[]).append(p)
+          gnames={}
+          for p in glob: gnames.setdefault(norm(p['name']),[]).append(p)
+          name_pairs=[]
+          for k in set(dnames)&set(gnames):
+            if k and len(dnames[k])==1 and len(gnames[k])==1: name_pairs.append((dnames[k][0],gnames[k][0]))
+
+          pairs=id_pairs if len(id_pairs)>=6 else name_pairs
+          fit={}
+          for mapid in range(1,5):
+            pp=[(d,g) for d,g in pairs if g['mapId']==mapid]
+            rec={'pairs':len(pp),'source':'id' if pairs is id_pairs else 'unique-name'}
+            if len(pp)>=6:
+              # Fit current WWMSync synthetic [lng,lat] as affine of Dashen raw planar [x,y].
+              X=np.array([[d['x'],d['y'],1.] for d,g in pp],dtype=float)
+              Y=np.array([[g['lng'],g['lat']] for d,g in pp],dtype=float)
+              B,_,_,_=np.linalg.lstsq(X,Y,rcond=None)
+              pred=X@B; err=np.sqrt(((pred-Y)**2).sum(axis=1))
+              med=float(np.median(err)); p95=float(np.percentile(err,95)); mx=float(err.max())
+              # Robust refit from inliers around median/MAD.
+              mad=float(np.median(np.abs(err-med))) or 1e-9
+              keep=err <= med+4*1.4826*mad
+              if keep.sum()>=6:
+                B,_,_,_=np.linalg.lstsq(X[keep],Y[keep],rcond=None)
+                pred=X@B; err=np.sqrt(((pred-Y)**2).sum(axis=1))
+              rec.update({'matrixRawXYToGlobalLngLat':B.tolist(),'medianError':float(np.median(err)),'p95Error':float(np.percentile(err,95)),'maxError':float(err.max()),'inliers':int(keep.sum())})
+            fit[str(mapid)]=rec
+
+          out={
+            'schema':schema,
+            'dashenPointCandidates':len(dash),
+            'globalPointCandidates':len(glob),
+            'sharedIds':len(id_pairs),
+            'sharedUniqueNames':len(name_pairs),
+            'dashenSamples':dash[:8],
+            'globalSamples':glob[:8],
+            'fit':fit,
+          }
+          (ROOT/'fit.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),'utf8')
+          print(json.dumps(out,ensure_ascii=False,indent=2)[:40000])
+          PY
+
+      - name: Upload POI geometry evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-poi-geometry
+          path: poi-geometry
+          retention-days: 5
