@@ -36,17 +36,11 @@ jobs:
           node --version || true
           npx --version || true
 
-      - name: Resolve official DD distribution page-origin APIs
+      - name: Resolve official DD installer and inspect statically
         shell: bash
         run: |
           set -euxo pipefail
           python3 tools/forensics/netease_dd_resolver.py
-
-      - name: Fetch official DD distribution and inspect statically
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 tools/forensics/netease_dd_static.py
 
       - name: Print decisive evidence in job log
         if: always()
@@ -60,28 +54,21 @@ jobs:
           p = Path('dd-forensic/report/resolver.json')
           if p.exists():
               d = json.loads(p.read_text(encoding='utf-8'))
-              print('root_origin=', d.get('root_origin'))
-              print('candidate_count=', d.get('candidate_count'))
-              print('-- api_gets --')
-              for row in d.get('api_gets', []):
-                  print(json.dumps(row, ensure_ascii=False))
-              print('-- corrected_root_relative_edges --')
-              for row in d.get('corrected_root_relative_edges', [])[:100]:
-                  if '/v1/' in row.get('to','') or 'download' in row.get('to','').lower():
-                      print(json.dumps(row, ensure_ascii=False))
+              print('api_base=', d.get('api_base'))
+              print('download_api=', json.dumps(d.get('download_api', {}), ensure_ascii=False))
+              print('selected_probe=', json.dumps(d.get('selected_probe', {}), ensure_ascii=False))
               print('-- high_signal_contexts --')
-              wanted = {'get_channel_download_link','setDownloadContext','http://localhost','https://localhost','ws://','wss://','WebSocket','QLocalSocket','NamedPipe','ipcRenderer','contextBridge','cefQuery','chrome.webview','position','coordinate','coords','map_id','scene_id','Where Winds Meet','wherewindsmeet','燕云十六声','Yanyun','yysl'}
+              wanted = {'90111','75609','baseURL','get_channel_download_link','appapi.cc.163.com','http://localhost','https://localhost','127.0.0.1','ws://','wss://','WebSocket','QLocalSocket','QLocalServer','NamedPipe','CreateNamedPipe','ipcRenderer','ipcMain','contextBridge','cefQuery','chrome.webview','WebView2','position','coordinate','coords','map_id','scene_id','Where Winds Meet','wherewindsmeet','燕云十六声','Yanyun','yysl'}
               for row in d.get('contexts', []):
                   if row.get('token') in wanted:
                       print(json.dumps(row, ensure_ascii=False))
-              print('-- resolver_probes --')
-              for row in d.get('probes', [])[:50]:
-                  print(json.dumps(row, ensure_ascii=False))
           PY
           echo '===== SUMMARY ====='
           cat dd-forensic/report/summary.md 2>/dev/null || true
           echo '===== DISTRIBUTION ====='
           cat dd-forensic/report/distribution.json 2>/dev/null || true
+          echo '===== EXTRACTION ====='
+          cat dd-forensic/report/extraction.json 2>/dev/null || true
           echo '===== TOP COOCCURRENCE ====='
           python3 - <<'PY'
           import json
@@ -92,15 +79,19 @@ jobs:
           d = json.loads(p.read_text(encoding='utf-8'))
           for key in ('game_transport_state_files', 'transport_state_files'):
               print(f'-- {key} --')
-              for row in d.get(key, [])[:50]:
+              for row in d.get(key, [])[:100]:
                   print(json.dumps(row, ensure_ascii=False))
           print('-- exact_loopback_urls --')
-          for x in d.get('exact_loopback_urls', [])[:100]: print(x)
+          for x in d.get('exact_loopback_urls', [])[:200]: print(x)
           print('-- named_pipes --')
-          for x in d.get('named_pipes', [])[:100]: print(x)
+          for x in d.get('named_pipes', [])[:200]: print(x)
           print('-- custom_schemes --')
-          for x in d.get('custom_schemes', [])[:100]: print(x)
+          for x in d.get('custom_schemes', [])[:200]: print(x)
           PY
+          echo '===== FOCUSED HITS ====='
+          if [ -f dd-forensic/report/hits.tsv ]; then
+            grep -Ei 'Where Winds Meet|wherewindsmeet|燕云十六声|Yanyun|yysl|127\.0\.0\.1|localhost|ws://|wss://|WebSocket|pipe|QLocal|ipcRenderer|contextBridge|cefQuery|webview|position|coordinate|coords|map[_-]?id|scene[_-]?id' dd-forensic/report/hits.tsv | head -n 300 || true
+          fi
 
       - name: Upload forensic reports only
         if: always()
