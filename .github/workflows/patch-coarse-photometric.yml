@@ -1,0 +1,64 @@
+name: Patch Photometric Coarse Registration
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: [.github/workflows/patch-coarse-photometric.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+      - name: Add normalized photometric coarse score
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/patch.py <<'PY'
+          from pathlib import Path
+          p=Path('vision-sync.js')
+          s=p.read_text()
+          anchor="""function distinctMargin(top,best,minDistance){const second=top.find(x=>x!==best&&Math.hypot(x.x-best.x,x.y-best.y)>=minDistance);return{second,margin:second?best.score-second.score:best.score}}
+          async function coarseMatch(samples,cfg){
+          """
+          replacement="""function distinctMargin(top,best,minDistance){const second=top.find(x=>x!==best&&Math.hypot(x.x-best.x,x.y-best.y)>=minDistance);return{second,margin:second?best.score-second.score:best.score}}
+          function coarseNccAt(field,cx,cy,radius,angle,samples){
+            if(!samples?.length)return-1;const a=rad(angle),c=Math.cos(a),sn=Math.sin(a);let n=0,sumS=0,sumR=0,sumSS=0,sumRR=0,sumSR=0;
+            for(let k=0;k<samples.length;k+=5){const q=samples[k],rx=q.nx*c-q.ny*sn,ry=q.nx*sn+q.ny*c,x=Math.round(cx+rx*radius),y=Math.round(cy+ry*radius);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const sg=q.gray,rg=field.gray[y*field.w+x];n++;sumS+=sg;sumR+=rg;sumSS+=sg*sg;sumRR+=rg*rg;sumSR+=sg*rg}
+            if(n<60)return-1;const den=Math.sqrt(Math.max(1e-9,(n*sumSS-sumS*sumS)*(n*sumRR-sumR*sumR)));if(den<=1e-8)return-1;return .5+.5*clamp((n*sumSR-sumS*sumR)/den,-1,1);
+          }
+          async function coarseMatch(info,cfg){
+            const samples=info.samples,photoSamples=info.verifySamples;
+          """
+          if anchor not in s: raise SystemExit('coarse signature anchor missing')
+          s=s.replace(anchor,replacement,1)
+          old="""      for(const r of radii){
+                let scaleBest=null;
+                for(const t of templates){if(t.radius!==r)continue;const score=scoreAt(field,x,y,t.tpl);if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score}}
+                if(scaleBest)pushTop(topByRadius.get(r),scaleBest,48);
+              }
+          """
+          new="""      for(const r of radii){
+                let scaleBest=null;
+                for(const t of templates){if(t.radius!==r)continue;const edgeScore=scoreAt(field,x,y,t.tpl);if(edgeScore<0)continue;const nccScore=coarseNccAt(field,x,y,t.radius,t.angle,photoSamples);if(nccScore<0)continue;const score=.32*edgeScore+.68*nccScore;if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score,edgeScore,nccScore}}
+                if(scaleBest)pushTop(topByRadius.get(r),scaleBest,64);
+              }
+          """
+          if old not in s: raise SystemExit('coarse cell block missing')
+          s=s.replace(old,new,1)
+          s=s.replace('const samples=info.samples,coarseSearch=await coarseMatch(samples,cfg);','const samples=info.samples,coarseSearch=await coarseMatch(info,cfg);',1)
+          s=s.replace("return{coarse,fine,alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,angle:item.fine.angle,edgeScore:item.fine.score,verifyScore:item.verifyScore,nccScore:item.nccScore,combinedScore:item.combined}))};","return{coarse,fine,alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,radius:item.fine.radius/item.fine.scaleFromCoarse,coarseRadius:item.hypothesis.radius,angle:item.fine.angle,edgeScore:item.fine.score,verifyScore:item.verifyScore,nccScore:item.nccScore,combinedScore:item.combined}))};",1)
+          p.write_text(s)
+          PY
+          python /tmp/patch.py
+          node --check vision-sync.js
+          grep -Fq 'function coarseNccAt' vision-sync.js
+          grep -Fq 'coarseMatch(info,cfg)' vision-sync.js
+          grep -Fq 'coarseRadius:item.hypothesis.radius' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: rank coarse absolute registration photometrically'
+          git push origin HEAD:feature/wwm-native-sync-v2
