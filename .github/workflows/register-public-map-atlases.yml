@@ -1,0 +1,124 @@
+name: Register Public Map Atlases
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/register-public-map-atlases.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install image registration dependency
+        run: python -m pip install --disable-pip-version-check --quiet opencv-python-headless
+
+      - name: Fetch coarse public rasters and register
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p atlas-registration
+          python - <<'PY'
+          import cv2, json, math, os, urllib.request
+          import numpy as np
+          from pathlib import Path
+
+          OUT=Path('atlas-registration')
+          UA={'User-Agent':'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36'}
+          DASHEN='https://img.166.net/canonical/h72/tilemap/v15.0/{z}/{x}_{y}.png?imageView&v=1'
+          GLOBAL='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/data/map/{name}/en/{z}/{y}_{x}.jpg'
+          REGIONS={
+            'qinghe': {'center':[-.8166,1.49071]},
+            'kaifeng': {'center':[-1.22119,1.49886]},
+            'hexiqian': {'center':[-1.82411,1.85605]},
+            'kaifenghuanggong': {'center':[-1.41034,.64615]},
+          }
+
+          def fetch(url,path):
+            req=urllib.request.Request(url,headers=UA)
+            try:
+              with urllib.request.urlopen(req,timeout=12) as r:
+                data=r.read(2_000_000); code=r.status; ct=r.headers.get('Content-Type','')
+              path.write_bytes(data)
+              img=cv2.imdecode(np.frombuffer(data,np.uint8),cv2.IMREAD_COLOR)
+              return {'url':url,'http':code,'contentType':ct,'bytes':len(data),'image':img is not None}
+            except Exception as e:
+              return {'url':url,'error':type(e).__name__+': '+str(e)[:200],'image':False}
+
+          # Dashen full main atlas at z3 = 8x8 tiles because width=32768 -> CRS extent 256 -> 2048 px at z3.
+          dash=np.zeros((2048,2048,3),np.uint8)
+          dash_ok=np.zeros((8,8),np.uint8)
+          fetch_log=[]
+          for ty in range(8):
+            for tx in range(8):
+              p=OUT/f'dashen-3-{tx}-{ty}.png'; meta=fetch(DASHEN.format(z=3,x=tx,y=ty),p); fetch_log.append(meta)
+              if meta.get('image'):
+                im=cv2.imread(str(p)); dash[ty*256:(ty+1)*256,tx*256:(tx+1)*256]=im; dash_ok[ty,tx]=1
+          cv2.imwrite(str(OUT/'dashen-z3.png'),dash)
+
+          def mercator_tile(lat,lng,z):
+            n=2**z
+            x=(lng+180)/360*n
+            latr=math.radians(lat)
+            y=(1-math.asinh(math.tan(latr))/math.pi)/2*n
+            return int(math.floor(x)),int(math.floor(y))
+
+          result={'dashen':{'z':3,'tilesOk':int(dash_ok.sum()),'tilesTotal':64},'regions':{},'fetch':fetch_log}
+          orb=cv2.ORB_create(nfeatures=5000,scaleFactor=1.15,nlevels=8,edgeThreshold=19,fastThreshold=7)
+          kpD,desD=orb.detectAndCompute(cv2.cvtColor(dash,cv2.COLOR_BGR2GRAY),None)
+          matcher=cv2.BFMatcher(cv2.NORM_HAMMING)
+
+          for name,cfg in REGIONS.items():
+            probes=[]; best_img=None; best_z=None; best_origin=None
+            lat,lng=cfg['center']
+            for z in range(8,14):
+              cx,cy=mercator_tile(lat,lng,z)
+              # 3x3 around configured center; enough to prove live tile scheme and obtain a registration patch.
+              canvas=np.zeros((768,768,3),np.uint8); ok=0
+              for j,ty in enumerate(range(cy-1,cy+2)):
+                for i,tx in enumerate(range(cx-1,cx+2)):
+                  p=OUT/f'{name}-{z}-{tx}-{ty}.jpg'; meta=fetch(GLOBAL.format(name=name,z=z,y=ty,x=tx),p); fetch_log.append(meta)
+                  if meta.get('image'):
+                    im=cv2.imread(str(p)); canvas[j*256:(j+1)*256,i*256:(i+1)*256]=im; ok+=1
+              probes.append({'z':z,'centerTile':[cx,cy],'tilesOk':ok})
+              if ok>=4 and best_img is None:
+                best_img=canvas; best_z=z; best_origin=[cx-1,cy-1]
+            reg={'probes':probes,'registered':False}
+            if best_img is not None:
+              cv2.imwrite(str(OUT/f'{name}-patch-z{best_z}.jpg'),best_img)
+              gray=cv2.cvtColor(best_img,cv2.COLOR_BGR2GRAY)
+              kpG,desG=orb.detectAndCompute(gray,None)
+              if desD is not None and desG is not None and len(kpG)>=12:
+                pairs=matcher.knnMatch(desG,desD,k=2)
+                good=[a for a,b in pairs if a.distance < .72*b.distance]
+                reg['orbGood']=len(good)
+                if len(good)>=12:
+                  src=np.float32([kpG[m.queryIdx].pt for m in good]).reshape(-1,1,2)
+                  dst=np.float32([kpD[m.trainIdx].pt for m in good]).reshape(-1,1,2)
+                  M,mask=cv2.estimateAffinePartial2D(src,dst,method=cv2.RANSAC,ransacReprojThreshold=5,maxIters=5000,confidence=.999)
+                  inliers=int(mask.sum()) if mask is not None else 0
+                  reg['inliers']=inliers
+                  reg['inlierRatio']=inliers/max(1,len(good))
+                  if M is not None and inliers>=10 and reg['inlierRatio']>=.35:
+                    reg['registered']=True; reg['globalPatchZoom']=best_z; reg['globalTileOrigin']=best_origin; reg['patchPixelToDashenZ3']=M.tolist()
+                    a,b,tx=M[0]; c,d,ty=M[1]
+                    reg['scale']=float(math.sqrt(a*a+c*c)); reg['rotationDeg']=float(math.degrees(math.atan2(c,a)))
+            result['regions'][name]=reg
+
+          (OUT/'registration.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
+          print(json.dumps({'dashen':result['dashen'],'regions':result['regions']},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload atlas registration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-map-atlas-registration
+          path: atlas-registration
+          retention-days: 5
