@@ -28,23 +28,32 @@ jobs:
           node --check app.js
           node --check official-sync.js
           node --check vision-sync.js
+          node --check dashen-tile-cache.js
           node --check sw.js
+          python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'getDisplayMedia' vision-sync.js
           grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' vision-sync.js
           grep -Fq 'state.marker.setLatLng(latlng)' vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' vision-sync.js
+          grep -Fq '__WWMSYNC_DASHEN_CACHE__' dashen-tile-cache.js
+          grep -Fq 'dashen-tile-cache.js' index.html
           grep -Fq 'visionAnchorButton' index.html
           grep -Fq 'visionRawDelta' index.html
           grep -Fq 'visionMarkerDelta' index.html
           grep -Fq 'vision-sync.css' index.html
           grep -Fq 'display-capture=(self)' _headers
 
-      - name: Build clean static bundle
+      - name: Build clean static bundle and Dashen visual reference cache
         run: |
           set -euo pipefail
           rm -rf dist && mkdir dist
-          cp index.html styles.css vision-sync.css app.js vision-sync.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          python tools/build_dashen_visual_cache.py dist/dashen-cache
+          test -s dist/dashen-cache/manifest.json
+          test -s dist/dashen-cache/main/3/0_0.png
+          test -s dist/dashen-cache/main/5/20_15.png
+          test -s dist/dashen-cache/sub4/5/3_3.png
           test ! -d dist/.github
           test ! -d dist/functions
 
@@ -107,21 +116,28 @@ jobs:
           fetch "$base/" /tmp/root.html
           fetch "$base/app.js" /tmp/app.js
           fetch "$base/vision-sync.js" /tmp/vision-sync.js
+          fetch "$base/dashen-tile-cache.js" /tmp/dashen-tile-cache.js
           fetch "$base/vision-sync.css" /tmp/vision-sync.css
           fetch "$base/official-sync.js" /tmp/official-sync.js
+          fetch "$base/dashen-cache/manifest.json" /tmp/dashen-cache-manifest.json
+          fetch "$base/dashen-cache/main/3/0_0.png" /tmp/dashen-tile.png
           grep -Fq 'WWMSync — Where Winds Meet' /tmp/root.html
           grep -Fq 'visionStartButton' /tmp/root.html
           grep -Fq 'visionRawDelta' /tmp/root.html
           grep -Fq 'visionMarkerDelta' /tmp/root.html
+          grep -Fq 'dashen-tile-cache.js' /tmp/root.html
           grep -Fq 'getDisplayMedia' /tmp/vision-sync.js
           grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' /tmp/vision-sync.js
           grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' /tmp/vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' /tmp/vision-sync.js
+          grep -Fq '__WWMSYNC_DASHEN_CACHE__' /tmp/dashen-tile-cache.js
+          grep -Fq '"tilesFetched"' /tmp/dashen-cache-manifest.json
           grep -Fq 'vision-player-marker' /tmp/vision-sync.css
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
           grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
-          echo "WWMSync Vision propagation HTTP smoke passed: $base"
+          test -s /tmp/dashen-tile.png
+          echo "WWMSync hybrid visual HTTP smoke passed: $base"
 
       - name: Browser smoke map and Vision UI
         env:
@@ -155,6 +171,8 @@ jobs:
               markerDelta:!!document.querySelector('#visionMarkerDelta'),
               holdReason:!!document.querySelector('#visionHoldReason'),
               diagnosticsApi:typeof window.__WWMSYNC_VISION_DIAGNOSTICS__,
+              absoluteApi:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,
+              dashenCache:typeof window.__WWMSYNC_DASHEN_CACHE__,
               displayCapture:typeof navigator.mediaDevices?.getDisplayMedia,
               maps:document.querySelectorAll('#mapSelect option').length,
               leaflet:typeof window.L
@@ -162,16 +180,25 @@ jobs:
             if(s.title!=='WWMSync — Where Winds Meet'||!s.visionStart||!s.visionStop||!s.visionAnchor||!s.preview||!s.rawDelta||!s.correctedDelta||!s.cumulative||!s.markerDelta||!s.holdReason||s.maps<3||s.leaflet!=='object')fatal.push(JSON.stringify(s));
             if(s.displayCapture!=='function')fatal.push(`getDisplayMedia=${s.displayCapture}`);
             if(s.diagnosticsApi!=='function')fatal.push(`diagnosticsApi=${s.diagnosticsApi}`);
+            if(s.absoluteApi!=='function')fatal.push(`absoluteApi=${s.absoluteApi}`);
+            if(s.dashenCache!=='object')fatal.push(`dashenCache=${s.dashenCache}`);
             const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
             if(!d||d.accepted!==0||d.held!==0||typeof d.referenceZoom!=='number')fatal.push(`diagnostics=${JSON.stringify(d)}`);
+            const tileReadable=await page.evaluate(()=>new Promise(resolve=>{
+              const image=new Image();image.crossOrigin='anonymous';
+              image.onload=()=>{try{const c=document.createElement('canvas');c.width=2;c.height=2;const x=c.getContext('2d');x.drawImage(image,0,0,2,2);x.getImageData(0,0,1,1);resolve({ok:true,src:image.src})}catch(error){resolve({ok:false,error:String(error)})}};
+              image.onerror=()=>resolve({ok:false,error:'image-load'});
+              image.src='https://img.166.net/canonical/h72/tilemap/v15.0/3/0_0.png?imageView&v=1';
+            }));
+            if(!tileReadable.ok||!tileReadable.src.includes('/dashen-cache/main/3/0_0.png'))fatal.push(`tileReadable=${JSON.stringify(tileReadable)}`);
             await page.selectOption('#languageSelect','en');
             const visionTitle=(await page.locator('[data-vision-i18n="title"]').textContent()).trim();
             if(visionTitle!=='GFN Vision Sync')fatal.push(`vision title=${visionTitle}`);
-            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d}));
+            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d,tileReadable}));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
             if(fatal.length)process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync Vision browser smoke passed: $EXACT_URL"
+          echo "WWMSync hybrid visual browser smoke passed: $EXACT_URL"
