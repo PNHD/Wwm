@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/forensic-netease-dd-distribution.yml
       - tools/forensics/netease_dd_static.py
+      - tools/forensics/netease_dd_resolver.py
 
 permissions:
   contents: read
@@ -35,6 +36,12 @@ jobs:
           node --version || true
           npx --version || true
 
+      - name: Resolve official DD distribution page-origin APIs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/forensics/netease_dd_resolver.py
+
       - name: Fetch official DD distribution and inspect statically
         shell: bash
         run: |
@@ -46,6 +53,31 @@ jobs:
         shell: bash
         run: |
           set -u
+          echo '===== RESOLVER ====='
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('dd-forensic/report/resolver.json')
+          if p.exists():
+              d = json.loads(p.read_text(encoding='utf-8'))
+              print('root_origin=', d.get('root_origin'))
+              print('candidate_count=', d.get('candidate_count'))
+              print('-- api_gets --')
+              for row in d.get('api_gets', []):
+                  print(json.dumps(row, ensure_ascii=False))
+              print('-- corrected_root_relative_edges --')
+              for row in d.get('corrected_root_relative_edges', [])[:100]:
+                  if '/v1/' in row.get('to','') or 'download' in row.get('to','').lower():
+                      print(json.dumps(row, ensure_ascii=False))
+              print('-- high_signal_contexts --')
+              wanted = {'get_channel_download_link','setDownloadContext','http://localhost','https://localhost','ws://','wss://','WebSocket','QLocalSocket','NamedPipe','ipcRenderer','contextBridge','cefQuery','chrome.webview','position','coordinate','coords','map_id','scene_id','Where Winds Meet','wherewindsmeet','燕云十六声','Yanyun','yysl'}
+              for row in d.get('contexts', []):
+                  if row.get('token') in wanted:
+                      print(json.dumps(row, ensure_ascii=False))
+              print('-- resolver_probes --')
+              for row in d.get('probes', [])[:50]:
+                  print(json.dumps(row, ensure_ascii=False))
+          PY
           echo '===== SUMMARY ====='
           cat dd-forensic/report/summary.md 2>/dev/null || true
           echo '===== DISTRIBUTION ====='
