@@ -1,0 +1,39 @@
+name: Probe Official Visual Tile CORS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/probe-visual-tile-cors.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe current WWMSync official raster tile
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/data/map/qinghe/en/8/128_129.jpg'
+          curl -L -sS --compressed --connect-timeout 5 --max-time 15 \
+            -A 'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36' \
+            -D /tmp/tile.headers -o /tmp/tile.jpg "$url"
+          echo '--- headers ---'
+          cat /tmp/tile.headers
+          echo '--- file ---'
+          file /tmp/tile.jpg
+          test -s /tmp/tile.jpg
+          grep -iE '^access-control-allow-origin:' /tmp/tile.headers || true
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-tile-cors
+          path: |
+            /tmp/tile.headers
+            /tmp/tile.jpg
+          retention-days: 2
