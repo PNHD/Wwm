@@ -1,0 +1,30 @@
+name: Patch Runtime Absolute Gate
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: [.github/workflows/patch-runtime-absolute-gate.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+      - name: Align runtime gate with strong photometric evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "from pathlib import Path; p=Path('vision-sync.js'); s=p.read_text(); old=\"if(!fine)return'no-fine-match';if(fine.score<.50)return\\`fine-score \\${fine.score.toFixed(3)}\\`;if(Number.isFinite(fine.verifyScore)&&fine.verifyScore<.56)return\\`verify-score \\${fine.verifyScore.toFixed(3)}\\`;if(Number.isFinite(fine.nccScore)&&fine.nccScore<.52)return\\`ncc-score \\${fine.nccScore.toFixed(3)}\\`;if(Number.isFinite(fine.verificationMargin)&&fine.verificationMargin<.018)return\\`verify-ambiguous \\${fine.verificationMargin.toFixed(3)}\\`;if(fine.margin<.018)return\\`fine-ambiguous \\${fine.margin.toFixed(3)}\\`;\"; new=\"if(!fine)return'no-fine-match';if(fine.score<.50)return\\`fine-score \\${fine.score.toFixed(3)}\\`;const strongPhotometric=Number.isFinite(fine.nccScore)&&fine.nccScore>=.90&&Number.isFinite(fine.verificationMargin)&&fine.verificationMargin>=.05;if(Number.isFinite(fine.verifyScore)&&fine.verifyScore<.56&&!strongPhotometric)return\\`verify-score \\${fine.verifyScore.toFixed(3)}\\`;if(Number.isFinite(fine.nccScore)&&fine.nccScore<.52)return\\`ncc-score \\${fine.nccScore.toFixed(3)}\\`;if(Number.isFinite(fine.verificationMargin)&&fine.verificationMargin<.018)return\\`verify-ambiguous \\${fine.verificationMargin.toFixed(3)}\\`;if(fine.margin<.018&&!strongPhotometric)return\\`fine-ambiguous \\${fine.margin.toFixed(3)}\\`;\"; assert old in s; s=s.replace(old,new,1); old2='rotationError=actual?Math.min(angleDiff(actual.angle,angle),angleDiff(angleNorm(actual.angle+180),angle)):Infinity;'; new2=old2[:-1]+',gateReason=matchGate(coarse,fine,info,cfg);'; assert old2 in s; s=s.replace(old2,new2,1); old3='return{ok:!!actual&&error<=8&&rotationError<=25,error,rotationError,'; new3='return{ok:!!actual&&error<=8&&rotationError<=25&&!gateReason,gateReason,error,rotationError,'; assert old3 in s; s=s.replace(old3,new3,1); p.write_text(s)"
+          node --check vision-sync.js
+          grep -Fq 'const strongPhotometric=' vision-sync.js
+          grep -Fq 'gateReason=matchGate' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: require runtime gate in absolute self-test'
+          git push origin HEAD:feature/wwm-native-sync-v2
