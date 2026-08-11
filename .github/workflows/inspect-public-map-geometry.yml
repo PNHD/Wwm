@@ -12,7 +12,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 4
     steps:
       - name: Fetch public map pages and direct assets
         shell: bash
@@ -35,7 +35,7 @@ jobs:
           for name,url in targets.items():
             root=Path('public-map-geometry')/name;root.mkdir(parents=True,exist_ok=True)
             page=root/'page.html'
-            p=subprocess.run(['curl','-L','-sS','--compressed','--max-time','25','-A',ua,'-o',str(page),'-w','%{http_code}\t%{url_effective}',url],capture_output=True,text=True)
+            p=subprocess.run(['curl','-L','-sS','--compressed','--connect-timeout','5','--max-time','10','-A',ua,'-o',str(page),'-w','%{http_code}\t%{url_effective}',url],capture_output=True,text=True)
             status,_,effective=p.stdout.partition('\t')
             text=page.read_text('utf8',errors='ignore') if page.exists() else ''
             refs=[]
@@ -45,17 +45,17 @@ jobs:
                 if u not in refs: refs.append(u)
             files=[('page.html',effective.strip() or url,text)]
             fetched=[]
-            for i,u in enumerate(refs[:60]):
+            for i,u in enumerate(refs[:18]):
               suffix='.css' if '.css' in u.lower() else '.js' if '.js' in u.lower() else '.txt'
               path=root/f'asset-{i:02d}{suffix}'
-              q=subprocess.run(['curl','-L','-sS','--compressed','--max-time','25','-A',ua,'-o',str(path),'-w','%{http_code}\t%{url_effective}',u],capture_output=True,text=True)
+              q=subprocess.run(['curl','-L','-sS','--compressed','--connect-timeout','4','--max-time','8','-A',ua,'-o',str(path),'-w','%{http_code}\t%{url_effective}',u],capture_output=True,text=True)
               code,_,eff=q.stdout.partition('\t');fetched.append({'url':u,'http':code,'effective':eff.strip(),'bytes':path.stat().st_size if path.exists() else 0})
               if path.exists() and path.stat().st_size<20000000: files.append((path.name,eff.strip() or u,path.read_text('utf8',errors='ignore')))
             hits=[]
             for fn,src,body in files:
               for term in terms:
-                for m in list(re.finditer(re.escape(term),body,re.I))[:12]:
-                  ctx=' '.join(body[max(0,m.start()-800):min(len(body),m.end()+1400)].split())
+                for m in list(re.finditer(re.escape(term),body,re.I))[:10]:
+                  ctx=' '.join(body[max(0,m.start()-900):min(len(body),m.end()+1600)].split())
                   hits.append({'file':fn,'source':src,'term':term,'context':ctx})
             out.append({'name':name,'url':url,'http':status,'effective':effective.strip(),'refs':refs,'fetched':fetched,'hits':hits})
           Path('public-map-geometry/geometry.json').write_text(json.dumps({'targets':out},ensure_ascii=False,indent=2),'utf8')
@@ -65,7 +65,7 @@ jobs:
             lines += [f"REF {x}" for x in r['refs']]
             lines += [f"CTX {h['file']} [{h['term']}] {h['source']} :: {h['context']}" for h in r['hits']]
           Path('public-map-geometry/report.txt').write_text('\n'.join(lines),'utf8')
-          print('\n'.join(lines[:220]))
+          print('\n'.join(lines[:260]))
           if any(r['http']!='200' for r in out): raise SystemExit(2)
           PY
 
