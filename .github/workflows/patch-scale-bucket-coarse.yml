@@ -1,0 +1,80 @@
+name: Patch Scale-Bucket Coarse Search
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: [.github/workflows/patch-scale-bucket-coarse.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+      - name: Preserve coarse candidates per scale bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('vision-sync.js')
+          s=p.read_text()
+          old="""  const top=[];
+  for(let y=stride;y<field.h-stride;y+=stride){
+    for(let x=stride;x<field.w-stride;x+=stride){
+      const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
+      let cellBest=null;
+      for(const t of templates){const score=scoreAt(field,x,y,t.tpl);if(!cellBest||score>cellBest.score)cellBest={x,y,radius:t.radius,angle:t.angle,score}}
+      if(cellBest)pushTop(top,cellBest,120);
+    }
+    if(y%(stride*5)===0)await sleep(0);
+  }
+  if(!top.length)return null;
+  const seeds=[];
+  for(const item of top){
+    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(20,Math.min(item.radius,seed.radius)*.7)||Math.abs(Math.log(item.radius/seed.radius))>=.24)){
+      seeds.push(item);if(seeds.length>=COARSE_BEAM)break;
+    }
+  }
+"""
+          new="""  const topByRadius=new Map(radii.map(r=>[r,[]]));
+  for(let y=stride;y<field.h-stride;y+=stride){
+    for(let x=stride;x<field.w-stride;x+=stride){
+      const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
+      for(const r of radii){
+        let scaleBest=null;
+        for(const t of templates){if(t.radius!==r)continue;const score=scoreAt(field,x,y,t.tpl);if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score}}
+        if(scaleBest)pushTop(topByRadius.get(r),scaleBest,48);
+      }
+    }
+    if(y%(stride*5)===0)await sleep(0);
+  }
+  const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);
+  if(!top.length)return null;
+  const seeds=[];
+  const perRadius=new Map();
+  for(const item of top){
+    const used=perRadius.get(item.radius)||0;if(used>=4)continue;
+    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,Math.min(item.radius,seed.radius)*.6)||Math.abs(Math.log(item.radius/seed.radius))>=.18)){
+      seeds.push(item);perRadius.set(item.radius,used+1);if(seeds.length>=24)break;
+    }
+  }
+"""
+          if old not in s:
+              raise SystemExit('target coarse block not found')
+          s=s.replace(old,new,1)
+          s=s.replace("const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=12;","const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=24;",1)
+          p.write_text(s)
+          PY
+          node --check vision-sync.js
+          grep -Fq 'const topByRadius=new Map' vision-sync.js
+          grep -Fq 'COARSE_BEAM=24' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: preserve coarse candidates per scale bucket'
+          git push origin HEAD:feature/wwm-native-sync-v2
