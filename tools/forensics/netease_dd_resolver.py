@@ -13,51 +13,21 @@ import netease_dd_static as base
 
 ROOT = os.environ.get("DD_ROOT", "https://dd.163.com/")
 ROOT_ORIGIN = urllib.parse.urlunsplit((*urllib.parse.urlsplit(ROOT)[:2], "", "", ""))
+API_BASE = "https://appapi.cc.163.com"
+DOWNLOAD_API = API_BASE + "/v1/teamchannelpkg/get_channel_download_link?channel="
 REPORT_DIR = base.REPORT_DIR
 SOURCE_DIR = REPORT_DIR / "fetched-text"
 SOURCE_DIR.mkdir(parents=True, exist_ok=True)
 MAX_CRAWL = 140
 TOKENS = [
-    "get_channel_download_link",
-    "setDownloadContext",
-    "teamchannelpkg",
-    "mixteamversion",
-    "90111",
-    "baseURL",
-    "axios.create",
-    ".create({",
-    "gameyw.netease.com",
-    "dd-link",
-    "CCLink",
-    "WebLink",
-    "SharedWorker",
-    "teamlink-ws.cc.163.com",
-    "http://localhost",
-    "https://localhost",
-    "127.0.0.1",
-    "ws://",
-    "wss://",
-    "WebSocket",
-    "QLocalSocket",
-    "QLocalServer",
-    "NamedPipe",
-    "CreateNamedPipe",
-    "ipcRenderer",
-    "ipcMain",
-    "contextBridge",
-    "cefQuery",
-    "chrome.webview",
-    "WebView2",
-    "position",
-    "coordinate",
-    "coords",
-    "map_id",
-    "scene_id",
-    "Where Winds Meet",
-    "wherewindsmeet",
-    "燕云十六声",
-    "Yanyun",
-    "yysl",
+    "get_channel_download_link", "setDownloadContext", "teamchannelpkg", "mixteamversion",
+    "90111", "75609", "baseURL", "axios.create", ".create({", "appapi.cc.163.com",
+    "gameyw.netease.com", "dd-link", "CCLink", "WebLink", "SharedWorker",
+    "teamlink-ws.cc.163.com", "http://localhost", "https://localhost", "127.0.0.1",
+    "ws://", "wss://", "WebSocket", "QLocalSocket", "QLocalServer", "NamedPipe",
+    "CreateNamedPipe", "ipcRenderer", "ipcMain", "contextBridge", "cefQuery",
+    "chrome.webview", "WebView2", "position", "coordinate", "coords", "map_id",
+    "scene_id", "Where Winds Meet", "wherewindsmeet", "燕云十六声", "Yanyun", "yysl",
 ]
 
 
@@ -119,12 +89,49 @@ def should_snapshot(url: str, ctype: str) -> bool:
 
 def save_snapshot(url: str, text: str) -> dict:
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-    path = urllib.parse.urlsplit(url).path
-    name = Path(path).name or "index"
+    name = Path(urllib.parse.urlsplit(url).path).name or "index"
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:90]
     dest = SOURCE_DIR / f"{digest}-{safe}.txt"
     dest.write_text(text, encoding="utf-8")
     return {"url": url, "path": str(dest.relative_to(REPORT_DIR)), "bytes": len(text.encode("utf-8"))}
+
+
+def resolve_download_api() -> tuple[dict, dict]:
+    """Resolve official desktop download using the exact read-only frontend GET."""
+    res = base.fetch_small(DOWNLOAD_API)
+    audit = {k: v for k, v in res.items() if k != "data"}
+    audit.update({
+        "method": "GET",
+        "base_url_evidence": "module 90111 axios baseURL=o.Ld; module 75609 Ld=https://appapi.cc.163.com",
+        "request_url": DOWNLOAD_API,
+        "query": {"channel": ""},
+    })
+    if not res.get("ok"):
+        audit["result"] = "FETCH_FAILED"
+        return {}, audit
+    body = res["data"].decode("utf-8", "ignore")
+    audit["body_prefix"] = body[:16000]
+    try:
+        payload = json.loads(body)
+    except Exception as e:
+        audit["result"] = "INVALID_JSON"
+        audit["parse_error"] = repr(e)
+        return {}, audit
+    audit["response"] = payload
+    if payload.get("code") != 0 or not isinstance(payload.get("data"), dict):
+        audit["result"] = "API_ERROR"
+        return {}, audit
+    data = payload["data"]
+    url = data.get("x64_download_link") or data.get("x32_download_link")
+    if not url:
+        audit["result"] = "NO_DESKTOP_LINK"
+        return {}, audit
+    p = base.probe(url)
+    p.update({"source": DOWNLOAD_API, "score": 1000, "api_field": "x64_download_link" if data.get("x64_download_link") else "x32_download_link"})
+    audit["result"] = "RESOLVED"
+    audit["selected_url"] = url
+    audit["probe"] = p
+    return p, audit
 
 
 def main() -> int:
@@ -134,7 +141,6 @@ def main() -> int:
     edges: list[dict] = []
     contexts: list[dict] = []
     snapshots: list[dict] = []
-    all_refs: dict[str, dict] = {}
 
     while q and len(seen) < MAX_CRAWL:
         url, parent, depth = q.popleft()
@@ -163,82 +169,65 @@ def main() -> int:
             child, mode = resolve_ref(raw, res.get("final_url", url))
             if not child:
                 continue
-            edge = {"from": url, "raw": raw, "to": child, "resolution": mode}
-            edges.append(edge)
-            all_refs.setdefault(child, edge)
+            edges.append({"from": url, "raw": raw, "to": child, "resolution": mode})
             if depth < 2 and base.likely_text_asset(child):
                 q.append((child, url, depth + 1))
 
     (SOURCE_DIR / "manifest.json").write_text(json.dumps(snapshots, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # The frontend proves a read-only GET schema for this path, but the host is
-    # intentionally NOT guessed here. A relative Axios URL may use a custom
-    # baseURL; resolver evidence must identify module 90111 first.
-    api_schema = {
-        "method": "GET",
-        "path": "/v1/teamchannelpkg/get_channel_download_link",
-        "query": {"channel": "<string; empty is default official-web path>"},
-        "response_fields": [
-            "code", "msg", "data.x64_download_link", "data.x32_download_link",
-            "data.x64_version", "data.x32_version",
-            "data.invite_x64_download_link", "data.invite_x32_download_link",
-            "data.invite_x64_version", "data.invite_x32_version",
-        ],
-        "host_status": "UNRESOLVED_AXIOS_BASEURL",
-    }
+    selected, api_audit = resolve_download_api()
+    probes = [selected] if selected else []
+    distribution = base.download_distribution(selected)
+    (REPORT_DIR / "distribution.json").write_text(json.dumps(distribution, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    candidates: list[dict] = []
-    for u, edge in all_refs.items():
-        source = edge.get("from", "")
-        score = base.candidate_score(u, source)
-        if score >= 55:
-            candidates.append({"url": u, "source": source, "score": score})
-    candidates.sort(key=lambda x: x["score"], reverse=True)
-
-    probes: list[dict] = []
-    chosen: dict = {}
-    for c in candidates[:50]:
-        p = base.probe(c["url"])
-        p.update(c)
-        probes.append(p)
-        if p.get("ok") and p.get("binary") and (not chosen or c["score"] > chosen.get("score", -999)):
-            chosen = p.copy()
+    extraction = None
+    scan = None
+    if distribution.get("ok"):
+        dist = Path(distribution["path"])
+        extraction = base.recursive_extract(dist)
+        scan = base.static_scan(dist, extraction)
+        base.write_summary(distribution, extraction, scan, probes)
+    else:
+        base.write_summary(distribution, None, None, probes)
 
     result = {
         "root": ROOT,
         "root_origin": ROOT_ORIGIN,
+        "api_base": API_BASE,
+        "download_api": api_audit,
         "fetched_count": len(fetched),
         "fetched": fetched,
         "snapshots": snapshots,
-        "api_schema": api_schema,
         "corrected_root_relative_edges": [e for e in edges if e["resolution"] == "page-origin-root-relative"],
         "contexts": contexts,
-        "candidate_count": len(candidates),
-        "candidates": candidates,
-        "probes": probes,
-        "chosen_probe": chosen,
+        "selected_probe": selected,
+        "distribution": distribution,
+        "extraction_summary": extraction,
+        "scan_summary": scan,
     }
     (REPORT_DIR / "resolver.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("===== DD RESOLVER =====")
-    print(f"fetched={len(fetched)} snapshots={len(snapshots)} contexts={len(contexts)} candidates={len(candidates)} probes={len(probes)}")
-    print("-- download API schema --")
-    print(json.dumps(api_schema, ensure_ascii=False))
+    print(f"fetched={len(fetched)} snapshots={len(snapshots)} contexts={len(contexts)}")
+    print("-- exact download API --")
+    print(json.dumps(api_audit, ensure_ascii=False))
+    print("-- distribution --")
+    print(json.dumps(distribution, ensure_ascii=False))
+    if extraction is not None:
+        print("-- extraction --")
+        print(json.dumps({"root": extraction.get("root"), "file_count": extraction.get("file_count"), "total_size": extraction.get("total_size")}, ensure_ascii=False))
+    if scan is not None:
+        print("-- scan --")
+        print(json.dumps(scan, ensure_ascii=False))
+        base.print_focus(scan)
     print("-- module/baseURL evidence --")
     for row in contexts:
-        if row["token"] in {"90111", "baseURL", "axios.create", ".create({", "get_channel_download_link", "gameyw.netease.com"}:
+        if row["token"] in {"90111", "75609", "baseURL", "get_channel_download_link", "appapi.cc.163.com"}:
             print(json.dumps(row, ensure_ascii=False))
     print("-- transport/local evidence --")
     for row in contexts:
         if row["token"] in {"http://localhost", "https://localhost", "127.0.0.1", "ws://", "wss://", "WebSocket", "QLocalSocket", "QLocalServer", "NamedPipe", "CreateNamedPipe", "ipcRenderer", "ipcMain", "contextBridge", "cefQuery", "chrome.webview", "WebView2", "teamlink-ws.cc.163.com"}:
             print(json.dumps(row, ensure_ascii=False))
-    print("-- WWM/state evidence --")
-    for row in contexts:
-        if row["token"] in {"Where Winds Meet", "wherewindsmeet", "燕云十六声", "Yanyun", "yysl", "position", "coordinate", "coords", "map_id", "scene_id"}:
-            print(json.dumps(row, ensure_ascii=False))
-    print("-- candidate probes --")
-    for row in probes[:30]:
-        print(json.dumps(row, ensure_ascii=False))
     return 0
 
 
