@@ -369,10 +369,10 @@ async function coarseMatch(samples,cfg){
 async function fineFieldAround(cfg,centerX,centerY,radius,search=120){
   const half=radius*1.18+search+40,minX=Math.floor((centerX-half)/256),maxX=Math.floor((centerX+half)/256),minY=Math.floor((centerY-half)/256),maxY=Math.floor((centerY+half)/256),grid=await loadTileGrid(cfg,FINE_Z,minX,minY,maxX,maxY);return{...grid,field:gradientField(grid.canvas),centerLocalX:centerX-grid.minX*256,centerLocalY:centerY-grid.minY*256};
 }
-async function fineMatch(samples,cfg,pred,search=120){
+async function fineMatch(samples,cfg,pred,search=120,step=8){
   const atlasFactor=pred.atlas?.factor??(cfg.width===32768?4:2),scale=atlasFactor*(2**(FINE_Z-COARSE_Z)),centerX=pred.x*scale,centerY=pred.y*scale,radius=pred.radius*scale,fine=await fineFieldAround(cfg,centerX,centerY,radius,search),top=[];
   const angleSteps=[-15,-10,-5,0,5,10,15],radiusSteps=[.86,.93,1,1.07,1.14];
-  for(let y=fine.centerLocalY-search;y<=fine.centerLocalY+search;y+=8){for(let x=fine.centerLocalX-search;x<=fine.centerLocalX+search;x+=8){for(const rf of radiusSteps)for(const da of angleSteps){const rr=radius*rf,aa=angleNorm(pred.angle+da),score=scoreAt(fine.field,x,y,template(samples,rr,aa));pushTop(top,{x,y,radius:rr,angle:aa,score},30)}}await sleep(0)}
+  for(let y=fine.centerLocalY-search;y<=fine.centerLocalY+search;y+=step){for(let x=fine.centerLocalX-search;x<=fine.centerLocalX+search;x+=step){for(const rf of radiusSteps)for(const da of angleSteps){const rr=radius*rf,aa=angleNorm(pred.angle+da),score=scoreAt(fine.field,x,y,template(samples,rr,aa));pushTop(top,{x,y,radius:rr,angle:aa,score},30)}}await sleep(0)}
   if(!top.length)return null;let best=top[0],dm=distinctMargin(top,best,Math.max(24,best.radius*.12)),ref=[];
   for(let y=best.y-12;y<=best.y+12;y+=2)for(let x=best.x-12;x<=best.x+12;x+=2)for(const rf of [.94,.97,1,1.03,1.06])for(const da of [-5,-2.5,0,2.5,5]){const rr=best.radius*rf,aa=angleNorm(best.angle+da),score=scoreAt(fine.field,x,y,template(samples,rr,aa));pushTop(ref,{x,y,radius:rr,angle:aa,score},20)}
   if(ref.length)best=ref[0];const globalX=best.x+fine.minX*256,globalY=best.y+fine.minY*256;return{...best,globalX,globalY,margin:dm.margin,fieldGrid:fine,scaleFromCoarse:scale};
@@ -393,7 +393,7 @@ async function globalMatch(info,cfg){
   const finals=[];
   for(const hypothesis of (coarseSearch.hypotheses||[coarseSearch]).slice(0,COARSE_BEAM)){
     if(hypothesis.score<coarseSearch.score-.16)continue;
-    const fine=await fineMatch(samples,cfg,{...hypothesis,atlas:coarseSearch.atlas},120);
+    const fine=await fineMatch(samples,cfg,{...hypothesis,atlas:coarseSearch.atlas},220,12);
     if(fine){const verification=verifyAt(fine.fieldGrid.field,fine.x,fine.y,fine.radius,fine.angle,info.verifySamples),verifyScore=verification.structure,nccScore=verification.ncc,combined=.20*fine.score+.35*verifyScore+.45*nccScore;finals.push({fine,hypothesis,verifyScore,nccScore,combined})}await sleep(0);
   }
   if(!finals.length)return{coarse:coarseSearch,fine:null};
