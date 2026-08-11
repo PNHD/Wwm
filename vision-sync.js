@@ -255,7 +255,7 @@ const MAPS={
   3:{name:'Hexi',subtype:2,width:32768,tile:MAIN_TILE,geometryOk:false,bridge:[[-.0004418098354879717,-4.683316418019453e-7],[1.9615559186680637e-7,-.00044227024902754146],[-2.327163272561875,2.2942238497371226]],p95:.002151840429952529},
   4:{name:'Kaifeng Palace',subtype:4,width:8192,tile:SUB4_TILE,geometryOk:true,bridge:[[-.0018805015482138414,-4.2098541037416125e-9],[-4.85819355610425e-10,-.0018007017851145606],[-.8635958719320187,-2.492606921960836]],p95:5.344759512047002e-6}
 };
-const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20;
+const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20,COARSE_BEAM=4;
 const tileCache=new Map(),atlasCache=new Map();
 const state={busy:false,lastMapId:null,mode:'idle',status:'OFF',reason:'capture-inactive',coarseScore:0,coarseMargin:0,fineScore:0,fineMargin:0,angle:0,radius:0,absolute:null,pending:null,last:null,localFailures:0,fixes:0,lastRunAt:0,lastError:null};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -334,10 +334,37 @@ function distinctMargin(top,best,minDistance){const second=top.find(x=>x!==best&
 async function coarseMatch(samples,cfg){
   const atlas=await coarseAtlas(cfg),field=atlas.field,stride=cfg.width===32768?8:5,radii=cfg.width===32768?[6,9,13,18,25,34]:[5,8,12,17,24],angles=[0,45,90,135,180,225,270,315],templates=[];
   for(const r of radii)for(const a of angles)templates.push({radius:r,angle:a,tpl:template(samples,r,a)});
-  const top=[];for(let y=stride;y<field.h-stride;y+=stride){for(let x=stride;x<field.w-stride;x+=stride){const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;for(const t of templates){const score=scoreAt(field,x,y,t.tpl);if(score>(top.at(-1)?.score??-.01)||top.length<28)pushTop(top,{x,y,radius:t.radius,angle:t.angle,score})}}if(y%(stride*5)===0)await sleep(0)}
-  if(!top.length)return null;let best=top[0],dm=distinctMargin(top,best,Math.max(stride*2,best.radius*.65));
-  const refineTop=[];for(let y=best.y-stride*1.5;y<=best.y+stride*1.5;y+=2)for(let x=best.x-stride*1.5;x<=best.x+stride*1.5;x+=2){const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;for(const rf of [.82,.91,1,1.09,1.18])for(const da of [-22.5,-15,-7.5,0,7.5,15,22.5]){const radius=best.radius*rf,angle=angleNorm(best.angle+da),score=scoreAt(field,x,y,template(samples,radius,angle));pushTop(refineTop,{x,y,radius,angle,score},20)}}
-  if(refineTop.length)best=refineTop[0];return{...best,margin:dm.margin,atlas};
+  const top=[];
+  for(let y=stride;y<field.h-stride;y+=stride){
+    for(let x=stride;x<field.w-stride;x+=stride){
+      const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
+      let cellBest=null;
+      for(const t of templates){const score=scoreAt(field,x,y,t.tpl);if(!cellBest||score>cellBest.score)cellBest={x,y,radius:t.radius,angle:t.angle,score}}
+      if(cellBest)pushTop(top,cellBest,120);
+    }
+    if(y%(stride*5)===0)await sleep(0);
+  }
+  if(!top.length)return null;
+  const seeds=[];
+  for(const item of top){
+    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(20,Math.min(item.radius,seed.radius)*.7))){
+      seeds.push(item);if(seeds.length>=COARSE_BEAM)break;
+    }
+  }
+  const hypotheses=[];
+  for(const seed of seeds){
+    const refineTop=[];
+    for(let y=seed.y-stride*1.5;y<=seed.y+stride*1.5;y+=2)for(let x=seed.x-stride*1.5;x<=seed.x+stride*1.5;x+=2){
+      const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
+      for(const rf of [.82,.91,1,1.09,1.18])for(const da of [-22.5,-15,-7.5,0,7.5,15,22.5]){
+        const radius=seed.radius*rf,angle=angleNorm(seed.angle+da),score=scoreAt(field,x,y,template(samples,radius,angle));pushTop(refineTop,{x,y,radius,angle,score},20);
+      }
+    }
+    const best=refineTop[0]||seed;hypotheses.push({...best,rawScore:seed.score});await sleep(0);
+  }
+  hypotheses.sort((a,b)=>b.score-a.score);
+  const best=hypotheses[0],dm=distinctMargin(hypotheses,best,Math.max(20,best.radius*.65));
+  return{...best,margin:dm.margin,atlas,hypotheses};
 }
 async function fineFieldAround(cfg,centerX,centerY,radius,search=120){
   const half=radius*1.18+search+40,minX=Math.floor((centerX-half)/256),maxX=Math.floor((centerX+half)/256),minY=Math.floor((centerY-half)/256),maxY=Math.floor((centerY+half)/256),grid=await loadTileGrid(cfg,FINE_Z,minX,minY,maxX,maxY);return{...grid,field:gradientField(grid.canvas),centerLocalX:centerX-grid.minX*256,centerLocalY:centerY-grid.minY*256};
@@ -350,6 +377,23 @@ async function fineMatch(samples,cfg,pred,search=120){
   for(let y=best.y-12;y<=best.y+12;y+=2)for(let x=best.x-12;x<=best.x+12;x+=2)for(const rf of [.94,.97,1,1.03,1.06])for(const da of [-5,-2.5,0,2.5,5]){const rr=best.radius*rf,aa=angleNorm(best.angle+da),score=scoreAt(fine.field,x,y,template(samples,rr,aa));pushTop(ref,{x,y,radius:rr,angle:aa,score},20)}
   if(ref.length)best=ref[0];const globalX=best.x+fine.minX*256,globalY=best.y+fine.minY*256;return{...best,globalX,globalY,margin:dm.margin,fieldGrid:fine,scaleFromCoarse:scale};
 }
+async function globalMatch(samples,cfg){
+  const coarseSearch=await coarseMatch(samples,cfg);if(!coarseSearch)return{coarse:null,fine:null};
+  const finals=[];
+  for(const hypothesis of (coarseSearch.hypotheses||[coarseSearch]).slice(0,COARSE_BEAM)){
+    if(hypothesis.score<coarseSearch.score-.14)continue;
+    const fine=await fineMatch(samples,cfg,{...hypothesis,atlas:coarseSearch.atlas},120);
+    if(fine)finals.push({fine,hypothesis});await sleep(0);
+  }
+  if(!finals.length)return{coarse:coarseSearch,fine:null};
+  finals.sort((a,b)=>b.fine.score-a.fine.score);
+  const winner=finals[0],second=finals.find(item=>Math.hypot(item.fine.globalX-winner.fine.globalX,item.fine.globalY-winner.fine.globalY)>=Math.max(96,winner.fine.radius*.35));
+  const beamMargin=second?winner.fine.score-second.fine.score:winner.fine.score;
+  const fine={...winner.fine,localMargin:winner.fine.margin,beamMargin,margin:Math.min(winner.fine.margin,beamMargin)};
+  const coarse={...winner.hypothesis,margin:coarseSearch.margin,atlas:coarseSearch.atlas,beamResolved:true};
+  return{coarse,fine,alternatives:finals.length};
+}
+
 async function localFineMatch(samples,cfg,last,search=160){
   const pred={x:last.globalX/last.scaleFromCoarse,y:last.globalY/last.scaleFromCoarse,radius:last.radius/last.scaleFromCoarse,angle:last.angle,atlas:{factor:last.scaleFromCoarse/(2**(FINE_Z-COARSE_Z))}};return fineMatch(samples,cfg,pred,search)
 }
@@ -359,15 +403,15 @@ function motionMatrixFor(match,cfg,roiSize,target){
   return[(j00*c+j01*s)*k,(-j00*s+j01*c)*k,(j10*c+j11*s)*k,(-j10*s+j11*c)*k];
 }
 function matchGate(coarse,fine,roiInfo,cfg){
-  if(!coarse)return'no-coarse-match';if(coarse.score<.38)return`coarse-score ${coarse.score.toFixed(3)}`;if(coarse.margin<.012)return`coarse-ambiguous ${coarse.margin.toFixed(3)}`;
+  if(!coarse)return'no-coarse-match';if(coarse.score<.38)return`coarse-score ${coarse.score.toFixed(3)}`;if(coarse.margin<.012&&!coarse.beamResolved)return`coarse-ambiguous ${coarse.margin.toFixed(3)}`;
   if(!fine)return'no-fine-match';if(fine.score<.50)return`fine-score ${fine.score.toFixed(3)}`;if(fine.margin<.018)return`fine-ambiguous ${fine.margin.toFixed(3)}`;if(roiInfo.texture<8)return`low-roi-texture ${roiInfo.texture.toFixed(1)}`;if(!cfg.geometryOk)return`geometry-residual p95=${cfg.p95.toFixed(6)}`;return'';
 }
 async function registerFrame(cfg,mapId){
-  const roiCanvas=VISION.captureRoi(192);if(!roiCanvas)return{reason:'capture-frame-unavailable'};const info=roiSamples(roiCanvas);if(info.samples.length<24)return{reason:`insufficient-features ${info.samples.length}`,info};
+  const roiCanvas=VISION.captureRoi(192);if(!roiCanvas)return{reason:'capture-frame-unavailable'};const info=roiSamples(roiCanvas);if((info.positiveCount??info.samples.length)<24)return{reason:`insufficient-features ${info.positiveCount??info.samples.length}`,info};
   let coarse=null,fine=null;
-  if(state.mode==='local'&&state.last){fine=await localFineMatch(info.samples,cfg,state.last,170);if(fine){coarse={score:state.coarseScore,margin:state.coarseMargin}}}
-  else if(state.mode==='confirm'&&state.pending?.match){fine=await localFineMatch(info.samples,cfg,state.pending.match,150);coarse={score:state.pending.coarseScore,margin:state.pending.coarseMargin}}
-  else{coarse=await coarseMatch(info.samples,cfg);if(coarse&&coarse.score>=.30)fine=await fineMatch(info.samples,cfg,coarse,130)}
+  if(state.mode==='local'&&state.last){fine=await localFineMatch(info.samples,cfg,state.last,170);if(fine){coarse={score:state.coarseScore,margin:state.coarseMargin,beamResolved:true}}}
+  else if(state.mode==='confirm'&&state.pending?.match){fine=await localFineMatch(info.samples,cfg,state.pending.match,150);coarse={score:state.pending.coarseScore,margin:state.pending.coarseMargin,beamResolved:true}}
+  else{const global=await globalMatch(info.samples,cfg);coarse=global.coarse;fine=global.fine}
   if(coarse){state.coarseScore=coarse.score;state.coarseMargin=coarse.margin||0}if(fine){state.fineScore=fine.score;state.fineMargin=fine.margin||0;state.angle=fine.angle;state.radius=fine.radius}
   const reason=matchGate(coarse,fine,info,cfg);if(reason)return{reason,coarse,fine,info};
   const target=pixelToGlobal(fine.globalX,fine.globalY,FINE_Z,cfg);if(!target||!inGlobalBounds(target)||!VISION.contains(target.lat,target.lng))return{reason:'target-out-of-map-bounds',coarse,fine,info};
@@ -395,7 +439,9 @@ async function tick(){
 }
 async function selfTest(){
   const cfg=MAPS[1],atlas=await coarseAtlas(cfg),candidates=[];for(let y=60;y<atlas.small.height-60;y+=20)for(let x=60;x<atlas.small.width-60;x+=20){const t=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(inGlobalBounds(t))candidates.push({x,y})}if(!candidates.length)return{ok:false,reason:'no-valid-center'};
-  const center=candidates[Math.floor(candidates.length/2)],radius=18,angle=37,fullX=center.x*atlas.factor,fullY=center.y*atlas.factor,k=radius*atlas.factor/96,c=document.createElement('canvas');c.width=192;c.height=192;const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='#111';ctx.fillRect(0,0,192,192);ctx.save();ctx.translate(96,96);ctx.rotate(-rad(angle));ctx.scale(1/k,1/k);ctx.translate(-fullX,-fullY);ctx.drawImage(atlas.full,0,0);ctx.restore();const info=roiSamples(c),match=await coarseMatch(info.samples,cfg);const error=match?Math.hypot(match.x-center.x,match.y-center.y):Infinity,rotationError=match?angleDiff(match.angle,angle):Infinity;return{ok:!!match&&error<=8&&rotationError<=25,error,rotationError,score:match?.score??-1,margin:match?.margin??0,expected:center,actual:match&&{x:match.x,y:match.y,radius:match.radius,angle:match.angle},features:info.samples.length};
+  const center=candidates[Math.floor(candidates.length/2)],radius=18,angle=37,fullX=center.x*atlas.factor,fullY=center.y*atlas.factor,k=radius*atlas.factor/96,c=document.createElement('canvas');c.width=192;c.height=192;const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='#111';ctx.fillRect(0,0,192,192);ctx.save();ctx.translate(96,96);ctx.rotate(-rad(angle));ctx.scale(1/k,1/k);ctx.translate(-fullX,-fullY);ctx.drawImage(atlas.full,0,0);ctx.restore();
+  const info=roiSamples(c),match=await globalMatch(info.samples,cfg),fine=match.fine,coarse=match.coarse,scale=fine?.scaleFromCoarse||1,actual=fine?{x:fine.globalX/scale,y:fine.globalY/scale,radius:fine.radius/scale,angle:fine.angle}:null,error=actual?Math.hypot(actual.x-center.x,actual.y-center.y):Infinity,rotationError=actual?angleDiff(actual.angle,angle):Infinity;
+  return{ok:!!actual&&error<=8&&rotationError<=25,error,rotationError,score:fine?.score??-1,margin:fine?.margin??0,localMargin:fine?.localMargin??0,beamMargin:fine?.beamMargin??0,coarseScore:coarse?.score??-1,coarseMargin:coarse?.margin??0,expected:center,actual,features:info.samples.length,positiveFeatures:info.positiveCount??0,negativeFeatures:info.negativeCount??0};
 }
 window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__=()=>({mode:state.mode,status:state.status,reason:state.reason,coarseScore:state.coarseScore,coarseMargin:state.coarseMargin,fineScore:state.fineScore,fineMargin:state.fineMargin,angle:state.angle,radius:state.radius,absolute:state.absolute,fixes:state.fixes,lastRunAt:state.lastRunAt,lastError:state.lastError,mapId:state.lastMapId,geometryEnabled:state.lastMapId?MAPS[state.lastMapId]?.geometryOk:null});
 window.__WWMSYNC_ABSOLUTE_SELFTEST__=selfTest;
