@@ -1,0 +1,103 @@
+name: Validate Vision Capture Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/validate-vision-integration.yml'
+      - 'vision-sync.js'
+
+permissions:
+  contents: read
+
+env:
+  PREVIEW_URL: https://preview.wwmsync.pages.dev
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wait for Vision bundle on preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
+              && grep -Fq '__WWMSYNC_VISION_BRIDGE__' /tmp/vision-sync.js \
+              && grep -Fq 'applyAbsoluteFix' /tmp/vision-sync.js; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 1
+
+      - name: Capture to absolute marker to optical flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/vision-integration.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          const base=process.env.PREVIEW_URL.replace(/\/$/,'');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--autoplay-policy=no-user-gesture-required']});
+            const page=await browser.newPage({viewport:{width:1440,height:900}});
+            const fatal=[];
+            page.on('pageerror',e=>fatal.push(`pageerror:${e.message}`));
+            await page.addInitScript(()=>{
+              const install=()=>{
+                if(!navigator.mediaDevices)return false;
+                Object.defineProperty(navigator.mediaDevices,'getDisplayMedia',{configurable:true,value:async()=>{
+                  const c=document.createElement('canvas');c.width=1280;c.height=720;
+                  const ctx=c.getContext('2d',{alpha:false});
+                  window.__WWM_TEST_DRAW__=(sx=0,sy=0)=>{
+                    ctx.fillStyle='#202020';ctx.fillRect(0,0,c.width,c.height);ctx.save();ctx.translate(sx,sy);
+                    for(let i=0;i<180;i++){
+                      const x=104+((i*47)%158),y=46+((i*73)%158),w=2+(i%7),h=2+((i*5)%6);
+                      ctx.fillStyle=i%4===0?'#f0f0f0':i%4===1?'#727272':i%4===2?'#c4c4c4':'#3a3a3a';ctx.fillRect(x,y,w,h);
+                    }
+                    ctx.strokeStyle='#ddd';ctx.lineWidth=2;
+                    for(let i=0;i<9;i++){ctx.beginPath();ctx.moveTo(108+i*16,52);ctx.lineTo(245-i*9,190);ctx.stroke()}
+                    ctx.restore();
+                  };
+                  window.__WWM_TEST_DRAW__(0,0);return c.captureStream(30);
+                }});return true;
+              };
+              if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});
+            });
+            const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
+            if(!response?.ok())fatal.push(`HTTP:${response?.status()}`);
+            await page.waitForFunction(()=>typeof window.__WWMSYNC_VISION_BRIDGE__==='object'&&!!document.querySelector('#visionStartButton'),null,{timeout:30000});
+            await page.click('#visionStartButton');
+            await page.waitForFunction(()=>window.__WWMSYNC_VISION_BRIDGE__.state().active===true,null,{timeout:15000});
+            const target=await page.evaluate(()=>{
+              for(let lat=.25;lat<=2.55;lat+=.25)for(let lng=-2.55;lng<=-.25;lng+=.25)if(window.__WWMSYNC_VISION_BRIDGE__.contains(lat,lng))return{lat,lng};return null;
+            });
+            if(!target)fatal.push('no-in-bounds-target');
+            const applied=target?await page.evaluate(t=>window.__WWMSYNC_VISION_BRIDGE__.applyAbsoluteFix({lat:t.lat,lng:t.lng,motionMatrix:[1,0,0,1],source:'synthetic-ci'}),target):null;
+            if(!applied?.ok)fatal.push(`apply:${JSON.stringify(applied)}`);
+            await page.waitForTimeout(650);
+            const anchored=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
+            if(anchored.absoluteFixes!==1)fatal.push(`absoluteFixes:${anchored.absoluteFixes}`);
+            if(anchored.accepted!==0)fatal.push(`fabricatedAccepted:${anchored.accepted}`);
+            if(anchored.motionCalibration!=='absolute-matrix')fatal.push(`calibration:${anchored.motionCalibration}`);
+            if(!anchored.markerLatLng)fatal.push('marker-missing');
+            await page.evaluate(()=>window.__WWM_TEST_DRAW__(2,1));
+            await page.waitForTimeout(900);
+            const moved=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
+            const markerDelta=Math.hypot(Number(moved.markerDeltaLat)||0,Number(moved.markerDeltaLng)||0);
+            const ui=await page.evaluate(()=>({raw:!!document.querySelector('#visionRawDelta'),corrected:!!document.querySelector('#visionCorrectedDelta'),cumulative:!!document.querySelector('#visionCumulative'),marker:!!document.querySelector('#visionMarkerDelta'),hold:!!document.querySelector('#visionHoldReason')}));
+            console.log('VISION_INTEGRATION',JSON.stringify({target,applied,anchored,moved,markerDelta,ui}));
+            if(!(moved.accepted>=1))fatal.push(`accepted:${moved.accepted}`);
+            if(!(markerDelta>0))fatal.push(`markerDelta:${markerDelta}`);
+            if(moved.motionCalibration!=='absolute-matrix')fatal.push(`calibrationLost:${moved.motionCalibration}`);
+            if(!Object.values(ui).every(Boolean))fatal.push(`diagnosticsUI:${JSON.stringify(ui)}`);
+            console.log('INTEGRATION_FATAL',JSON.stringify(fatal));
+            await browser.close();if(fatal.length)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/vision-integration.cjs
