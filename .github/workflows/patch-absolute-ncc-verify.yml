@@ -1,0 +1,90 @@
+name: Patch Absolute NCC Verification
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/patch-absolute-ncc-verify.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+
+      - name: Add normalized photometric verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('vision-sync.js')
+          s=p.read_text('utf8')
+
+          old='return{w,h,mag,cos2,sin2,p90};'
+          new='return{w,h,gray,mag,cos2,sin2,p90};'
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old="verify.push({nx,ny,strength:clamp(m/f.p90,0,1),c2:f.cos2[i],s2:f.sin2[i]})"
+          new="verify.push({nx,ny,gray:f.gray[i],strength:clamp(m/f.p90,0,1),c2:f.cos2[i],s2:f.sin2[i]})"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          start=s.index('function verifyAt(field,cx,cy,radius,angle,samples){')
+          end=s.index('async function globalMatch(',start)
+          verify='''function verifyAt(field,cx,cy,radius,angle,samples){
+            if(!samples?.length)return{structure:-1,ncc:-1};const a=rad(angle),c=Math.cos(a),sn=Math.sin(a),ca=Math.cos(2*a),sa=Math.sin(2*a);let sum=0,weight=0,covered=0,n=0,sumS=0,sumR=0,sumSS=0,sumRR=0,sumSR=0;
+            for(const p of samples){
+              const rx=p.nx*c-p.ny*sn,ry=p.nx*sn+p.ny*c,x=Math.round(cx+rx*radius),y=Math.round(cy+ry*radius);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;
+              const i=y*field.w+x,ref=clamp(field.mag[i]/field.p90,0,1),src=p.strength,strengthSimilarity=1-Math.min(1,Math.abs(ref-src)*1.25),rc2=p.c2*ca-p.s2*sa,rs2=p.s2*ca+p.c2*sa,orient=.5+.5*(field.cos2[i]*rc2+field.sin2[i]*rs2),joint=Math.min(ref,src),quiet=1-Math.max(ref,src),structure=joint*orient+quiet,w=.45+.55*Math.max(ref,src),sg=p.gray,rg=field.gray[i];
+              sum+=w*(.68*strengthSimilarity+.32*structure);weight+=w;covered++;n++;sumS+=sg;sumR+=rg;sumSS+=sg*sg;sumRR+=rg*rg;sumSR+=sg*rg;
+            }
+            if(covered<Math.ceil(samples.length*.82)||!weight||n<24)return{structure:-1,ncc:-1};
+            const num=n*sumSR-sumS*sumR,den=Math.sqrt(Math.max(1e-9,(n*sumSS-sumS*sumS)*(n*sumRR-sumR*sumR))),corr=clamp(num/den,-1,1);
+            return{structure:sum/weight,ncc:.5+.5*corr,corr};
+          }
+          '''
+          s=s[:start]+verify+s[end:]
+
+          old="if(fine){const verifyScore=verifyAt(fine.fieldGrid.field,fine.x,fine.y,fine.radius,fine.angle,info.verifySamples),combined=.38*fine.score+.62*verifyScore;finals.push({fine,hypothesis,verifyScore,combined})}await sleep(0);"
+          new="if(fine){const verification=verifyAt(fine.fieldGrid.field,fine.x,fine.y,fine.radius,fine.angle,info.verifySamples),verifyScore=verification.structure,nccScore=verification.ncc,combined=.20*fine.score+.35*verifyScore+.45*nccScore;finals.push({fine,hypothesis,verifyScore,nccScore,combined})}await sleep(0);"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old="verifyScore:winner.verifyScore,combinedScore:winner.combined,margin:Math.min(winner.fine.margin,verificationMargin)"
+          new="verifyScore:winner.verifyScore,nccScore:winner.nccScore,combinedScore:winner.combined,margin:Math.min(winner.fine.margin,verificationMargin)"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old="edgeScore:item.fine.score,verifyScore:item.verifyScore,combinedScore:item.combined"
+          new="edgeScore:item.fine.score,verifyScore:item.verifyScore,nccScore:item.nccScore,combinedScore:item.combined"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old="if(Number.isFinite(fine.verifyScore)&&fine.verifyScore<.56)return`verify-score ${fine.verifyScore.toFixed(3)}`;"
+          new="if(Number.isFinite(fine.verifyScore)&&fine.verifyScore<.56)return`verify-score ${fine.verifyScore.toFixed(3)}`;if(Number.isFinite(fine.nccScore)&&fine.nccScore<.52)return`ncc-score ${fine.nccScore.toFixed(3)}`;"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old="verifyScore:fine?.verifyScore??-1,combinedScore:fine?.combinedScore??-1"
+          new="verifyScore:fine?.verifyScore??-1,nccScore:fine?.nccScore??-1,combinedScore:fine?.combinedScore??-1"
+          assert old in s
+          s=s.replace(old,new,1)
+
+          p.write_text(s,'utf8')
+          PY
+          node --check vision-sync.js
+          grep -Fq 'nccScore' vision-sync.js
+          grep -Fq 'field.gray' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: rank absolute hypotheses with normalized image correlation'
+          git push origin HEAD:feature/wwm-native-sync-v2
