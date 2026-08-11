@@ -18,6 +18,8 @@ Primary evidence workflows/runs:
 - `register-public-map-atlases.yml` — run `31451171915`
 - `inspect-public-poi-schema.yml` — run `31451439295`
 - `fit-public-poi-geometry-v2.yml` — run `31451730408`
+- `validate-absolute-visual.yml` — run `31452337013`, final successful matcher job `93669682130`
+- `validate-vision-integration.yml` — run `31456116734`, job `93670126878`
 
 ## Shared world-planar -> Dashen transform
 
@@ -202,17 +204,19 @@ This is materially worse than the other regions. The prototype intentionally set
 
 Real browser GETs to `img.166.net` do not expose usable CORS headers for canvas pixel reads. The prototype therefore does not use `no-cors`, tainted canvases or a generic runtime proxy.
 
-`tools/build_dashen_visual_cache.py` prefetches a bounded fixed set of public z3/z5 tiles during the preview deploy and packages them under `/dashen-cache/`. `dashen-tile-cache.js` rewrites only the exact known Dashen raster URL forms to that same-origin static cache. Current deploy evidence built `404/404` tiles and browser smoke confirmed `canvas.getImageData()` succeeds on the rewritten tile.
+`tools/build_dashen_visual_cache.py` prefetches a bounded fixed set of public z3/z5 tiles during the preview deploy and packages them under `/dashen-cache/`. `dashen-tile-cache.js` rewrites only the exact known Dashen raster URL forms to that same-origin static cache. Current deploy evidence builds `404/404` tiles; browser smoke verifies the rewritten tile can be read by `canvas.getImageData()`.
 
-## Hybrid absolute-localization prototype
+## Hybrid absolute-localization implementation
 
 Current architecture:
 
 ```text
 screen-capture ROI
   -> annular terrain/edge descriptor (player-center excluded)
-  -> rotation/scale-aware Dashen raster registration
-  -> confidence + ambiguity gate
+  -> multi-scale + rotation-aware coarse Dashen raster search
+  -> normalized photometric NCC + edge ranking
+  -> z5 fine search + photometric reranking
+  -> structure/NCC/global-separation confidence gate
   -> Dashen planar absolute position
   -> verified Dashen->WWMSync affine bridge
   -> existing Leaflet player marker
@@ -221,10 +225,115 @@ screen-capture ROI
   -> periodic absolute re-registration to remove drift
 ```
 
-`vision-sync.js` exposes a confidence-gated absolute re-anchor through `window.__WWMSYNC_VISION_BRIDGE__.applyAbsoluteFix(...)`. Low-confidence registration never increments Motion `accepted` and never writes the marker. Manual anchor remains fallback. Existing visible Motion diagnostics remain intact.
+Implementation details in `vision-sync.js`:
 
-Synthetic browser validation deliberately exercises rotated/scaled raster registration. The first readable-tile run exposed a coarse false-positive rather than being waived; matcher discrimination was strengthened with low-gradient/negative-edge evidence in commit `0213f040dfac40dcec1e1bb13748ef01e9f46ca7` and must pass the same synthetic gate before the prototype is considered implementation-PASS.
+- ROI descriptor uses positive terrain/edge evidence plus negative/quiet-region evidence.
+- Coarse search preserves per-scale hypotheses and handles arbitrary minimap rotation.
+- Normalized grayscale photometric correlation is used at coarse, fine-rerank and final verification stages; the initial edge-only false positives were not accepted by lowering thresholds.
+- Global reacquisition uses a wider search; local periodic fixes use a smaller search window after lock.
+- A high-confidence candidate requires a second independent frame before `applyAbsoluteFix` may write the marker.
+- `applyAbsoluteFix` reuses the existing Vision marker and optical-flow state; it does not create a second player marker and does not fabricate a Motion `accepted` frame.
+- The absolute match derives a 2x2 motion matrix from registration scale/orientation and the current Leaflet projection. Optical flow uses that matrix between absolute fixes; the manual scale/orientation controls remain fallback and clear the auto matrix if the user changes them.
+- Low-confidence or out-of-bounds registrations HOLD without moving the marker.
+- Hexi HOLDs at the geometry gate by design.
+- Manual anchor remains fallback.
+- Existing visible Motion diagnostics remain intact: raw terrain dx/dy, corrected player dx/dy, cumulative displacement, marker delta, confidence and HOLD reason.
 
-## Acceptance rule
+## Final synthetic validation
 
-Do not claim real GFN/minimap E2E success from static or synthetic tests. Real E2E requires an actual captured WWM minimap/game-map frame sequence where accepted absolute fixes cause the Leaflet marker to move to the correct position and periodic fixes demonstrably correct optical-flow drift. Until then Motion diagnostics stay visible and manual anchor remains available.
+### Absolute registration + production gate
+
+`validate-absolute-visual.yml`, run `31452337013`, final job `93669682130`: **PASS**.
+
+The test generates a rotated/scaled ROI from the same public Dashen raster and then calls the production registration stack, including the actual runtime `matchGate`.
+
+Synthetic target:
+
+```text
+coarse center = (360, 240)
+radius = 18
+rotation = 37 degrees
+```
+
+Recovered result:
+
+```text
+position = (359.875, 239.875)
+position error = 0.1767766953 coarse px
+radius = 17.885592
+rotation = 37.5 degrees
+rotation error = 0.5 degrees
+NCC = 0.9625964830
+combined score = 0.7322161742
+global/beam separation margin = 0.1256810433
+gateReason = ""
+ok = true
+```
+
+The winning hypothesis is therefore not merely geometrically close; it also passes the same confidence gate used before a runtime absolute marker write.
+
+### Screen capture -> absolute anchor -> optical flow -> Leaflet marker
+
+A permanent validation workflow was added as `.github/workflows/validate-vision-integration.yml`.
+
+Run `31456116734`, job `93670126878`: **PASS**.
+
+The browser test replaces `getDisplayMedia` with a real `canvas.captureStream(30)` only inside the test page, then uses the normal UI/bridge path:
+
+```text
+Start Vision Sync
+  -> getDisplayMedia-compatible MediaStream
+  -> applyAbsoluteFix(..., motionMatrix=[1,0,0,1])
+  -> existing Leaflet player marker
+  -> shift captured terrain by (2,1) source px
+  -> ordinary Vision optical-flow sampling
+```
+
+Observed invariants:
+
+```text
+immediately after absolute fix:
+absoluteFixes = 1
+accepted = 0                 # no fabricated motion success
+motionCalibration = absolute-matrix
+marker = (0.25, -2.55)
+
+following shifted capture:
+raw terrain delta ~= (4.4775, 2.4483) work px
+corrected map delta ~= (-2.0149, -1.1017) map px
+cumulative ~= (-2.0149, -1.1017)
+accepted = 1
+marker = (0.2507564815, -2.5513835176)
+marker movement ~= 0.0015768276 Leaflet-coordinate units
+motionCalibration remains absolute-matrix
+Motion diagnostics UI remains present
+```
+
+This closes the browser/synthetic E2E propagation chain: an absolute fix can establish the existing marker and auto calibration, and subsequent optical flow can produce a real Leaflet marker delta. `accepted` does not increment merely because an absolute fix occurred.
+
+## Acceptance status
+
+### Implementation / preview architecture
+
+**PASS for synthetic/browser validation** for:
+
+- public Dashen geometry extraction;
+- tile pyramid and production raster resolution;
+- safe same-origin preview reference cache;
+- Dashen world-planar -> current WWMSync map bridge for Qinghe, Kaifeng and Kaifeng Palace;
+- scale/rotation-aware absolute raster registration;
+- runtime confidence gate;
+- absolute marker re-anchor;
+- auto 2x2 optical-flow calibration;
+- optical flow between absolute fixes;
+- marker movement propagation;
+- Motion diagnostics preservation;
+- manual-anchor fallback.
+
+### Deliberate limitations
+
+- **Hexi is not enabled for absolute marker writes** because its public POI bridge residual remains materially worse (`p95 ~= 0.00215184`).
+- **Real WWM / GeForce NOW gameplay E2E is not claimed from CI.** GitHub runners cannot supply an actual live WWM minimap/game-map capture. Final real-game acceptance still requires a captured gameplay sequence where the absolute position lands correctly and periodic fixes demonstrably correct drift while the player moves.
+- Until that real gameplay test passes, visible Motion diagnostics and manual anchor remain available exactly as requested.
+
+The implementation does not reopen DD/native IPC investigation and uses no process memory, injection, hooking or packet MITM.
