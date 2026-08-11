@@ -23,47 +23,21 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import base64
           from pathlib import Path
           p=Path('vision-sync.js')
           s=p.read_text('utf8')
-          old="""const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36;"""
-          new="""const CHECK_MS=6500,COARSE_Z=3,FINE_Z=5,ROI_N=72,SAMPLES=36,NEGATIVE_SAMPLES=20;"""
-          assert old in s
-          s=s.replace(old,new,1)
-
-          old="""function roiSamples(canvas){
-  const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;c.getContext('2d',{alpha:false}).drawImage(canvas,0,0,ROI_N,ROI_N);const f=gradientField(c),mid=(ROI_N-1)/2,candidates=[];
-  for(let y=2;y<ROI_N-2;y++)for(let x=2;x<ROI_N-2;x++){const nx=(x-mid)/(ROI_N/2),ny=(y-mid)/(ROI_N/2),rr=Math.hypot(nx,ny);if(rr<.20||rr>.78)continue;const i=y*ROI_N+x,m=f.mag[i];if(m<Math.max(5,f.p90*.42))continue;candidates.push({x,y,nx,ny,mag:m,theta:.5*Math.atan2(f.sin2[i],f.cos2[i])})}
-  candidates.sort((a,b)=>b.mag-a.mag);const picked=[];for(const s of candidates){if(picked.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>4)){picked.push(s);if(picked.length>=SAMPLES)break}}
-  const top=picked[0]?.mag||1;for(const s of picked)s.weight=clamp(s.mag/top,.25,1);return{samples:picked,texture:f.p90};
-}"""
-          new="""function roiSamples(canvas){
-  const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;c.getContext('2d',{alpha:false}).drawImage(canvas,0,0,ROI_N,ROI_N);const f=gradientField(c),mid=(ROI_N-1)/2,candidates=[],quiet=[];
-  for(let y=2;y<ROI_N-2;y++)for(let x=2;x<ROI_N-2;x++){const nx=(x-mid)/(ROI_N/2),ny=(y-mid)/(ROI_N/2),rr=Math.hypot(nx,ny);if(rr<.20||rr>.78)continue;const i=y*ROI_N+x,m=f.mag[i],theta=.5*Math.atan2(f.sin2[i],f.cos2[i]);if(m>=Math.max(5,f.p90*.42))candidates.push({x,y,nx,ny,mag:m,theta});else if(m<=Math.max(3,f.p90*.20))quiet.push({x,y,nx,ny,mag:m,theta,negative:true})}
-  candidates.sort((a,b)=>b.mag-a.mag);const picked=[];for(const s of candidates){if(picked.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>4)){picked.push(s);if(picked.length>=SAMPLES)break}}
-  const top=picked[0]?.mag||1;for(const s of picked)s.weight=clamp(s.mag/top,.25,1);
-  quiet.sort((a,b)=>a.mag-b.mag);const negative=[];for(const s of quiet){if(picked.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>3)&&negative.every(p=>Math.hypot(p.x-s.x,p.y-s.y)>5)){s.weight=.38;negative.push(s);if(negative.length>=NEGATIVE_SAMPLES)break}}
-  return{samples:picked.concat(negative),positiveCount:picked.length,negativeCount:negative.length,texture:f.p90};
-}"""
-          assert old in s
-          s=s.replace(old,new,1)
-
-          old="""function template(samples,radius,angle){
-  const a=rad(angle),c=Math.cos(a),s=Math.sin(a);return samples.map(p=>{const rx=p.nx*c-p.ny*s,ry=p.nx*s+p.ny*c,e=p.theta+a;return{dx:rx*radius,dy:ry*radius,c2:Math.cos(2*e),s2:Math.sin(2*e),weight:p.weight}})
-}
-function scoreAt(field,cx,cy,tpl){
-  let sum=0,weight=0,covered=0;for(const p of tpl){const x=Math.round(cx+p.dx),y=Math.round(cy+p.dy);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const i=y*field.w+x,strength=clamp(field.mag[i]/field.p90,0,1),align=.5+.5*(field.cos2[i]*p.c2+field.sin2[i]*p.s2);sum+=p.weight*strength*align;weight+=p.weight;covered++}
-  return covered>=Math.ceil(tpl.length*.82)&&weight?sum/weight:-1;
-}"""
-          new="""function template(samples,radius,angle){
-  const a=rad(angle),c=Math.cos(a),s=Math.sin(a);return samples.map(p=>{const rx=p.nx*c-p.ny*s,ry=p.nx*s+p.ny*c,e=p.theta+a;return{dx:rx*radius,dy:ry*radius,c2:Math.cos(2*e),s2:Math.sin(2*e),weight:p.weight,negative:!!p.negative}})
-}
-function scoreAt(field,cx,cy,tpl){
-  let sum=0,weight=0,covered=0;for(const p of tpl){const x=Math.round(cx+p.dx),y=Math.round(cy+p.dy);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const i=y*field.w+x,strength=clamp(field.mag[i]/field.p90,0,1);if(p.negative){sum+=p.weight*(1-strength);weight+=p.weight;covered++;continue}const align=.5+.5*(field.cos2[i]*p.c2+field.sin2[i]*p.s2);sum+=p.weight*strength*align;weight+=p.weight;covered++}
-  return covered>=Math.ceil(tpl.length*.82)&&weight?sum/weight:-1;
-}"""
-          assert old in s
-          s=s.replace(old,new,1)
+          pairs=[
+            ('Y29uc3QgQ0hFQ0tfTVM9NjUwMCxDT0FSU0VfWj0zLEZJTkVfWj01LFJPSV9OPTcyLFNBTVBMRVM9MzY7','Y29uc3QgQ0hFQ0tfTVM9NjUwMCxDT0FSU0VfWj0zLEZJTkVfWj01LFJPSV9OPTcyLFNBTVBMRVM9MzYsTkVHQVRJVkVfU0FNUExFUz0yMDs='),
+            ('ZnVuY3Rpb24gcm9pU2FtcGxlcyhjYW52YXMpewogIGNvbnN0IGM9ZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnY2FudmFzJyk7Yy53aWR0aD1ST0lfTjtjLmhlaWdodD1ST0lfTjtjLmdldENvbnRleHQoJzJkJyx7YWxwaGE6ZmFsc2V9KS5kcmF3SW1hZ2UoY2FudmFzLDAsMCxST0lfTixST0lfTik7Y29uc3QgZj1ncmFkaWVudEZpZWxkKGMpLG1pZD0oUk9JX04tMSkvMixjYW5kaWRhdGVzPVtdOwogIGZvcihsZXQgeT0yO3k8Uk9JX04tMjt5KyspZm9yKGxldCB4PTI7eDxST0lfTi0yO3grKyl7Y29uc3Qgbng9KHgtbWlkKS8oUk9JX04vMiksbnk9KHktbWlkKS8oUk9JX04vMikscnI9TWF0aC5oeXBvdChueCxueSk7aWYocnI8LjIwfHxycj4uNzgpY29udGludWU7Y29uc3QgaT15KlJPSV9OK3gsbT1mLm1hZ1tpXTtpZihtPE1hdGgubWF4KDUsZi5wOTAqLjQyKSljb250aW51ZTtjYW5kaWRhdGVzLnB1c2goe3gseSxueCxueSxtYWc6bSx0aGV0YTouNSpNYXRoLmF0YW4yKGYuc2luMltpXSxmLmNvczJbaV0pfSl9CiAgY2FuZGlkYXRlcy5zb3J0KChhLGIpPT5iLm1hZy1hLm1hZyk7Y29uc3QgcGlja2VkPVtdO2Zvcihjb25zdCBzIG9mIGNhbmRpZGF0ZXMpe2lmKHBpY2tlZC5ldmVyeShwPT5NYXRoLmh5cG90KHAueC1zLngscC55LXMueSk+NCkpe3BpY2tlZC5wdXNoKHMpO2lmKHBpY2tlZC5sZW5ndGg+PVNBTVBMRVMpYnJlYWt9fQogIGNvbnN0IHRvcD1waWNrZWRbMF0/Lm1hZ3x8MTtmb3IoY29uc3QgcyBvZiBwaWNrZWQpcy53ZWlnaHQ9Y2xhbXAocy5tYWcvdG9wLC4yNSwxKTtyZXR1cm57c2FtcGxlczpwaWNrZWQsdGV4dHVyZTpmLnA5MH07Cn0=','ZnVuY3Rpb24gcm9pU2FtcGxlcyhjYW52YXMpewogIGNvbnN0IGM9ZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnY2FudmFzJyk7Yy53aWR0aD1ST0lfTjtjLmhlaWdodD1ST0lfTjtjLmdldENvbnRleHQoJzJkJyx7YWxwaGE6ZmFsc2V9KS5kcmF3SW1hZ2UoY2FudmFzLDAsMCxST0lfTixST0lfTik7Y29uc3QgZj1ncmFkaWVudEZpZWxkKGMpLG1pZD0oUk9JX04tMSkvMixjYW5kaWRhdGVzPVtdLHF1aWV0PVtdOwogIGZvcihsZXQgeT0yO3k8Uk9JX04tMjt5KyspZm9yKGxldCB4PTI7eDxST0lfTi0yO3grKyl7Y29uc3Qgbng9KHgtbWlkKS8oUk9JX04vMiksbnk9KHktbWlkKS8oUk9JX04vMikscnI9TWF0aC5oeXBvdChueCxueSk7aWYocnI8LjIwfHxycj4uNzgpY29udGludWU7Y29uc3QgaT15KlJPSV9OK3gsbT1mLm1hZ1tpXSx0aGV0YT0uNSpNYXRoLmF0YW4yKGYuc2luMltpXSxmLmNvczJbaV0pO2lmKG0+PU1hdGgubWF4KDUsZi5wOTAqLjQyKSljYW5kaWRhdGVzLnB1c2goe3gseSxueCxueSxtYWc6bSx0aGV0YX0pO2Vsc2UgaWYobTw9TWF0aC5tYXgoMyxmLnA5MCouMjApKXF1aWV0LnB1c2goe3gseSxueCxueSxtYWc6bSx0aGV0YSxuZWdhdGl2ZTp0cnVlfSl9CiAgY2FuZGlkYXRlcy5zb3J0KChhLGIpPT5iLm1hZy1hLm1hZyk7Y29uc3QgcGlja2VkPVtdO2Zvcihjb25zdCBzIG9mIGNhbmRpZGF0ZXMpe2lmKHBpY2tlZC5ldmVyeShwPT5NYXRoLmh5cG90KHAueC1zLngscC55LXMueSk+NCkpe3BpY2tlZC5wdXNoKHMpO2lmKHBpY2tlZC5sZW5ndGg+PVNBTVBMRVMpYnJlYWt9fQogIGNvbnN0IHRvcD1waWNrZWRbMF0/Lm1hZ3x8MTtmb3IoY29uc3QgcyBvZiBwaWNrZWQpcy53ZWlnaHQ9Y2xhbXAocy5tYWcvdG9wLC4yNSwxKTsKICBxdWlldC5zb3J0KChhLGIpPT5hLm1hZy1iLm1hZyk7Y29uc3QgbmVnYXRpdmU9W107Zm9yKGNvbnN0IHMgb2YgcXVpZXQpe2lmKHBpY2tlZC5ldmVyeShwPT5NYXRoLmh5cG90KHAueC1zLngscC55LXMueSk+MykmJm5lZ2F0aXZlLmV2ZXJ5KHA9Pk1hdGguaHlwb3QocC54LXMueCxwLnktcy55KT41KSl7cy53ZWlnaHQ9LjM4O25lZ2F0aXZlLnB1c2gocyk7aWYobmVnYXRpdmUubGVuZ3RoPj1ORUdBVElWRV9TQU1QTEVTKWJyZWFrfX0KICByZXR1cm57c2FtcGxlczpwaWNrZWQuY29uY2F0KG5lZ2F0aXZlKSxwb3NpdGl2ZUNvdW50OnBpY2tlZC5sZW5ndGgsbmVnYXRpdmVDb3VudDpuZWdhdGl2ZS5sZW5ndGgsdGV4dHVyZTpmLnA5MH07Cn0='),
+            ('ZnVuY3Rpb24gdGVtcGxhdGUoc2FtcGxlcyxyYWRpdXMsYW5nbGUpewogIGNvbnN0IGE9cmFkKGFuZ2xlKSxjPU1hdGguY29zKGEpLHM9TWF0aC5zaW4oYSk7cmV0dXJuIHNhbXBsZXMubWFwKHA9Pntjb25zdCByeD1wLm54KmMtcC5ueSpzLHJ5PXAubngqcytwLm55KmMsZT1wLnRoZXRhK2E7cmV0dXJue2R4OnJ4KnJhZGl1cyxkeTpyeSpyYWRpdXMsYzI6TWF0aC5jb3MoMiplKSxzMjpNYXRoLnNpbigyKmUpLHdlaWdodDpwLndlaWdodH19KQp9CmZ1bmN0aW9uIHNjb3JlQXQoZmllbGQsY3gsY3ksdHBsKXsKICBsZXQgc3VtPTAsd2VpZ2h0PTAsY292ZXJlZD0wO2Zvcihjb25zdCBwIG9mIHRwbCl7Y29uc3QgeD1NYXRoLnJvdW5kKGN4K3AuZHgpLHk9TWF0aC5yb3VuZChjeStwLmR5KTtpZih4PDF8fHk8MXx8eD49ZmllbGQudy0xfHx5Pj1maWVsZC5oLTEpY29udGludWU7Y29uc3QgaT15KmZpZWxkLncreCxzdHJlbmd0aD1jbGFtcChmaWVsZC5tYWdbaV0vZmllbGQucDkwLDAsMSksYWxpZ249LjUrLjUqKGZpZWxkLmNvczJbaV0qcC5jMitmaWVsZC5zaW4yW2ldKnAuczIpO3N1bSs9cC53ZWlnaHQqc3RyZW5ndGgqYWxpZ247d2VpZ2h0Kz1wLndlaWdodDtjb3ZlcmVkKyt9CiAgcmV0dXJuIGNvdmVyZWQ+PU1hdGguY2VpbCh0cGwubGVuZ3RoKi44MikmJndlaWdodD9zdW0vd2VpZ2h0Oi0xOwp9','ZnVuY3Rpb24gdGVtcGxhdGUoc2FtcGxlcyxyYWRpdXMsYW5nbGUpewogIGNvbnN0IGE9cmFkKGFuZ2xlKSxjPU1hdGguY29zKGEpLHM9TWF0aC5zaW4oYSk7cmV0dXJuIHNhbXBsZXMubWFwKHA9Pntjb25zdCByeD1wLm54KmMtcC5ueSpzLHJ5PXAubngqcytwLm55KmMsZT1wLnRoZXRhK2E7cmV0dXJue2R4OnJ4KnJhZGl1cyxkeTpyeSpyYWRpdXMsYzI6TWF0aC5jb3MoMiplKSxzMjpNYXRoLnNpbigyKmUpLHdlaWdodDpwLndlaWdodCxuZWdhdGl2ZTohIXAubmVnYXRpdmV9fSkKfQpmdW5jdGlvbiBzY29yZUF0KGZpZWxkLGN4LGN5LHRwbCl7CiAgbGV0IHN1bT0wLHdlaWdodD0wLGNvdmVyZWQ9MDtmb3IoY29uc3QgcCBvZiB0cGwpe2NvbnN0IHg9TWF0aC5yb3VuZChjeCtwLmR4KSx5PU1hdGgucm91bmQoY3krcC5keSk7aWYoeDwxfHx5PDF8fHg+PWZpZWxkLnctMXx8eT49ZmllbGQuaC0xKWNvbnRpbnVlO2NvbnN0IGk9eSpmaWVsZC53K3gsc3RyZW5ndGg9Y2xhbXAoZmllbGQubWFnW2ldL2ZpZWxkLnA5MCwwLDEpO2lmKHAubmVnYXRpdmUpe3N1bSs9cC53ZWlnaHQqKDEtc3RyZW5ndGgpO3dlaWdodCs9cC53ZWlnaHQ7Y292ZXJlZCsrO2NvbnRpbnVlfWNvbnN0IGFsaWduPS41Ky41KihmaWVsZC5jb3MyW2ldKnAuYzIrZmllbGQuc2luMltpXSpwLnMyKTtzdW0rPXAud2VpZ2h0KnN0cmVuZ3RoKmFsaWduO3dlaWdodCs9cC53ZWlnaHQ7Y292ZXJlZCsrfQogIHJldHVybiBjb3ZlcmVkPj1NYXRoLmNlaWwodHBsLmxlbmd0aCouODIpJiZ3ZWlnaHQ/c3VtL3dlaWdodDotMTsKfQ==')
+          ]
+          for old64,new64 in pairs:
+            old=base64.b64decode(old64).decode('utf8')
+            new=base64.b64decode(new64).decode('utf8')
+            if old not in s:
+              raise SystemExit('expected matcher block not found')
+            s=s.replace(old,new,1)
           p.write_text(s,'utf8')
           PY
           node --check vision-sync.js
