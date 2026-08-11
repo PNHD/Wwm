@@ -1,0 +1,101 @@
+name: Fit Public POI Geometry Bridge v2
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/fit-public-poi-geometry-v2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Install fitter dependency
+        run: python -m pip install --disable-pip-version-check --quiet numpy
+
+      - name: Fetch public catalogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p poi-geometry/global
+          UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          for spec in 'map12|["1","2"]' 'map3|["3"]' 'map4|["4"]'; do
+            zone="${spec%%|*}"; subs="${spec#*|}"
+            curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+              -H 'Content-Type: application/json;charset=UTF-8' \
+              -o "poi-geometry/dashen-${zone}.json" \
+              --data "{\"mapId\":\"676d48a37d299d0811946ff1\",\"subTypes\":${subs},\"mapZone\":\"${zone}\"}" \
+              'https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          done
+          for id in 1 2 3 4; do
+            curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+              -o "poi-geometry/global/map-${id}-zh.json" \
+              "https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=${id}&lang=zh-CN"
+          done
+
+      - name: Exact Chinese-name fit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          import numpy as np
+          ROOT=Path('poi-geometry')
+          SUBTYPE_FOR_GLOBAL={1:'1',2:'1',3:'2',4:'4'}
+          dash=[]
+          for file in [ROOT/'dashen-map12.json',ROOT/'dashen-map3.json',ROOT/'dashen-map4.json']:
+            for d in json.loads(file.read_text('utf8')).get('result',[]):
+              try: dash.append({'id':str(d['pointId']),'name':str(d['name']).strip(),'x':float(d['x']),'y':float(d['y']),'subtype':str(d.get('mapSubType',''))})
+              except (KeyError,TypeError,ValueError): pass
+          def global_points(j):
+            out=[]
+            for parent in j.get('data',{}).get('categories',[]):
+              for cat in parent.get('childCategories',[]): out.extend(cat.get('pointList',[]))
+            return out
+          def gc(v): return int(str(v),8)/1e5
+          result={'maps':{}}
+          for mapid in range(1,5):
+            gp=[]
+            for p in global_points(json.loads((ROOT/'global'/f'map-{mapid}-zh.json').read_text('utf8'))):
+              try: gp.append({'id':str(p['id']),'name':str(p['name']).strip(),'lng':gc(p['lng']),'lat':gc(p['lat'])})
+              except (KeyError,TypeError,ValueError): pass
+            di=defaultdict(list); gi=defaultdict(list)
+            for p in dash:
+              if p['subtype']==SUBTYPE_FOR_GLOBAL[mapid] and p['name']: di[p['name']].append(p)
+            for p in gp:
+              if p['name']: gi[p['name']].append(p)
+            pairs=[]
+            for n in sorted(set(di)&set(gi)):
+              if len(di[n])==1 and len(gi[n])==1: pairs.append((di[n][0],gi[n][0]))
+            rec={'dashenSubtype':SUBTYPE_FOR_GLOBAL[mapid],'uniqueExactNamePairs':len(pairs)}
+            if len(pairs)>=6:
+              X=np.array([[d['x'],d['y'],1.] for d,g in pairs]); Y=np.array([[g['lng'],g['lat']] for d,g in pairs])
+              keep=np.ones(len(pairs),dtype=bool)
+              for _ in range(8):
+                B=np.linalg.lstsq(X[keep],Y[keep],rcond=None)[0]
+                err=np.linalg.norm(X@B-Y,axis=1); base=err[keep]
+                med=float(np.median(base)); mad=float(np.median(np.abs(base-med)))
+                limit=max(5e-5,med+6*1.4826*max(mad,1e-9)); nk=err<=limit
+                if nk.sum()<6 or np.array_equal(nk,keep): break
+                keep=nk
+              B=np.linalg.lstsq(X[keep],Y[keep],rcond=None)[0]; err=np.linalg.norm(X@B-Y,axis=1); ie=err[keep]
+              rec.update({'matrixRawXY1ToGlobalLngLat':B.tolist(),'inliers':int(keep.sum()),'outliers':int((~keep).sum()),'medianError':float(np.median(ie)),'p95Error':float(np.percentile(ie,95)),'maxInlierError':float(ie.max()),'allPairMaxError':float(err.max()),'sampleInliers':[{'name':d['name'],'dashenId':d['id'],'globalId':g['id'],'error':float(e)} for (d,g),e,k in zip(pairs,err,keep) if k][:20]})
+            result['maps'][str(mapid)]=rec
+          (ROOT/'fit.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
+          print(json.dumps(result,ensure_ascii=False,indent=2)[:30000])
+          if any(v.get('inliers',0)<6 for v in result['maps'].values()): raise SystemExit('insufficient exact public POI correspondences')
+          PY
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-poi-geometry-v2
+          path: poi-geometry
+          retention-days: 5
