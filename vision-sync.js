@@ -349,13 +349,13 @@ async function coarseMatch(samples,cfg){
   const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);
   if(!top.length)return null;
   const seeds=[];
-  const perRadius=new Map();
-  for(const item of top){
-    const used=perRadius.get(item.radius) || 0;if(used>=4)continue;
-    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,Math.min(item.radius,seed.radius)*.6)||Math.abs(Math.log(item.radius/seed.radius))>=.18)){
-      seeds.push(item);perRadius.set(item.radius,used+1);if(seeds.length>=24)break;
+  for(const r of radii){
+    const bucket=topByRadius.get(r)||[],chosen=[];
+    for(const item of bucket){
+      if(chosen.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,r*.6))){chosen.push(item);seeds.push(item);if(chosen.length>=4)break}
     }
   }
+  seeds.sort((a,b)=>b.score-a.score);
   const hypotheses=[];
   for(const seed of seeds){
     const refineTop=[];
@@ -397,7 +397,6 @@ async function globalMatch(info,cfg){
   const samples=info.samples,coarseSearch=await coarseMatch(samples,cfg);if(!coarseSearch)return{coarse:null,fine:null};
   const finals=[];
   for(const hypothesis of (coarseSearch.hypotheses||[coarseSearch]).slice(0,COARSE_BEAM)){
-    if(hypothesis.score<coarseSearch.score-.16)continue;
     const fine=await fineMatch(samples,cfg,{...hypothesis,atlas:coarseSearch.atlas},220,12);
     if(fine){const verification=verifyAt(fine.fieldGrid.field,fine.x,fine.y,fine.radius,fine.angle,info.verifySamples),verifyScore=verification.structure,nccScore=verification.ncc,combined=.20*fine.score+.35*verifyScore+.45*nccScore;finals.push({fine,hypothesis,verifyScore,nccScore,combined})}await sleep(0);
   }
