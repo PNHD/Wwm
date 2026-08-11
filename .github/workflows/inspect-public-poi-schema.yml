@@ -1,0 +1,87 @@
+name: Inspect Public POI Schemas
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/inspect-public-poi-schema.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Fetch public catalogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p poi-schema/global
+          UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          for spec in \
+            'map12|["1","2"]' \
+            'map3|["3"]' \
+            'map4|["4"]'; do
+            zone="${spec%%|*}"; subs="${spec#*|}"
+            curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+              -H 'Content-Type: application/json;charset=UTF-8' \
+              -o "poi-schema/dashen-${zone}.json" \
+              --data "{\"mapId\":\"676d48a37d299d0811946ff1\",\"subTypes\":${subs},\"mapZone\":\"${zone}\"}" \
+              'https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          done
+          for id in 1 2 3 4; do
+            curl -L -sS --compressed --connect-timeout 5 --max-time 25 -A "$UA" \
+              -H 'Accept-Language: en-US' \
+              -o "poi-schema/global/map-${id}.json" \
+              "https://s2.easebar.com/39f12eda6b86452b/api/map/points?mapId=${id}&lang=en-US"
+          done
+
+      - name: Print coordinate-bearing records
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ROOT=Path('poi-schema')
+          def walk(v,path='root'):
+            if isinstance(v,dict):
+              yield path,v
+              for k,x in v.items(): yield from walk(x,f'{path}.{k}')
+            elif isinstance(v,list):
+              for i,x in enumerate(v): yield from walk(x,f'{path}[{i}]')
+
+          def interesting(d):
+            keys={str(k).lower() for k in d}
+            coord=any(k in keys for k in ['x','y','z','lat','lng','posx','posy','pointx','pointy','worldx','worldy','worldz','position'])
+            ident=any(k in keys for k in ['id','pointid','markerid','name','pointname','title'])
+            return coord and ident
+
+          report={'dashen':{},'global':{}}
+          for f in sorted(ROOT.glob('dashen-*.json')):
+            j=json.loads(f.read_text('utf8'))
+            rows=[]
+            for path,d in walk(j):
+              if interesting(d): rows.append({'path':path,'record':d})
+              if len(rows)>=25: break
+            report['dashen'][f.name]={'bytes':f.stat().st_size,'top':list(j) if isinstance(j,dict) else [],'samples':rows}
+          for f in sorted((ROOT/'global').glob('*.json')):
+            j=json.loads(f.read_text('utf8'))
+            rows=[]
+            for path,d in walk(j):
+              if interesting(d): rows.append({'path':path,'record':d})
+              if len(rows)>=15: break
+            report['global'][f.name]={'bytes':f.stat().st_size,'top':list(j) if isinstance(j,dict) else [],'samples':rows}
+          (ROOT/'schema.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),'utf8')
+          print(json.dumps(report,ensure_ascii=False,indent=2)[:60000])
+          PY
+
+      - name: Upload schema evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-poi-schema
+          path: poi-schema
+          retention-days: 5
