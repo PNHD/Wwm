@@ -42,6 +42,25 @@ jobs:
           set -euxo pipefail
           python3 tools/forensics/netease_dd_resolver.py
 
+      - name: Preserve targeted YanYun resource for deeper static analysis
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          target='dd-forensic/extracted/root/100129/ccvoicehub.res'
+          out='dd-forensic/report/targeted'
+          mkdir -p "$out"
+          if [ -f "$target" ]; then
+            cp "$target" "$out/ccvoicehub.res"
+            sha256sum "$target" > "$out/ccvoicehub.sha256.txt"
+            file "$target" > "$out/ccvoicehub.file.txt" || true
+            xxd -l 512 "$target" > "$out/ccvoicehub.head.hex.txt" || true
+            7z l "$target" > "$out/ccvoicehub.7z-list.txt" 2>&1 || true
+            strings -a -n 4 "$target" > "$out/ccvoicehub.strings-ascii.txt" || true
+            strings -el -n 4 "$target" > "$out/ccvoicehub.strings-utf16le.txt" || true
+            grep -Ein -C 12 'YanYun|yanyun|QLocalServer|QLocalSocket|WM_COPYDATA|127\.0\.0\.1|localhost|WebSocket|wss://|ws://|position|coordinate|coords|map[_-]?id|scene[_-]?id|ocr|game.?process|pipe|ipc|remote.?cmd' "$out/ccvoicehub.strings-ascii.txt" > "$out/ccvoicehub.focus.txt" || true
+          fi
+
       - name: Print decisive evidence in job log
         if: always()
         shell: bash
@@ -92,8 +111,12 @@ jobs:
           if [ -f dd-forensic/report/hits.tsv ]; then
             grep -Ei 'Where Winds Meet|wherewindsmeet|燕云十六声|Yanyun|yysl|127\.0\.0\.1|localhost|ws://|wss://|WebSocket|pipe|QLocal|ipcRenderer|contextBridge|cefQuery|webview|position|coordinate|coords|map[_-]?id|scene[_-]?id' dd-forensic/report/hits.tsv | head -n 300 || true
           fi
+          echo '===== YANYUN TARGET HEADER ====='
+          cat dd-forensic/report/targeted/ccvoicehub.file.txt 2>/dev/null || true
+          cat dd-forensic/report/targeted/ccvoicehub.sha256.txt 2>/dev/null || true
+          cat dd-forensic/report/targeted/ccvoicehub.head.hex.txt 2>/dev/null || true
 
-      - name: Upload forensic reports only
+      - name: Upload forensic reports and targeted static resource
         if: always()
         uses: actions/upload-artifact@v4
         with:
