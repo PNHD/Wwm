@@ -14,19 +14,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Probe current WWMSync official raster tile
+      - name: Probe Dashen production raster tile
         shell: bash
         run: |
           set -euo pipefail
-          url='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/data/map/qinghe/en/8/128_129.jpg'
+          url='https://img.166.net/canonical/h72/tilemap/v15.0/8/128_128.png?imageView&v=1'
           curl -L -sS --compressed --connect-timeout 5 --max-time 15 \
             -A 'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36' \
-            -D /tmp/tile.headers -o /tmp/tile.jpg "$url"
+            -D /tmp/tile.headers -o /tmp/tile.png "$url"
           echo '--- headers ---'
           cat /tmp/tile.headers
           echo '--- file ---'
-          file /tmp/tile.jpg
-          test -s /tmp/tile.jpg
+          file /tmp/tile.png
+          test -s /tmp/tile.png
           grep -iE '^access-control-allow-origin:' /tmp/tile.headers || true
 
       - name: Upload probe evidence
@@ -35,5 +35,5 @@ jobs:
           name: visual-tile-cors
           path: |
             /tmp/tile.headers
-            /tmp/tile.jpg
+            /tmp/tile.png
           retention-days: 2
