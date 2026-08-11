@@ -1,0 +1,27 @@
+name: Patch Absolute Scale Quota
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: [.github/workflows/patch-scale-quota.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+      - name: Enforce per-radius coarse quota
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "from pathlib import Path; p=Path('vision-sync.js'); s=p.read_text(); old='''  const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);\n  if(!top.length)return null;\n  const seeds=[];\n  const perRadius=new Map();\n  for(const item of top){\n    const used=perRadius.get(item.radius) || 0;if(used>=4)continue;\n    if(seeds.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,Math.min(item.radius,seed.radius)*.6)||Math.abs(Math.log(item.radius/seed.radius))>=.18)){\n      seeds.push(item);perRadius.set(item.radius,used+1);if(seeds.length>=24)break;\n    }\n  }\n'''; new='''  const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);\n  if(!top.length)return null;\n  const seeds=[];\n  for(const r of radii){\n    const bucket=topByRadius.get(r)||[],chosen=[];\n    for(const item of bucket){\n      if(chosen.every(seed=>Math.hypot(item.x-seed.x,item.y-seed.y)>=Math.max(18,r*.6))){chosen.push(item);seeds.push(item);if(chosen.length>=4)break}\n    }\n  }\n  seeds.sort((a,b)=>b.score-a.score);\n'''; assert old in s; s=s.replace(old,new,1); s=s.replace('    if(hypothesis.score<coarseSearch.score-.16)continue;\n','',1); p.write_text(s)"
+          node --check vision-sync.js
+          grep -Fq 'for(const r of radii)' vision-sync.js
+          ! grep -Fq 'hypothesis.score<coarseSearch.score-.16' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: enforce per-scale coarse hypothesis quota'
+          git push origin HEAD:feature/wwm-native-sync-v2
