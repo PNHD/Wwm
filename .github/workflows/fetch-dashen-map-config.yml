@@ -1,0 +1,49 @@
+name: Fetch Dashen Public Map Config
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/fetch-dashen-map-config.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch public map display config
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dashen-config
+          curl -L -sS --compressed --connect-timeout 5 --max-time 15 \
+            -A 'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36' \
+            -H 'Content-Type: application/json;charset=UTF-8' \
+            -o dashen-config/config.json \
+            --data '{"id":"6764d83bbd3f414f635443a5"}' \
+            'https://inf-act.ds.163.com/v1/act-web/pageConf/commonAppConfig'
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('dashen-config/config.json')
+          j=json.loads(p.read_text('utf8'))
+          def walk(v,path='root'):
+            if isinstance(v,dict):
+              for k,x in v.items(): walk(x,f'{path}.{k}')
+            elif isinstance(v,list):
+              for i,x in enumerate(v): walk(x,f'{path}[{i}]')
+            elif isinstance(v,str) and ('{z}' in v or '{x}' in v or '{y}' in v or '地图信息' in v):
+              print(path, v)
+          walk(j)
+          print('bytes',p.stat().st_size)
+          PY
+
+      - name: Upload config evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashen-public-map-config
+          path: dashen-config/config.json
+          retention-days: 3
