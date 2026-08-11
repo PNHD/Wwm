@@ -348,7 +348,7 @@ async function coarseMatch(samples,cfg){
   }
   const top=[...topByRadius.values()].flat().sort((a,b)=>b.score-a.score);
   if(!top.length)return null;
-  const seebs=[];
+  const seeds=[];
   const perRadius=new Map();
   for(const item of top){
     const used=perRadius.get(item.radius) || 0;if(used>=4)continue;
