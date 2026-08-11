@@ -331,7 +331,13 @@ function scoreAt(field,cx,cy,tpl){
 }
 function pushTop(top,item,limit=28){if(item.score<0)return;top.push(item);top.sort((a,b)=>b.score-a.score);if(top.length>limit)top.length=limit}
 function distinctMargin(top,best,minDistance){const second=top.find(x=>x!==best&&Math.hypot(x.x-best.x,x.y-best.y)>=minDistance);return{second,margin:second?best.score-second.score:best.score}}
-async function coarseMatch(samples,cfg){
+function coarseNccAt(field,cx,cy,radius,angle,samples){
+  if(!samples?.length)return-1;const a=rad(angle),c=Math.cos(a),sn=Math.sin(a);let n=0,sumS=0,sumR=0,sumSS=0,sumRR=0,sumSR=0;
+  for(let k=0;k<samples.length;k+=5){const q=samples[k],rx=q.nx*c-q.ny*sn,ry=q.nx*sn+q.ny*c,x=Math.round(cx+rx*radius),y=Math.round(cy+ry*radius);if(x<1||y<1||x>=field.w-1||y>=field.h-1)continue;const sg=q.gray,rg=field.gray[y*field.w+x];n++;sumS+=sg;sumR+=rg;sumSS+=sg*sg;sumRR+=rg*rg;sumSR+=sg*rg}
+  if(n<60)return-1;const den=Math.sqrt(Math.max(1e-9,(n*sumSS-sumS*sumS)*(n*sumRR-sumR*sumR)));if(den<=1e-8)return-1;return .5+.5*clamp((n*sumSR-sumS*sumR)/den,-1,1);
+}
+async function coarseMatch(info,cfg){
+  const samples=info.samples,photoSamples=info.verifySamples;
   const atlas=await coarseAtlas(cfg),field=atlas.field,stride=cfg.width===32768?8:5,radii=cfg.width===32768?[6,9,13,18,25,34]:[5,8,12,17,24],angles=[0,45,90,135,180,225,270,315],templates=[];
   for(const r of radii)for(const a of angles)templates.push({radius:r,angle:a,tpl:template(samples,r,a)});
   const topByRadius=new Map(radii.map(r=>[r,[]]));
@@ -340,8 +346,8 @@ async function coarseMatch(samples,cfg){
       const target=pixelToGlobal(x*atlas.factor,y*atlas.factor,COARSE_Z,cfg);if(!inGlobalBounds(target))continue;
       for(const r of radii){
         let scaleBest=null;
-        for(const t of templates){if(t.radius!==r)continue;const score=scoreAt(field,x,y,t.tpl);if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score}}
-        if(scaleBest)pushTop(topByRadius.get(r),scaleBest,48);
+        for(const t of templates){if(t.radius!==r)continue;const edgeScore=scoreAt(field,x,y,t.tpl);if(edgeScore<0)continue;const nccScore=coarseNccAt(field,x,y,t.radius,t.angle,photoSamples);if(nccScore<0)continue;const score=.32*edgeScore+.68*nccScore;if(!scaleBest||score>scaleBest.score)scaleBest={x,y,radius:t.radius,angle:t.angle,score,edgeScore,nccScore}}
+        if(scaleBest)pushTop(topByRadius.get(r),scaleBest,64);
       }
     }
     if(y%(stride*5)===0)await sleep(0);
@@ -394,7 +400,7 @@ function verifyAt(field,cx,cy,radius,angle,samples){
   return{structure:sum/weight,ncc:.5+.5*corr,corr};
 }
 async function globalMatch(info,cfg){
-  const samples=info.samples,coarseSearch=await coarseMatch(samples,cfg);if(!coarseSearch)return{coarse:null,fine:null};
+  const samples=info.samples,coarseSearch=await coarseMatch(info,cfg);if(!coarseSearch)return{coarse:null,fine:null};
   const finals=[];
   for(const hypothesis of (coarseSearch.hypotheses||[coarseSearch]).slice(0,COARSE_BEAM)){
     const fine=await fineMatch(samples,cfg,{...hypothesis,atlas:coarseSearch.atlas},220,12);
@@ -405,7 +411,7 @@ async function globalMatch(info,cfg){
   const winner=finals[0],second=finals.find(item=>Math.hypot(item.fine.globalX-winner.fine.globalX,item.fine.globalY-winner.fine.globalY)>=Math.max(96,winner.fine.radius*.35)),verificationMargin=second?winner.combined-second.combined:winner.combined;
   const fine={...winner.fine,localMargin:winner.fine.margin,beamMargin:verificationMargin,verificationMargin,verifyScore:winner.verifyScore,nccScore:winner.nccScore,combinedScore:winner.combined,margin:Math.min(winner.fine.margin,verificationMargin)};
   const coarse={...winner.hypothesis,margin:coarseSearch.margin,atlas:coarseSearch.atlas,beamResolved:true};
-  return{coarse,fine,alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,angle:item.fine.angle,edgeScore:item.fine.score,verifyScore:item.verifyScore,nccScore:item.nccScore,combinedScore:item.combined}))};
+  return{coarse,fine,alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,radius:item.fine.radius/item.fine.scaleFromCoarse,coarseRadius:item.hypothesis.radius,angle:item.fine.angle,edgeScore:item.fine.score,verifyScore:item.verifyScore,nccScore:item.nccScore,combinedScore:item.combined}))};
 }
 async function localFineMatch(samples,cfg,last,search=160){
   const pred={x:last.globalX/last.scaleFromCoarse,y:last.globalY/last.scaleFromCoarse,radius:last.radius/last.scaleFromCoarse,angle:last.angle,atlas:{factor:last.scaleFromCoarse/(2**(FINE_Z-COARSE_Z))}};return fineMatch(samples,cfg,pred,search)
