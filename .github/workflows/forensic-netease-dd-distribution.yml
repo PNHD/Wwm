@@ -29,10 +29,12 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y p7zip-full innoextract cabextract binutils file
+          sudo apt-get install -y p7zip-full innoextract cabextract binutils file unzip python3-pip
+          python3 -m pip install --disable-pip-version-check --break-system-packages xdis
           python3 --version
           7z | head -n 3 || true
           innoextract --version || true
+          pydisasm --version || true
           node --version || true
           npx --version || true
 
@@ -42,7 +44,7 @@ jobs:
           set -euxo pipefail
           python3 tools/forensics/netease_dd_resolver.py
 
-      - name: Preserve targeted YanYun resource for deeper static analysis
+      - name: Preserve and disassemble targeted YanYun resource
         if: always()
         shell: bash
         run: |
@@ -59,6 +61,39 @@ jobs:
             strings -a -n 4 "$target" > "$out/ccvoicehub.strings-ascii.txt" || true
             strings -el -n 4 "$target" > "$out/ccvoicehub.strings-utf16le.txt" || true
             grep -Ein -C 12 'YanYun|yanyun|QLocalServer|QLocalSocket|WM_COPYDATA|127\.0\.0\.1|localhost|WebSocket|wss://|ws://|position|coordinate|coords|map[_-]?id|scene[_-]?id|ocr|game.?process|pipe|ipc|remote.?cmd' "$out/ccvoicehub.strings-ascii.txt" > "$out/ccvoicehub.focus.txt" || true
+
+            extracted="$out/ccvoicehub-extracted"
+            disasm="$out/disasm"
+            mkdir -p "$extracted" "$disasm"
+            unzip -q -o "$target" -d "$extracted" || true
+
+            while IFS= read -r -d '' f; do
+              rel="${f#${extracted}/}"
+              safe="${rel//\//__}"
+              pydisasm "$f" > "$disasm/${safe}.txt" 2>&1 || true
+            done < <(
+              find "$extracted/components/yanyun" -type f -name '*.pyc' -print0 2>/dev/null
+            )
+
+            for rel in \
+              components/net_server/messagecenter.pyc \
+              components/net_server/protocol_v2.pyc \
+              util/ipc/local_server.pyc \
+              util/ipc/ipc_server.pyc \
+              web/common/web_interface_base_depends.pyc \
+              web/web_widget_factory.pyc \
+              components/game_box/game_box_controller.pyc \
+              components/class_helper/voice_live_interface.pyc \
+              datacenter/constants/basic_constants.pyc
+            do
+              f="$extracted/$rel"
+              if [ -f "$f" ]; then
+                safe="${rel//\//__}"
+                pydisasm "$f" > "$disasm/${safe}.txt" 2>&1 || true
+              fi
+            done
+
+            grep -RniE -C 10 'ReadTargetMemory|getMapData|sendMapPos2Web|WEB_DF_CallWebEvent|eventName|eventParams|YanYunProtocols|CID_BC|CID|SID|sendJson2server|addJsonHandler|QLocalServer|QLocalSocket|127\.0\.0\.1|localhost|WebSocket|listen|serverName|pipe|ipc|roleId|map_pos|x[^A-Za-z0-9_].*y[^A-Za-z0-9_].*z' "$disasm" > "$out/yanyun-disasm.focus.txt" || true
           fi
 
       - name: Print decisive evidence in job log
@@ -115,6 +150,8 @@ jobs:
           cat dd-forensic/report/targeted/ccvoicehub.file.txt 2>/dev/null || true
           cat dd-forensic/report/targeted/ccvoicehub.sha256.txt 2>/dev/null || true
           cat dd-forensic/report/targeted/ccvoicehub.head.hex.txt 2>/dev/null || true
+          echo '===== YANYUN DISASSEMBLY FOCUS ====='
+          head -n 1200 dd-forensic/report/targeted/yanyun-disasm.focus.txt 2>/dev/null || true
 
       - name: Upload forensic reports and targeted static resource
         if: always()
