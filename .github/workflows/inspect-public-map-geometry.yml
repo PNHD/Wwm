@@ -69,6 +69,61 @@ jobs:
           if any(r['http']!='200' for r in out): raise SystemExit(2)
           PY
 
+      - name: Resolve public map-info tile config
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L -sS --compressed --connect-timeout 5 --max-time 15 \
+            -A 'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36' \
+            -H 'Content-Type: application/json;charset=UTF-8' \
+            -D public-map-geometry/map-info.headers \
+            -o public-map-geometry/map-info.json \
+            --data '{"appKey":"h72"}' \
+            'https://inf.ds.163.com/v1/web/game-map/map-info/get'
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          p=Path('public-map-geometry/map-info.json')
+          raw=p.read_text('utf8',errors='ignore')
+          print('MAP_INFO_BYTES',p.stat().st_size)
+          try:
+            j=json.loads(raw)
+            print(json.dumps(j,ensure_ascii=False,indent=2)[:24000])
+            urls=[]
+            def walk(v):
+              if isinstance(v,dict):
+                for x in v.values(): walk(x)
+              elif isinstance(v,list):
+                for x in v: walk(x)
+              elif isinstance(v,str) and ('{z}' in v or '/map/' in v or 'imageView' in v):
+                urls.append(v)
+            walk(j)
+            Path('public-map-geometry/tile-urls.txt').write_text('\n'.join(dict.fromkeys(urls)),'utf8')
+          except Exception:
+            print(raw[:24000])
+            raise
+          PY
+
+      - name: Probe sample public tile headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          urls=[x.strip() for x in Path('public-map-geometry/tile-urls.txt').read_text('utf8').splitlines() if x.strip()]
+          lines=[]
+          for i,tpl in enumerate(urls[:12]):
+            u=tpl.replace('{z}','3').replace('{x}','0').replace('{y}','0')
+            lines.append(f'{i}\t{u}')
+          Path('public-map-geometry/sample-tiles.txt').write_text('\n'.join(lines),'utf8')
+          PY
+          while IFS=$'\t' read -r i url; do
+            [ -n "$url" ] || continue
+            curl -L -sS --compressed --connect-timeout 4 --max-time 10 -I \
+              -A 'Mozilla/5.0 AppleWebKit/537.36 Chrome/131 Safari/537.36' \
+              "$url" > "public-map-geometry/tile-${i}.headers" || true
+          done < public-map-geometry/sample-tiles.txt
+
       - name: Upload geometry evidence
         uses: actions/upload-artifact@v4
         with:
