@@ -1,0 +1,78 @@
+name: Validate Absolute Visual Matcher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/validate-absolute-visual.yml'
+      - 'vision-sync.js'
+
+permissions:
+  contents: read
+
+env:
+  PREVIEW_URL: https://preview.wwmsync.pages.dev
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wait for absolute bundle on preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
+              && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
+              && grep -Fq 'dashen-registration' /tmp/vision-sync.js; then
+              echo 'Absolute bundle is live on preview.'
+              exit 0
+            fi
+            sleep 3
+          done
+          echo 'Preview did not surface the absolute bundle.' >&2
+          exit 1
+
+      - name: Run browser synthetic registration self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME_PATH"
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          cat > /tmp/absolute-smoke.cjs <<'NODE'
+          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
+          const base=process.env.PREVIEW_URL.replace(/\/$/,'');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:1440,height:900}});
+            const fatal=[];
+            page.on('pageerror',e=>fatal.push(`pageerror: ${e.message}`));
+            page.on('console',m=>{if(m.type()==='error')console.log('BROWSER_ERROR',m.text())});
+            const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
+            if(!response?.ok())fatal.push(`HTTP ${response?.status()}`);
+            await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__==='function'&&typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__==='function',null,{timeout:30000});
+            const api=await page.evaluate(()=>({
+              selftest:typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__,
+              diagnostics:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,
+              bridge:typeof window.__WWMSYNC_VISION_BRIDGE__,
+              box:!!document.querySelector('#visionAbsoluteDiagnostics'),
+              motionBox:!!document.querySelector('#visionRawDelta')&&!!document.querySelector('#visionMarkerDelta')
+            }));
+            if(api.selftest!=='function'||api.diagnostics!=='function'||api.bridge!=='object'||!api.box||!api.motionBox)fatal.push(`api=${JSON.stringify(api)}`);
+            const result=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_SELFTEST__());
+            console.log('ABSOLUTE_SELFTEST',JSON.stringify(result));
+            if(!result?.ok)fatal.push(`selftest=${JSON.stringify(result)}`);
+            if(!(result.features>=24))fatal.push(`features=${result.features}`);
+            if(!(result.error<=8))fatal.push(`position error=${result.error}`);
+            if(!(result.rotationError<=25))fatal.push(`rotation error=${result.rotationError}`);
+            const diag=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__());
+            console.log('ABSOLUTE_DIAGNOSTICS',JSON.stringify(diag));
+            console.log('FATAL',JSON.stringify(fatal));
+            await browser.close();
+            if(fatal.length)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          CHROME_PATH="$CHROME_PATH" node /tmp/absolute-smoke.cjs
