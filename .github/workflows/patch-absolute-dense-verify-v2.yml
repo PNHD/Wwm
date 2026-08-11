@@ -1,0 +1,53 @@
+name: Patch Absolute Dense Verification v2
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/patch-absolute-dense-verify-v2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+
+      - name: Execute dense patch with tolerant base64 padding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow=Path('.github/workflows/patch-absolute-dense-verify.yml').read_text('utf8')
+          lines=workflow.splitlines()
+          start=next(i for i,line in enumerate(lines) if line.strip()=="python - <<'PY'")
+          end=next(i for i,line in enumerate(lines[start+1:],start+1) if line.strip()=='PY')
+          code=textwrap.dedent('\n'.join(lines[start+1:end]))
+          shim="""import base64
+          _wwm_real_b64decode=base64.b64decode
+          def _wwm_padded_b64decode(value,*args,**kwargs):
+              if isinstance(value,str):
+                  value=value + '=' * (-len(value) % 4)
+              return _wwm_real_b64decode(value,*args,**kwargs)
+          base64.b64decode=_wwm_padded_b64decode
+          """
+          code=code.replace('import base64\n',textwrap.dedent(shim),1)
+          exec(compile(code,'dense-verifier-patch','exec'),{})
+          PY
+          node --check vision-sync.js
+          grep -Fq 'COARSE_BEAM=8' vision-sync.js
+          grep -Fq 'verifySamples' vision-sync.js
+          grep -Fq 'verifyAt' vision-sync.js
+          git config user.name 'WWMSync CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'fix: verify absolute hypotheses with dense structure'
+          git push origin HEAD:feature/wwm-native-sync-v2
