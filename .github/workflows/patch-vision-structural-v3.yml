@@ -1,4 +1,4 @@
-name: Patch Vision Structural V4 Retry
+name: Patch Vision Structural V5
 
 on:
   push:
@@ -19,16 +19,14 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Fix patch syntax and patch matcher V4
-        run: |
-          python tools/fix_patch_v4_syntax.py
-          python tools/patch_vision_structural_v4.py
+      - name: Patch matcher V5
+        run: python tools/patch_vision_structural_v5.py
       - name: Validate JavaScript
         run: |
           node --check vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V4' vision-sync.js
-          grep -Fq 'bidirectionalContourScore' vision-sync.js
-          grep -Fq 'structuralPhaseScore' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V5' vision-sync.js
+          grep -Fq 'structuralPhaseScoreFast' vision-sync.js
+          grep -Fq 'global structural phase' vision-sync.js
       - name: Commit feature-only matcher patch
         run: |
           git config user.name 'github-actions[bot]'
@@ -38,5 +36,5 @@ jobs:
             echo 'No matcher changes needed.'
             exit 0
           fi
-          git commit -m 'fix: use bidirectional structural registration'
+          git commit -m 'fix: generate global candidates from structural phase'
           git push origin HEAD:feature/wwm-native-sync-v2
