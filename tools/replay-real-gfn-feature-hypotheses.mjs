@@ -10,7 +10,7 @@ const siteDir = path.resolve(arg('--site') || 'replay-site');
 const fixtureDir = path.resolve(arg('--fixture') || 'real-fixture');
 const candidatesPath = path.resolve(arg('--candidates') || 'replay-output/wwmsync-real-gfn-feature-hypotheses.json');
 const reportPath = path.resolve(arg('--report') || 'replay-output/wwmsync-real-gfn-feature-hypotheses-sequence.json');
-const TOP_K = Math.max(3, Math.min(24, Number(arg('--top-k')) || 12));
+const TOP_K = Math.max(3, Math.min(64, Number(arg('--top-k')) || 12));
 
 const parseJson = p => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''));
 const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
