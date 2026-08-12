@@ -8,7 +8,9 @@ on:
       - 'tools/build_dashen_visual_cache.py'
       - 'tools/instrument-real-gfn-production-replay.mjs'
       - 'tools/instrument-real-gfn-candidate-diagnostics.mjs'
+      - 'tools/instrument-real-gfn-invariant-index.mjs'
       - 'tools/replay-real-gfn-temporal-mosaic.mjs'
+      - 'tools/replay-real-gfn-invariant-index.mjs'
       - '.github/workflows/diagnose-real-gfn-temporal-mosaic.yml'
   workflow_dispatch:
     inputs:
@@ -38,7 +40,9 @@ jobs:
           node --check vision-sync.js
           node --check tools/instrument-real-gfn-production-replay.mjs
           node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/instrument-real-gfn-invariant-index.mjs
           node --check tools/replay-real-gfn-temporal-mosaic.mjs
+          node --check tools/replay-real-gfn-invariant-index.mjs
           python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
@@ -55,6 +59,7 @@ jobs:
           test -s replay-site/dashen-cache/main/5/20_15.png
           node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
           node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-invariant-index.mjs replay-site/vision-sync.js
           node --check replay-site/vision-sync.js
           cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'expected replay-only instrumentation but copy is unchanged' >&2; exit 1; } || true
           git diff --exit-code -- vision-sync.js
@@ -184,12 +189,28 @@ jobs:
             --visual-dir replay-output/temporal-mosaic-visuals \
             --top-k 8
           test -s replay-output/wwmsync-real-gfn-temporal-mosaic.json
+          test -s replay-output/temporal-mosaic-visuals/40-frames-combinedStructural.png
 
-      - name: Show temporal mosaic summary
+      - name: Run invariant structural candidate-recall diagnostics
+        if: steps.fixture.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          node tools/replay-real-gfn-invariant-index.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --observation replay-output/temporal-mosaic-visuals/40-frames-combinedStructural.png \
+            --report replay-output/wwmsync-real-gfn-invariant-index.json \
+            --top-k 8
+          test -s replay-output/wwmsync-real-gfn-invariant-index.json
+
+      - name: Show temporal mosaic and invariant-index summary
         if: always() && steps.fixture.outputs.available == 'true'
         run: |
           set -euo pipefail
+          echo '=== TEMPORAL MOSAIC ==='
           jq '{trueCandidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,realGfnFixtureAcceptance,liveTestingJustified,flowIntegration,crossObservationBasinStability,hardNegativeCalibration:{bestSequenceScore:.hardNegativeCalibration.bestSequenceScore,maxHardNegativeSequenceScore:.hardNegativeCalibration.maxHardNegativeSequenceScore,positiveSequenceSeparation:.hardNegativeCalibration.positiveSequenceSeparation},coverage40:(.observations[]|select(.frameCount==40)|.coverage),topKEvolution:[.topKEvolution[]|{frameCount,sequenceRanked:[.sequenceRanked[]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,region:.candidate.region,angle:.candidate.angle,scale:.candidate.scale,structure:.candidate.scaleScore,topology:.candidate.topology,positiveEdgeF1:.candidate.positiveEdgeScore,quietSpace:.candidate.negativeQuietScore,polarity:.candidate.terrainPolarity,ncc:.candidate.intensityNcc,combined:.candidate.combinedScore,margin:.candidate.beamMargin,sequenceScore,samePhysicalBasinStable:.consistency.samePhysicalBasinStable,endpointDisplacementError:.consistency.endpointDisplacementError,directionCosine:.consistency.meanDirectionCosine}]}]}' replay-output/wwmsync-real-gfn-temporal-mosaic.json
+          echo '=== INVARIANT INDEX ==='
+          jq '{candidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,realGfnFixtureAcceptance,liveTestingJustified,invariantIndex,coarseTop:[.coarseTop[:12][]],refinedTopK,hardNegativeSeparation,sequenceRankedTopK:[.sequenceRankedTopK[]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,angle:.candidate.angle,radius:.candidate.radius,invariantScore:.candidate.invariantScore,structure:.candidate.structure,topology:.candidate.topology,positiveEdgeF1:.candidate.positiveEdgeF1,quietSpace:.candidate.quietSpace,polarity:.candidate.polarity,ncc:.candidate.ncc,combined:.candidate.combined,sequenceScore,samePhysicalBasinStable:.consistency.samePhysicalBasinStable,directionCosine:.consistency.meanDirectionCosine,endpointError:.consistency.endpointDisplacementError,endpointErrorRatio:.consistency.endpointErrorRatio,angleMaxDelta:.consistency.angleStability.maxDeltaFromStartDeg,scaleMaxRelativeDelta:.consistency.scaleStability.maxRelativeDeltaFromStart}]}' replay-output/wwmsync-real-gfn-invariant-index.json
 
       - name: Upload durable temporal mosaic evidence
         if: always()
