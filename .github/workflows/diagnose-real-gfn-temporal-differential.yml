@@ -1,0 +1,125 @@
+name: Diagnose Real GFN Temporal Differential
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'tools/build_dashen_visual_cache.py'
+      - 'tools/replay-real-gfn-temporal-differential.py'
+      - '.github/workflows/diagnose-real-gfn-temporal-differential.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  FIXTURE_RELEASE_ASSET_ID: '511291145'
+  DINO_SEQUENCE_ARTIFACT_ID: '9139382335'
+  DINO_SEQUENCE_ARTIFACT_SHA256: 363958b8264b57bbb00907e261e8fb3bcefca39da0cc74ee853be2d3a8b7f9cf
+  JOINT_ARTIFACT_ID: '9139567861'
+  JOINT_ARTIFACT_SHA256: 1c4acfb5914e14c901a78e311bf6ff68effbc5bfc2110036585bbe0bca8e0c52
+
+jobs:
+  temporal-differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate replay-only differential tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          python -m py_compile tools/build_dashen_visual_cache.py tools/replay-real-gfn-temporal-differential.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Build exact z5 atlas cache
+        run: |
+          set -euo pipefail
+          rm -rf replay-site replay-output real-fixture prior-dino prior-joint
+          mkdir -p replay-site replay-output real-fixture prior-dino prior-joint
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          git diff --exit-code -- vision-sync.js
+
+      - name: Resolve exact real GFN fixture
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_RELEASE_ASSET_ID" > "$target"
+          actual="$(sha256sum "$target" | awk '{print $1}')"
+          test "$actual" = "$FIXTURE_SHA256"
+          unzip -q "$target" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          test -n "$capture_path"
+          fixture_dir="$(dirname "$capture_path")"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg sha "$FIXTURE_SHA256" --arg source "release_asset:$FIXTURE_RELEASE_ASSET_ID" '{fixture:$fixture,sha256:$sha,status:"AVAILABLE",source:$source}' > replay-output/fixture-resolution.json
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse pinned DINO recurrence evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dino-sequence.zip"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$DINO_SEQUENCE_ARTIFACT_ID/zip" > "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$DINO_SEQUENCE_ARTIFACT_SHA256"
+          unzip -q "$archive" -d prior-dino
+          test -s prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses.json
+          test -s prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json
+
+      - name: Reuse pinned joint-flow evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/joint-flow.zip"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$JOINT_ARTIFACT_ID/zip" > "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$JOINT_ARTIFACT_SHA256"
+          unzip -q "$archive" -d prior-joint
+          test -s prior-joint/wwmsync-real-gfn-joint-flow-pose.json
+
+      - name: Install temporal correspondence dependency
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input 'opencv-python-headless>=4.10,<5' >/dev/null
+
+      - name: Evaluate temporal differential correspondence
+        run: |
+          set -euo pipefail
+          python tools/replay-real-gfn-temporal-differential.py \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --dino-candidates prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses.json \
+            --dino-sequence prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json \
+            --joint prior-joint/wwmsync-real-gfn-joint-flow-pose.json \
+            --report replay-output/wwmsync-real-gfn-temporal-differential.json
+          test -s replay-output/wwmsync-real-gfn-temporal-differential.json
+
+      - name: Show temporal differential evidence summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if test -s replay-output/wwmsync-real-gfn-temporal-differential.json; then
+            jq '{temporalDifferentialVerdict,productChangeJustified,liveTestingJustified,acceptance,hardNegativeSeparation,fixedRejectedSeparation,best:(.best|if .==null then null else {source,seedRank,dinoRank,pose,flow:.flow.metrics,reverse:.reverse.metrics,orthogonal:.orthogonal.metrics,static:.static.metrics,motionControlMargin,staticMargin,pairWinsVsMotionControls,earlyMetrics,lateMetrics} end),fixedRejectedCandidates:[.fixedRejectedCandidates[]|{name,pose,flow:.flow.metrics,reverse:.reverse.metrics,orthogonal:.orthogonal.metrics}],finals:[.finals[]|{source,seedRank,dinoRank,pose,flowObjective:.flow.metrics.objective,motionControlMargin,pairWinsVsMotionControls}]}' replay-output/wwmsync-real-gfn-temporal-differential.json
+          fi
+
+      - name: Upload durable temporal differential evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-real-gfn-temporal-differential-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
