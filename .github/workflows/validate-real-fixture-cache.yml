@@ -27,7 +27,8 @@ jobs:
           node --check vision-sync.js
           node --check tools/replay-real-capture.mjs
           python -m py_compile tools/build_dashen_visual_cache.py
-          grep -Fq 'REAL_FIXTURE_V1_DIRECT' vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V2_DUAL_MOTION' vision-sync.js
+          grep -Fq 'dual-source-agnostic' vision-sync.js
       - name: Build offline replay site
         run: |
           set -euo pipefail
