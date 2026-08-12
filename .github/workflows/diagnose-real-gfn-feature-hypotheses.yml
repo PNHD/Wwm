@@ -1,0 +1,143 @@
+name: Diagnose Real GFN Local Feature Hypotheses
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'tools/build_dashen_visual_cache.py'
+      - 'tools/instrument-real-gfn-production-replay.mjs'
+      - 'tools/instrument-real-gfn-candidate-diagnostics.mjs'
+      - 'tools/replay-real-gfn-temporal-mosaic.mjs'
+      - 'tools/replay-real-gfn-feature-hypotheses.py'
+      - 'tools/replay-real-gfn-feature-hypotheses.mjs'
+      - '.github/workflows/diagnose-real-gfn-feature-hypotheses.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  FIXTURE_RELEASE_ASSET_ID: '511291145'
+
+jobs:
+  local-feature-hypotheses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate replay-only local-feature tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/instrument-real-gfn-production-replay.mjs
+          node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/replay-real-gfn-temporal-mosaic.mjs
+          node --check tools/replay-real-gfn-feature-hypotheses.mjs
+          python -m py_compile tools/build_dashen_visual_cache.py tools/replay-real-gfn-feature-hypotheses.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Build replay-only diagnostic site
+        run: |
+          set -euo pipefail
+          rm -rf replay-site replay-output real-fixture
+          mkdir -p replay-site replay-output real-fixture
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/3/0_0.png
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node --check replay-site/vision-sync.js
+          cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'expected replay-only instrumentation but copy is unchanged' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js
+
+      - name: Resolve exact real GFN fixture from pinned release asset
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_RELEASE_ASSET_ID" > "$target"
+          actual="$(sha256sum "$target" | awk '{print $1}')"
+          test "$actual" = "$FIXTURE_SHA256"
+          unzip -q "$target" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          test -n "$capture_path"
+          fixture_dir="$(dirname "$capture_path")"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg sha "$FIXTURE_SHA256" --arg source "release_asset:$FIXTURE_RELEASE_ASSET_ID" '{fixture:$fixture,sha256:$sha,status:"AVAILABLE",source:$source}' > replay-output/fixture-resolution.json
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Install replay dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input 'opencv-python-headless>=4.10,<5' >/dev/null
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Build exact 40-frame temporal observation
+        run: |
+          set -euo pipefail
+          node tools/replay-real-gfn-temporal-mosaic.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --report replay-output/wwmsync-real-gfn-temporal-mosaic.json \
+            --visual-dir replay-output/temporal-mosaic-visuals \
+            --top-k 3
+          test -s replay-output/temporal-mosaic-visuals/40-frames-robustLuminance.png
+          test -s replay-output/temporal-mosaic-visuals/40-frames-gradientMagnitude.png
+          test -s replay-output/temporal-mosaic-visuals/40-frames-combinedStructural.png
+
+      - name: Generate global hypotheses from local invariant correspondences
+        run: |
+          set -euo pipefail
+          python tools/replay-real-gfn-feature-hypotheses.py \
+            --site replay-site \
+            --observation replay-output/temporal-mosaic-visuals/40-frames-robustLuminance.png \
+            --observation replay-output/temporal-mosaic-visuals/40-frames-gradientMagnitude.png \
+            --observation replay-output/temporal-mosaic-visuals/40-frames-combinedStructural.png \
+            --report replay-output/wwmsync-real-gfn-feature-hypotheses.json \
+            --top-k 24
+          test -s replay-output/wwmsync-real-gfn-feature-hypotheses.json
+
+      - name: Validate hypotheses against the real 40-frame trajectory
+        run: |
+          set -euo pipefail
+          node tools/replay-real-gfn-feature-hypotheses.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --candidates replay-output/wwmsync-real-gfn-feature-hypotheses.json \
+            --report replay-output/wwmsync-real-gfn-feature-hypotheses-sequence.json \
+            --top-k 12
+          test -s replay-output/wwmsync-real-gfn-feature-hypotheses-sequence.json
+
+      - name: Show local-feature hypothesis summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo '=== GENERATOR ==='
+          if test -s replay-output/wwmsync-real-gfn-feature-hypotheses.json; then
+            jq '{candidateGenerationVerdict,candidateCountBeforeDedupe,candidateCount:(.candidates|length),top:[.candidates[:12][]|{rank,method,queryName,queryVariant,atlasVariant,queryScale,x,y,radius,scale,angle,inlierCount,clusterVoteCount,inlierRatio,medianReprojectionError,queryCoverage,medianDescriptorRatio,generatorScore}]}' replay-output/wwmsync-real-gfn-feature-hypotheses.json
+          fi
+          echo '=== SEQUENCE ==='
+          if test -s replay-output/wwmsync-real-gfn-feature-hypotheses-sequence.json; then
+            jq '{candidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,liveTestingJustified,stableCandidateCount,hardNegativeSeparation,bestStableCandidate:(.bestStableCandidate|if .==null then null else {rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,method:.candidate.method,generatorScore:.candidate.generatorScore,sequenceScore,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio,angleMaxDelta:.consistency.angleStability.maxDeltaFromStartDeg,scaleMaxRelativeDelta:.consistency.scaleStability.maxRelativeDeltaFromStart} end),top:[.sequenceRankedTopK[:12][]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,method:.candidate.method,generatorScore:.candidate.generatorScore,sequenceScore,stable:.consistency.samePhysicalBasinStable,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio}]}' replay-output/wwmsync-real-gfn-feature-hypotheses-sequence.json
+          fi
+
+      - name: Upload durable local-feature evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-real-gfn-local-feature-hypotheses-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
