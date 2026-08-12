@@ -1,0 +1,103 @@
+name: Recover WWMSync East Cross Public Video Control
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/recover_east_cross_public_video.py'
+      - '.github/workflows/recover-east-cross-public-video.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  STRUCTURAL_GATE: '0.58'
+
+jobs:
+  recover-public-video-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install retrieval and inspection dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          python -m pip install --disable-pip-version-check --quiet 'yt-dlp[default,curl-cffi]' opencv-python-headless numpy
+          python -m yt_dlp --version
+          ffmpeg -version | head -1
+
+      - name: Freeze production and resolve independent East Cross ground truth
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/recover_east_cross_public_video.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          rm -rf east-cross-public-output east-cross-public-work
+          mkdir -p east-cross-public-output east-cross-public-work
+          python - <<'PY'
+          import hashlib, json, urllib.request
+          from pathlib import Path
+          url='https://inf.ds.163.com/v1/web/game-map/point/list-by-sub-types'
+          body=json.dumps({'mapId':'676d48a37d299d0811946ff1','subTypes':['1','2'],'mapZone':'map12'},ensure_ascii=False).encode()
+          req=urllib.request.Request(url,data=body,headers={'User-Agent':'Mozilla/5.0','Accept':'*/*','Content-Type':'application/json;charset=UTF-8'})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              raw=r.read(20_000_000); status=r.status; ctype=r.headers.get('Content-Type','')
+          payload=json.loads(raw.decode('utf-8','replace'))
+          found=[]
+          def walk(v):
+              if isinstance(v,dict):
+                  if v.get('pointId')=='20212' and v.get('name')=='东十字街': found.append(v)
+                  for x in v.values(): walk(x)
+              elif isinstance(v,list):
+                  for x in v: walk(x)
+          walk(payload)
+          assert len(found)==1, f'exact East Cross point count={len(found)}'
+          p=found[0]
+          assert p.get('layer')=='0' and p.get('mapSubType')=='1', p
+          x=float(p['x']); y=float(p['y'])
+          assert abs(x-(-107.941))<1e-9 and abs(y-(-1227.2615))<1e-9, (x,y)
+          f=(256/19456)*(1024/1008)
+          z5=[(-x+12095.6875)*f*32,(y+12095.6875)*f*32]
+          assert abs(z5[0]-5219.931321637427)<1e-9 and abs(z5[1]-4648.817136173768)<1e-9, z5
+          out=Path('east-cross-public-output')
+          (out/'dashen-points.raw.json').write_bytes(raw)
+          gt={
+            'schema':'wwmsync-east-cross-independent-ground-truth-v1',
+            'target':'East Cross Street Boundary Stone',
+            'dashenApi':{'url':url,'httpStatus':status,'contentType':ctype,'rawBytes':len(raw),'rawSha256':hashlib.sha256(raw).hexdigest(),'query':{'mapId':'676d48a37d299d0811946ff1','subTypes':['1','2'],'mapZone':'map12'}},
+            'point':{'pointId':p['pointId'],'name':p['name'],'layer':p['layer'],'mapSubType':p['mapSubType'],'mapZone':p.get('mapZone'),'world':[x,y],'dashenZ5':z5},
+            'matcherUsedForGroundTruth':False,
+            'priorAuditRawApiSha256':'22f614f1101b78f818bd02ef24a28dd23f93bd98067212bf5866cd358eb76b6e'
+          }
+          (out/'east-cross-ground-truth.json').write_text(json.dumps(gt,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(gt,ensure_ascii=False,indent=2))
+          PY
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Attempt both exact BustinNutz public video leads and generate review sheets
+        run: |
+          set -euo pipefail
+          python tools/recover_east_cross_public_video.py \
+            --out-dir east-cross-public-output \
+            --work-dir east-cross-public-work \
+            --sample-step 20
+          test -s east-cross-public-output/east-cross-public-video-recovery.json
+          jq '{classification,retrievedCount,scope,videos:[.videos[]|{id,expectedTitle,url,indexedEmbed,resolvedMetadata,retrieved,attempts:[.attempts[]|{method,sourceUrl,exitCode,mediaFile,mediaBytes}],subtitleKeywordHits,sampling,indexedEmbedEvidence}]}' east-cross-public-output/east-cross-public-video-recovery.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Upload East Cross public video recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-east-cross-public-video-${{ github.run_id }}
+          path: east-cross-public-output/
+          if-no-files-found: error
+          retention-days: 30
