@@ -32,8 +32,8 @@ jobs:
           python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'getDisplayMedia' vision-sync.js
           grep -Fq 'ANCHOR_FREE_STRUCTURAL_' vision-sync.js
-          grep -Fq 'REAL_FIXTURE_V1_DIRECT' vision-sync.js
-          grep -Fq 'adaptive-translucent-map' vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V2_DUAL_MOTION' vision-sync.js
+          grep -Fq 'dual-source-agnostic' vision-sync.js
           grep -Fq '__WWMSYNC_ABSOLUTE_REPLAY__' vision-sync.js
           grep -Fq '<script src="/vision-sync.js"></script>' index.html
           ! grep -Fq '<script src="/vision-sync-loader.js"></script>' index.html
@@ -96,8 +96,8 @@ jobs:
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/vision-sync.js" -o /tmp/vision-sync.js
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/dashen-cache/manifest.json" -o /tmp/cache.json
           grep -Fq '<script src="/vision-sync.js"></script>' /tmp/root.html
-          grep -Fq 'REAL_FIXTURE_V1_DIRECT' /tmp/vision-sync.js
-          grep -Fq 'adaptive-translucent-map' /tmp/vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V2_DUAL_MOTION' /tmp/vision-sync.js
+          grep -Fq 'dual-source-agnostic' /tmp/vision-sync.js
           grep -Fq '"tilesFetched"' /tmp/cache.json
 
       - name: Browser smoke direct runtime
@@ -115,7 +115,7 @@ jobs:
             p.on('pageerror',e=>errors.push(e.message));
             const r=await p.goto(process.env.EXACT_URL,{waitUntil:'domcontentloaded',timeout:60000});
             if(!r?.ok())throw new Error(`HTTP ${r?.status()}`);
-            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V1_DIRECT'&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.__WWMSYNC_ABSOLUTE_REPLAY__==='object',null,{timeout:30000});
+            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V2_DUAL_MOTION'&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.__WWMSYNC_ABSOLUTE_REPLAY__==='object',null,{timeout:30000});
             const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),maps:document.querySelectorAll('#mapSelect option').length}));
             console.log('DIRECT_RUNTIME',JSON.stringify(s));
             console.log('PAGE_ERRORS',JSON.stringify(errors));
