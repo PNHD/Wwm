@@ -127,7 +127,7 @@ jobs:
             --top-k 32
           test -s replay-output/wwmsync-real-gfn-xfeat-hypotheses.json
 
-      - name: Validate XFeat hypotheses against 40-frame trajectory
+      - name: Validate all XFeat hypotheses against 40-frame trajectory
         run: |
           set -euo pipefail
           node tools/replay-real-gfn-feature-hypotheses.mjs \
@@ -135,8 +135,9 @@ jobs:
             --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
             --candidates replay-output/wwmsync-real-gfn-xfeat-hypotheses.json \
             --report replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json \
-            --top-k 16
+            --top-k 32
           test -s replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json
+          test "$(jq '.sequenceRankedTopK | length' replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json)" -eq "$(jq '.candidates | length' replay-output/wwmsync-real-gfn-xfeat-hypotheses.json)"
 
       - name: Show XFeat evidence summary
         if: always()
@@ -144,11 +145,11 @@ jobs:
           set -euo pipefail
           echo '=== XFEAT GENERATOR ==='
           if test -s replay-output/wwmsync-real-gfn-xfeat-hypotheses.json; then
-            jq '{candidateGenerationVerdict,candidateCountBeforeDedupe,candidateCount:(.candidates|length),xfeat,atlasBanks:(.atlasBanks|with_entries(.value |= del(.patches))),diagnostics,top:[.candidates[:16][]|{rank,method,queryName,queryVariant,queryRotation,x,y,radius,scale,angle,inlierCount,clusterVoteCount,inlierRatio,medianReprojectionError,queryCoverage,meanCosineSimilarity,meanCosineMargin,generatorScore}]}' replay-output/wwmsync-real-gfn-xfeat-hypotheses.json
+            jq '{candidateGenerationVerdict,candidateCountBeforeDedupe,candidateCount:(.candidates|length),xfeat,atlasBanks:(.atlasBanks|with_entries(.value |= del(.patches))),top:[.candidates[]|{rank,method,queryName,queryVariant,queryRotation,x,y,radius,scale,angle,inlierCount,clusterVoteCount,inlierRatio,medianReprojectionError,queryCoverage,meanCosineSimilarity,meanCosineMargin,generatorScore}]}' replay-output/wwmsync-real-gfn-xfeat-hypotheses.json
           fi
           echo '=== XFEAT SEQUENCE ==='
           if test -s replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json; then
-            jq '{candidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,liveTestingJustified,stableCandidateCount,hardNegativeSeparation,bestStableCandidate:(.bestStableCandidate|if .==null then null else {rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,method:.candidate.method,generatorScore:.candidate.generatorScore,sequenceScore,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio,angleMaxDelta:.consistency.angleStability.maxDeltaFromStartDeg,scaleMaxRelativeDelta:.consistency.scaleStability.maxRelativeDeltaFromStart} end),top:[.sequenceRankedTopK[:16][]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,generatorScore:.candidate.generatorScore,sequenceScore,stable:.consistency.samePhysicalBasinStable,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio}]}' replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json
+            jq '{candidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,liveTestingJustified,stableCandidateCount,hardNegativeSeparation,bestStableCandidate:(.bestStableCandidate|if .==null then null else {rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,method:.candidate.method,generatorScore:.candidate.generatorScore,sequenceScore,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio,angleMaxDelta:.consistency.angleStability.maxDeltaFromStartDeg,scaleMaxRelativeDelta:.consistency.scaleStability.maxRelativeDeltaFromStart} end),top:[.sequenceRankedTopK[]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,generatorScore:.candidate.generatorScore,sequenceScore,stable:.consistency.samePhysicalBasinStable,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio}]}' replay-output/wwmsync-real-gfn-xfeat-hypotheses-sequence.json
           fi
 
       - name: Upload durable XFeat evidence
