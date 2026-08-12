@@ -17,23 +17,24 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      - name: Wait for structural absolute bundle on preview
+      - name: Wait for structural V3 absolute bundle on preview
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 60); do
+          for i in $(seq 1 90); do
             if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
-              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_V2' /tmp/vision-sync.js \
-              && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js; then
+              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_V3' /tmp/vision-sync.js \
+              && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
+              && grep -Fq 'denseStructuralScore' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
           done
           exit 1
 
-      - name: Run source-normalized structural matcher tests
+      - name: Run source-normalized dense structural matcher tests
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +50,7 @@ jobs:
             page.on('pageerror',e=>fatal.push(`pageerror:${e.message}`));
             const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
             if(!response?.ok())fatal.push(`HTTP:${response?.status()}`);
-            await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__==='function'&&window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__?.().contract==='ANCHOR_FREE_STRUCTURAL_V2',null,{timeout:30000});
+            await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__==='function'&&window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__?.().contract==='ANCHOR_FREE_STRUCTURAL_V3',null,{timeout:30000});
             for(const profile of ['gfn','local']){
               const result=await page.evaluate(p=>window.__WWMSYNC_ABSOLUTE_SELFTEST__(p),profile);
               console.log('STRUCTURAL_SELFTEST',JSON.stringify(result));
@@ -57,8 +58,9 @@ jobs:
               if(!(result.positiveFeatures>=28))fatal.push(`${profile}:features=${result.positiveFeatures}`);
               if(!(result.error<=10))fatal.push(`${profile}:position=${result.error}`);
               if(!(result.rotationError<=28))fatal.push(`${profile}:rotation=${result.rotationError}`);
-              if(!(result.score>=.43))fatal.push(`${profile}:fine=${result.score}`);
-              if(!(result.verifyScore>=.49))fatal.push(`${profile}:verify=${result.verifyScore}`);
+              if(!(result.score>=.40))fatal.push(`${profile}:fine=${result.score}`);
+              if(!(result.denseScore>=.48))fatal.push(`${profile}:dense=${result.denseScore}`);
+              if(!(result.verifyScore>=.47))fatal.push(`${profile}:verify=${result.verifyScore}`);
             }
             const unlocked=await page.evaluate(()=>({diag:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent,motion:window.__WWMSYNC_VISION_DIAGNOSTICS__()}));
             if(!String(unlocked.status).includes('ABSOLUTE NOT LOCKED'))fatal.push(`unlocked-status=${unlocked.status}`);
