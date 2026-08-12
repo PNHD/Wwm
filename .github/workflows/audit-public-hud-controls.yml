@@ -5,6 +5,7 @@ on:
     branches: [feature/wwm-native-sync-v2]
     paths:
       - 'tools/mine_public_hud_controls.py'
+      - 'tools/replay-public-hud-control.mjs'
       - '.github/workflows/audit-public-hud-controls.yml'
   workflow_dispatch:
 
@@ -15,30 +16,110 @@ env:
   EXPECTED_FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
 
 jobs:
-  public-hud-mining:
+  public-hud-controls:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install mining dependencies
-        run: python -m pip install --disable-pip-version-check opencv-python-headless numpy
+
+      - name: Install replay dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet opencv-python-headless numpy
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
       - name: Guard production matcher and mine public HUD candidates
         run: |
           set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/replay-public-hud-control.mjs
+          python -m py_compile tools/mine_public_hud_controls.py tools/build_dashen_reference_audit_cache.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
-          rm -rf public-hud-output
+          rm -rf public-hud-output control-site
           python tools/mine_public_hud_controls.py --out-dir public-hud-output
           test -s public-hud-output/public-hud-mining.json
+          test -s public-hud-output/steam-general-shrine-1-roi.png
           git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
-          jq '{scope,sources:[.sources[]|{id,page,image,published,lineage,landmark,httpStatus,error,width,height,bytes,sha256,productionDefaultRoi,rawFile,roiFile}],dashenPointQuery}' public-hud-output/public-hud-mining.json
-      - name: Upload public HUD mining evidence
+
+      - name: Resolve independent Fang Xu ground truth from Dashen point API evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          pts=json.loads(Path('public-hud-output/dashen-points.json').read_text(encoding='utf-8'))
+          found=[]
+          def walk(v):
+              if isinstance(v,dict):
+                  if v.get('name')=='方旭' and v.get('pointId')=='12_41': found.append(v)
+                  for x in v.values(): walk(x)
+              elif isinstance(v,list):
+                  for x in v: walk(x)
+          walk(pts)
+          assert len(found)==1, f'expected one exact Fang Xu point, got {len(found)}'
+          p=found[0]
+          assert p.get('layer')=='0' and p.get('mapSubType')=='1', p
+          x=float(p['x']); y=float(p['y'])
+          assert abs(x-(-1892.21081542968))<1e-9 and abs(y-(-3065.7373046875))<1e-9, (x,y)
+          f=(256/19456)*(1024/1008)
+          z5=[(-x+12095.6875)*f*32,(y+12095.6875)*f*32]
+          mining=json.loads(Path('public-hud-output/public-hud-mining.json').read_text(encoding='utf-8'))
+          src=next(r for r in mining['sources'] if r['id']=='steam-general-shrine-1')
+          gt={
+            'schema':'wwmsync-public-hud-ground-truth-v1',
+            'control':'Steam Global PC — General Shrine / Fang Xu scaffolding',
+            'source':{'page':src['page'],'image':src['image'],'published':src['published'],'imageSha256':src['sha256'],'imageBytes':src['bytes'],'sourceDimensions':[src['width'],src['height']]},
+            'lineage':{'client':'Steam Global PC','confidence':'HIGH','basis':'Steam app 3564740 discussion; screenshot author says they ran to General Shrine to test Fang Xu on the arena scaffolding.'},
+            'groundTruth':{'method':'independent Dashen point API exact named POI; matcher not used','pointName':'方旭','pointId':p['pointId'],'layer':p['layer'],'mapSubType':p['mapSubType'],'world':[x,y],'apiEvidenceFile':'dashen-points.json'},
+            'expected':{'world':[x,y],'dashenZ5':z5,'uncertaintyRadiusZ5Px':60.0,'uncertaintyWorldUnits':60.0/(f*32),'uncertaintyBasis':'Player is visibly in the Fang Xu arena/scaffolding test scene rather than guaranteed pixel-identical to the NPC POI; 60 z5 px is a conservative local-basin tolerance, not matcher-derived.'},
+            'roi':{'semantic':'unchanged production default top-left ROI','sourceCrop':[0,0,src['productionDefaultRoi']['size'],src['productionDefaultRoi']['size']],'sourceCropInteger':[0,0,src['productionDefaultRoi']['integerInspectionCropSize'],src['productionDefaultRoi']['integerInspectionCropSize']],'workCanvas':[192,192],'manualBeautification':False}
+          }
+          Path('public-hud-output/steam-general-shrine-ground-truth.json').write_text(json.dumps(gt,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(gt,ensure_ascii=False,indent=2))
+          PY
+          test -s public-hud-output/steam-general-shrine-ground-truth.json
+
+      - name: Build expanded replay-only Dashen cache and instrument replay copy
+        run: |
+          set -euo pipefail
+          mkdir -p control-site/public-hud
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt control-site/
+          cp public-hud-output/steam-general-shrine-1-roi.png control-site/public-hud/
+          python tools/build_dashen_reference_audit_cache.py control-site/dashen-cache --workers 24
+          test -s control-site/dashen-cache/main/5/31_31.png
+          node tools/instrument-real-gfn-production-replay.mjs control-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs control-site/vision-sync.js
+          node --check control-site/vision-sync.js
+          cmp -s vision-sync.js control-site/vision-sync.js && { echo 'replay copy was not instrumented' >&2; exit 1; } || true
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Run unchanged production global matcher on known-location Steam HUD control
+        run: |
+          set -euo pipefail
+          node tools/replay-public-hud-control.mjs \
+            --site control-site \
+            --image public-hud/steam-general-shrine-1-roi.png \
+            --ground-truth public-hud-output/steam-general-shrine-ground-truth.json \
+            --map-id 1 \
+            --report public-hud-output/steam-general-shrine-matcher.json
+          test -s public-hud-output/steam-general-shrine-matcher.json
+          jq '{classification,expected,roi,scope,global:{coarse:.global.coarse,fine:.global.fine,info:.global.info,candidates:.global.candidates},expectedBasin,localKnownCoordinateDiagnostic:{notAcceptanceEvidence:.localKnownCoordinateDiagnostic.notAcceptanceEvidence,best:.localKnownCoordinateDiagnostic.best}}' public-hud-output/steam-general-shrine-matcher.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Upload public HUD control evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-public-hud-mining-${{ github.run_id }}
+          name: wwmsync-public-hud-controls-${{ github.run_id }}
           path: public-hud-output/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
