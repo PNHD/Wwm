@@ -26,7 +26,8 @@ jobs:
           rm -rf dist && mkdir dist
           cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           python tools/build_dashen_visual_cache.py dist/dashen-cache
-          grep -Fq 'REAL_FIXTURE_V1_DIRECT' dist/vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V2_DUAL_MOTION' dist/vision-sync.js
+          grep -Fq 'dual-source-agnostic' dist/vision-sync.js
           grep -Fq '<script src="/vision-sync.js"></script>' dist/index.html
       - name: Run synthetic cold-state browser E2E
         run: |
@@ -61,7 +62,7 @@ jobs:
                 if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});
               });
               const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});if(!response?.ok())fatal.push(`${kind}:http=${response?.status()}`);
-              await page.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V1_DIRECT'&&typeof window.__WWMSYNC_VISION_TEST__?.setViewport==='function'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
+              await page.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V2_DUAL_MOTION'&&typeof window.__WWMSYNC_VISION_TEST__?.setViewport==='function'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
               await page.evaluate(({kind,viewport})=>{window.__WWM_TEST_PROFILE__=kind;window.__WWMSYNC_VISION_TEST__.setViewport(viewport.lat,viewport.lng,viewport.zoom)},{kind,viewport});
               const cold=await page.evaluate(()=>({v:window.__WWMSYNC_VISION_BRIDGE__.state(),a:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
               if(cold.v.hasAnchor||cold.v.hasMarker||cold.v.tracking)fatal.push(`${kind}:not-cold=${JSON.stringify(cold.v)}`);
