@@ -1,0 +1,54 @@
+name: Recover WWMSync East Cross Same-ID Mirrors
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/recover_east_cross_mirror.py'
+      - '.github/workflows/recover-east-cross-public-mirror.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover-provenance-mirrors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install mirror inspection dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          python -m pip install --disable-pip-version-check --quiet opencv-python-headless numpy
+
+      - name: Guard frozen production and attempt provenance-preserving mirrors
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/recover_east_cross_mirror.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          rm -rf east-cross-mirror-output east-cross-mirror-work
+          mkdir -p east-cross-mirror-output east-cross-mirror-work
+          python tools/recover_east_cross_mirror.py \
+            --out-dir east-cross-mirror-output \
+            --work-dir east-cross-mirror-work
+          test -s east-cross-mirror-output/east-cross-public-mirror-recovery.json
+          jq '{classification,retrievedCount,scope,videos:[.videos[]|{id,title,embed,indexedEmbedAttempt,retrieved,sampling,mirrorAttempts:[.mirrorAttempts[]|{kind,base,api,httpStatus,resolved,streamCount,selectedStream,download,error}]}]}' east-cross-mirror-output/east-cross-public-mirror-recovery.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Upload same-ID mirror evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-east-cross-mirrors-${{ github.run_id }}
+          path: east-cross-mirror-output/
+          if-no-files-found: error
+          retention-days: 30
