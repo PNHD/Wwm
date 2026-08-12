@@ -6,6 +6,7 @@ on:
     paths:
       - 'tools/mine_public_hud_controls.py'
       - 'tools/replay-public-hud-control.mjs'
+      - 'tools/compare_hud_capture_domains.py'
       - '.github/workflows/audit-public-hud-controls.yml'
   workflow_dispatch:
 
@@ -14,6 +15,7 @@ permissions:
 
 env:
   EXPECTED_FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  REAL_GFN_ASSET_ID: '511291145'
 
 jobs:
   public-hud-controls:
@@ -39,10 +41,10 @@ jobs:
           set -euo pipefail
           node --check vision-sync.js
           node --check tools/replay-public-hud-control.mjs
-          python -m py_compile tools/mine_public_hud_controls.py tools/build_dashen_reference_audit_cache.py
+          python -m py_compile tools/mine_public_hud_controls.py tools/build_dashen_reference_audit_cache.py tools/compare_hud_capture_domains.py
           grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
-          rm -rf public-hud-output control-site
+          rm -rf public-hud-output control-site real-gfn-fixture
           python tools/mine_public_hud_controls.py --out-dir public-hud-output
           test -s public-hud-output/public-hud-mining.json
           test -s public-hud-output/steam-general-shrine-1-roi.png
@@ -52,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, math
+          import json
           from pathlib import Path
           pts=json.loads(Path('public-hud-output/dashen-points.json').read_text(encoding='utf-8'))
           found=[]
@@ -112,6 +114,35 @@ jobs:
             --report public-hud-output/steam-general-shrine-matcher.json
           test -s public-hud-output/steam-general-shrine-matcher.json
           jq '{classification,expected,roi,scope,global:{coarse:.global.coarse,fine:.global.fine,info:.global.info,candidates:.global.candidates},expectedBasin,localKnownCoordinateDiagnostic:{notAcceptanceEvidence:.localKnownCoordinateDiagnostic.notAcceptanceEvidence,best:.localKnownCoordinateDiagnostic.best}}' public-hud-output/steam-general-shrine-matcher.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Resolve exact real GFN fixture for descriptive domain isolation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/releases/assets/$REAL_GFN_ASSET_ID" > public-hud-output/real-gfn-asset.json
+          test "$(jq -r '.name' public-hud-output/real-gfn-asset.json)" = 'wwmsync-gfn-motion-20260810-143835.zip'
+          test "$(jq -r '.digest' public-hud-output/real-gfn-asset.json)" = "sha256:$EXPECTED_FIXTURE_SHA256"
+          fixture="$RUNNER_TEMP/wwmsync-gfn-motion-20260810-143835.zip"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$REAL_GFN_ASSET_ID" > "$fixture"
+          test "$(sha256sum "$fixture" | awk '{print $1}')" = "$EXPECTED_FIXTURE_SHA256"
+          unzip -q "$fixture" -d real-gfn-fixture
+          test "$(find real-gfn-fixture -type f -name capture.json | wc -l)" -eq 1
+
+      - name: Characterize PC-HUD versus GFN capture domain without score manipulation
+        run: |
+          set -euo pipefail
+          python tools/compare_hud_capture_domains.py \
+            --pc-roi public-hud-output/steam-general-shrine-1-roi.png \
+            --pc-matcher public-hud-output/steam-general-shrine-matcher.json \
+            --gfn-fixture real-gfn-fixture \
+            --report public-hud-output/pc-hud-vs-gfn-domain.json
+          test -s public-hud-output/pc-hud-vs-gfn-domain.json
+          jq '{scope,pcControl:{classification:.pcControl.classification,metrics:.pcControl.metrics},gfnFixture:{frameCount:.gfnFixture.frameCount,medianMetrics:.gfnFixture.medianMetrics,temporal:.gfnFixture.temporal},gfnToPcRatios,representationQuestions,causalInterpretation}' public-hud-output/pc-hud-vs-gfn-domain.json
+          test "$(jq -r '.causalInterpretation.controlledDegradationJustified' public-hud-output/pc-hud-vs-gfn-domain.json)" = 'false'
+          test "$(jq -r '.causalInterpretation.normalizationJustified' public-hud-output/pc-hud-vs-gfn-domain.json)" = 'false'
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
           git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
 
