@@ -1,0 +1,188 @@
+name: Diagnose Real GFN DINOv2 Sequence Hypotheses
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'tools/build_dashen_visual_cache.py'
+      - 'tools/instrument-real-gfn-production-replay.mjs'
+      - 'tools/instrument-real-gfn-candidate-diagnostics.mjs'
+      - 'tools/replay-real-gfn-feature-hypotheses.mjs'
+      - 'tools/replay-real-gfn-xfeat-star-hypotheses.py'
+      - 'tools/replay-real-gfn-dinov2-anyloc-hypotheses.py'
+      - 'tools/replay-real-gfn-dinov2-sequence-hypotheses.py'
+      - '.github/workflows/diagnose-real-gfn-dinov2-sequence-hypotheses.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  FIXTURE_RELEASE_ASSET_ID: '511291145'
+  TEMPORAL_ARTIFACT_ID: '9137099364'
+  TEMPORAL_ARTIFACT_SHA256: 6fd7676259b14a7ef9c1f142b599ad4d909d384c679cef2ca99dca79338905b3
+  DINO_REPO: facebookresearch/dinov2
+  DINO_COMMIT: 7764ea0f912e53c92e82eb78a2a1631e92725fc8
+  XFEAT_REPO: verlab/accelerated_features
+  XFEAT_COMMIT: e92685f57f8318b18725c5c8c0bd28c7fe188d9a
+
+jobs:
+  dinov2-sequence-hypotheses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate replay-only raw-frame recurrence tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/instrument-real-gfn-production-replay.mjs
+          node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/replay-real-gfn-feature-hypotheses.mjs
+          python -m py_compile \
+            tools/build_dashen_visual_cache.py \
+            tools/replay-real-gfn-xfeat-star-hypotheses.py \
+            tools/replay-real-gfn-dinov2-anyloc-hypotheses.py \
+            tools/replay-real-gfn-dinov2-sequence-hypotheses.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Build replay-only diagnostic site
+        run: |
+          set -euo pipefail
+          rm -rf replay-site replay-output real-fixture
+          mkdir -p replay-site replay-output real-fixture
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node --check replay-site/vision-sync.js
+          cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'expected replay-only instrumentation but copy is unchanged' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js
+
+      - name: Resolve exact real GFN fixture
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_RELEASE_ASSET_ID" > "$target"
+          actual="$(sha256sum "$target" | awk '{print $1}')"
+          test "$actual" = "$FIXTURE_SHA256"
+          unzip -q "$target" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          test -n "$capture_path"
+          fixture_dir="$(dirname "$capture_path")"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg sha "$FIXTURE_SHA256" --arg source "release_asset:$FIXTURE_RELEASE_ASSET_ID" '{fixture:$fixture,sha256:$sha,status:"AVAILABLE",source:$source}' > replay-output/fixture-resolution.json
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse exact validated temporal observation for local refinement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/temporal-artifact.zip"
+          root="$RUNNER_TEMP/temporal-artifact"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$TEMPORAL_ARTIFACT_ID/zip" > "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$TEMPORAL_ARTIFACT_SHA256"
+          mkdir -p "$root" replay-output/temporal-mosaic-visuals
+          unzip -q "$archive" -d "$root"
+          cp "$root/temporal-mosaic-visuals/40-frames-robustLuminance.png" replay-output/temporal-mosaic-visuals/
+          cp "$root/temporal-mosaic-visuals/40-frames-gradientMagnitude.png" replay-output/temporal-mosaic-visuals/
+          cp "$root/temporal-mosaic-visuals/40-frames-combinedStructural.png" replay-output/temporal-mosaic-visuals/
+          jq -n --arg artifactId "$TEMPORAL_ARTIFACT_ID" --arg sha256 "$TEMPORAL_ARTIFACT_SHA256" --arg baselineHead '44cf5081714f2e1b5f7518980b45a3ea2b68ce5b' '{source:"validated-prior-ci-artifact",artifactId:$artifactId,sha256:$sha256,baselineHead:$baselineHead}' > replay-output/temporal-observation-provenance.json
+
+      - name: Install pinned DINOv2 and XFeat dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input \
+            'opencv-python-headless>=4.10,<5' \
+            'scikit-learn>=1.5,<2' \
+            tqdm >/dev/null
+          if ! python -c 'import torch; print(torch.__version__)'; then
+            python -m pip install --disable-pip-version-check --no-input torch --index-url https://download.pytorch.org/whl/cpu >/dev/null
+          fi
+
+          dino_dir="$RUNNER_TEMP/dinov2"
+          rm -rf "$dino_dir"
+          git init "$dino_dir" >/dev/null
+          git -C "$dino_dir" remote add origin "https://github.com/$DINO_REPO.git"
+          git -C "$dino_dir" fetch --depth=1 origin "$DINO_COMMIT" >/dev/null
+          git -C "$dino_dir" checkout --detach FETCH_HEAD >/dev/null
+          test "$(git -C "$dino_dir" rev-parse HEAD)" = "$DINO_COMMIT"
+          echo "DINOV2_DIR=$dino_dir" >> "$GITHUB_ENV"
+
+          xfeat_dir="$RUNNER_TEMP/xfeat"
+          rm -rf "$xfeat_dir"
+          git init "$xfeat_dir" >/dev/null
+          git -C "$xfeat_dir" remote add origin "https://github.com/$XFEAT_REPO.git"
+          git -C "$xfeat_dir" fetch --depth=1 origin "$XFEAT_COMMIT" >/dev/null
+          git -C "$xfeat_dir" checkout --detach FETCH_HEAD >/dev/null
+          test "$(git -C "$xfeat_dir" rev-parse HEAD)" = "$XFEAT_COMMIT"
+          test -s "$xfeat_dir/weights/xfeat.pt"
+          echo "XFEAT_DIR=$xfeat_dir" >> "$GITHUB_ENV"
+
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Generate temporally recurrent DINOv2 hypotheses and local refinements
+        run: |
+          set -euo pipefail
+          python tools/replay-real-gfn-dinov2-sequence-hypotheses.py \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --dinov2-repo "$DINOV2_DIR" \
+            --xfeat-repo "$XFEAT_DIR" \
+            --temporal-observation replay-output/temporal-mosaic-visuals/40-frames-robustLuminance.png \
+            --temporal-observation replay-output/temporal-mosaic-visuals/40-frames-gradientMagnitude.png \
+            --temporal-observation replay-output/temporal-mosaic-visuals/40-frames-combinedStructural.png \
+            --report replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json \
+            --dino-shortlist 20 \
+            --top-k 64
+          test -s replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json
+
+      - name: Validate all sequence-retrieved hypotheses against 40-frame trajectory
+        run: |
+          set -euo pipefail
+          candidate_count="$(jq '.candidates | length' replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json)"
+          node tools/replay-real-gfn-feature-hypotheses.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --candidates replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json \
+            --report replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json \
+            --top-k 64
+          test -s replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json
+          test "$(jq '.sequenceRankedTopK | length' replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json)" -eq "$candidate_count"
+
+      - name: Show raw-frame recurrence evidence summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo '=== RAW-FRAME DINO RECURRENCE + XFEAT REFINE ==='
+          if test -s replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json; then
+            jq '{candidateGenerationVerdict,fixture,sequenceRetrieval,dinoShortlistCount,candidateCountBeforeDedupe,candidateCount:(.candidates|length),dinoShortlist:[.dinoShortlist[]|{x,y,size,variant,angle,sourceSupport,sourceCount,retrievalScore,retrievalScoreRaw,rotationConcentration,sequenceRetrievalScore,bestRotations}],refinementDiagnostics,top:[.candidates[]|{rank,x,y,radius,angle,inlierCount,clusterVoteCount,inlierRatio,medianReprojectionError,queryCoverage,dinoRank,dinoRetrievalScore,dinoSourceSupport,dinoSourceCount,generatorScore}]}' replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses.json
+          fi
+          echo '=== 40-FRAME SEQUENCE ==='
+          if test -s replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json; then
+            jq '{candidateRecallVerdict,exactRemainingFailureStage,productChangeJustified,liveTestingJustified,stableCandidateCount,hardNegativeSeparation,bestStableCandidate:(.bestStableCandidate|if .==null then null else {rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,dinoRank:.candidate.dinoRank,generatorScore:.candidate.generatorScore,sequenceScore,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio,angleMaxDelta:.consistency.angleStability.maxDeltaFromStartDeg,scaleMaxRelativeDelta:.consistency.scaleStability.maxRelativeDeltaFromStart} end),top:[.sequenceRankedTopK[]|{rank:.candidate.rank,x:.candidate.x,y:.candidate.y,radius:.candidate.radius,angle:.candidate.angle,dinoRank:.candidate.dinoRank,generatorScore:.candidate.generatorScore,sequenceScore,stable:.consistency.samePhysicalBasinStable,directionCosine:.consistency.meanDirectionCosine,endpointErrorRatio:.consistency.endpointErrorRatio}]}' replay-output/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json
+          fi
+
+      - name: Upload durable raw-frame recurrence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-real-gfn-dinov2-sequence-hypotheses-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
