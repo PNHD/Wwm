@@ -12,6 +12,14 @@ function replaceOnce(needle, replacement, label) {
   src = src.slice(0, first) + replacement + src.slice(first + needle.length);
 }
 
+function replaceAfter(anchor, needle, replacement, label) {
+  const anchorAt = src.indexOf(anchor);
+  if (anchorAt < 0) throw new Error(`instrumentation anchor missing: ${label}`);
+  const first = src.indexOf(needle, anchorAt + anchor.length);
+  if (first < 0) throw new Error(`instrumentation target missing after anchor: ${label}`);
+  src = src.slice(0, first) + replacement + src.slice(first + needle.length);
+}
+
 // Diagnostic-only: preserve NCC alongside the already-gated intensity score.
 replaceOnce(
   'fine:{...fine,scaleScore:structural.score,intensityScore:recall.score,structuralDetail:structural}',
@@ -43,15 +51,15 @@ replaceOnce(registrationNeedle, registrationTrace, 'production registration trac
 
 const confirmationNeedle = "const gate=state.pending?.match?confirmationGate(state.pending.match,result.fine):{ok:false,distance:Infinity,angle:Infinity,scale:Infinity};";
 const confirmationTrace = `${confirmationNeedle}window.dispatchEvent(new CustomEvent('wwmsync:real-replay:confirmation',{detail:{frame:__realReplayFrameAtCapture,startedAt:__realReplayStartedAt,at:Date.now(),trigger,ok:gate.ok,distance:gate.distance,angle:gate.angle,scale:gate.scale}}));`;
-replaceOnce(confirmationNeedle, confirmationTrace, 'production confirmation trace');
+replaceAfter('wwmsync:real-replay:registration', confirmationNeedle, confirmationTrace, 'production confirmation trace');
 
 const matrixNeedle = 'const roiSize=vs.roi?.size||192,matrix=motionMatrixFor(result.fine,cfg,roiSize,result.target);';
 const matrixTrace = `${matrixNeedle}window.dispatchEvent(new CustomEvent('wwmsync:real-replay:matrix',{detail:{frame:__realReplayFrameAtCapture,startedAt:__realReplayStartedAt,at:Date.now(),trigger,available:!!matrix,matrix:matrix||null,target:result.target?{lat:result.target.lat,lng:result.target.lng}:null,fine:{globalX:result.fine?.globalX??null,globalY:result.fine?.globalY??null,angle:result.fine?.angle??null,radius:result.fine?.radius??null}}}));`;
-replaceOnce(matrixNeedle, matrixTrace, 'production matrix trace');
+replaceAfter('wwmsync:real-replay:confirmation', matrixNeedle, matrixTrace, 'production matrix trace');
 
 const applyNeedle = "const applied=VISION.applyAbsoluteFix({lat:result.target.lat,lng:result.target.lng,motionMatrix:matrix,source:'structural-global-registration'});";
 const applyTrace = `${applyNeedle}window.dispatchEvent(new CustomEvent('wwmsync:real-replay:apply',{detail:{frame:__realReplayFrameAtCapture,startedAt:__realReplayStartedAt,at:Date.now(),trigger,ok:!!applied.ok,reason:applied.reason||'',target:{lat:result.target.lat,lng:result.target.lng},motionMatrix:matrix,vision:VISION.state(),fine:{globalX:result.fine?.globalX??null,globalY:result.fine?.globalY??null,angle:result.fine?.angle??null,radius:result.fine?.radius??null}}}));`;
-replaceOnce(applyNeedle, applyTrace, 'production apply trace');
+replaceAfter('wwmsync:real-replay:matrix', applyNeedle, applyTrace, 'production apply trace');
 
 // Replay-only failure visualizer. It reuses production normalization/global matching only after acceptance failed.
 const visualizerNeedle = 'window.__WWMSYNC_ABSOLUTE_SELFTEST__=selfTest;window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__=drawTestCapture;';
