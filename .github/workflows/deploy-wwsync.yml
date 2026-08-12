@@ -28,6 +28,7 @@ jobs:
           node --check app.js
           node --check official-sync.js
           node --check vision-sync.js
+          node --check vision-sync-loader.js
           node --check dashen-tile-cache.js
           node --check sw.js
           python -m py_compile tools/build_dashen_visual_cache.py
@@ -40,8 +41,11 @@ jobs:
           grep -Fq 'structuralPhaseScoreFast' vision-sync.js
           grep -Fq 'bidirectionalContourScore' vision-sync.js
           grep -Fq 'ABSOLUTE NOT LOCKED' vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V1' vision-sync-loader.js
+          grep -Fq 'adaptive-translucent-map' vision-sync-loader.js
           grep -Fq '__WWMSYNC_DASHEN_CACHE__' dashen-tile-cache.js
           grep -Fq 'dashen-tile-cache.js' index.html
+          grep -Fq 'vision-sync-loader.js' index.html
           grep -Fq 'visionAnchorButton' index.html
           grep -Fq 'visionRawDelta' index.html
           grep -Fq 'visionMarkerDelta' index.html
@@ -52,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf dist && mkdir dist
-          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css vision-sync.css app.js vision-sync.js vision-sync-loader.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           python tools/build_dashen_visual_cache.py dist/dashen-cache
           test -s dist/dashen-cache/manifest.json
           test -s dist/dashen-cache/main/3/0_0.png
@@ -120,6 +124,7 @@ jobs:
           fetch "$base/" /tmp/root.html
           fetch "$base/app.js" /tmp/app.js
           fetch "$base/vision-sync.js" /tmp/vision-sync.js
+          fetch "$base/vision-sync-loader.js" /tmp/vision-sync-loader.js
           fetch "$base/dashen-tile-cache.js" /tmp/dashen-tile-cache.js
           fetch "$base/vision-sync.css" /tmp/vision-sync.css
           fetch "$base/official-sync.js" /tmp/official-sync.js
@@ -130,6 +135,9 @@ jobs:
           grep -Fq 'visionRawDelta' /tmp/root.html
           grep -Fq 'visionMarkerDelta' /tmp/root.html
           grep -Fq 'dashen-tile-cache.js' /tmp/root.html
+          grep -Fq 'vision-sync-loader.js' /tmp/root.html
+          grep -Fq 'REAL_FIXTURE_V1' /tmp/vision-sync-loader.js
+          grep -Fq 'adaptive-translucent-map' /tmp/vision-sync-loader.js
           grep -Fq 'getDisplayMedia' /tmp/vision-sync.js
           grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' /tmp/vision-sync.js
           grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
@@ -145,7 +153,7 @@ jobs:
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
           grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
           test -s /tmp/dashen-tile.png
-          echo "WWMSync anchor-free structural HTTP smoke passed: $base"
+          echo "WWMSync real-fixture hardening HTTP smoke passed: $base"
 
       - name: Browser smoke map and Vision UI
         env:
@@ -180,6 +188,8 @@ jobs:
               holdReason:!!document.querySelector('#visionHoldReason'),
               diagnosticsApi:typeof window.__WWMSYNC_VISION_DIAGNOSTICS__,
               absoluteApi:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,
+              replayApi:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,
+              hardening:window.__WWMSYNC_VISION_HARDENING__?.version,
               dashenCache:typeof window.__WWMSYNC_DASHEN_CACHE__,
               displayCapture:typeof navigator.mediaDevices?.getDisplayMedia,
               maps:document.querySelectorAll('#mapSelect option').length,
@@ -189,6 +199,8 @@ jobs:
             if(s.displayCapture!=='function')fatal.push(`getDisplayMedia=${s.displayCapture}`);
             if(s.diagnosticsApi!=='function')fatal.push(`diagnosticsApi=${s.diagnosticsApi}`);
             if(s.absoluteApi!=='function')fatal.push(`absoluteApi=${s.absoluteApi}`);
+            if(s.replayApi!=='object')fatal.push(`replayApi=${s.replayApi}`);
+            if(s.hardening!=='REAL_FIXTURE_V1')fatal.push(`hardening=${s.hardening}`);
             if(s.dashenCache!=='object')fatal.push(`dashenCache=${s.dashenCache}`);
             const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
             const a=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__());
@@ -211,4 +223,4 @@ jobs:
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync anchor-free structural browser smoke passed: $EXACT_URL"
+          echo "WWMSync real-fixture hardening browser smoke passed: $EXACT_URL"

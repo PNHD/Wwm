@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/validate-vision-integration.yml'
       - 'vision-sync.js'
+      - 'vision-sync-loader.js'
       - 'dashen-tile-cache.js'
       - 'tools/build_dashen_visual_cache.py'
 
@@ -27,18 +28,20 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 160); do
             if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
+              && curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync-loader.js" -o /tmp/vision-sync-loader.js \
               && grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js \
               && grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js \
               && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
               && grep -Fq 'rawGray' /tmp/vision-sync.js \
               && grep -Fq 'injectMarkerDrift' /tmp/vision-sync.js \
               && grep -Fq 'expectedGlobal' /tmp/vision-sync.js \
-              && grep -Fq "raw=localStorage.getItem(key)" /tmp/vision-sync.js; then
+              && grep -Fq "raw=localStorage.getItem(key)" /tmp/vision-sync.js \
+              && grep -Fq 'REAL_FIXTURE_V1' /tmp/vision-sync-loader.js; then
               exit 0
             fi
             sleep 3
           done
-          echo 'Preview did not surface the accuracy-aware anchor-free bundle.' >&2
+          echo 'Preview did not surface the accuracy-aware real-fixture hardening bundle.' >&2
           exit 1
 
       - name: Prove no-seed lock accuracy motion and drift correction
@@ -91,9 +94,10 @@ jobs:
               const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
               if(!response?.ok())fatal.push(`${profile}:HTTP:${response?.status()}`);
               await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__==='function'&&typeof window.__WWMSYNC_VISION_TEST__?.injectMarkerDrift==='function'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
-              const boot=await page.evaluate(()=>({contract:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().contract,roi:Number(document.querySelector('#visionRoiSize')?.value),scale:Number(document.querySelector('#visionScale')?.value),orientation:Number(document.querySelector('#visionOrientation')?.value)}));
+              const boot=await page.evaluate(()=>({contract:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().contract,roi:Number(document.querySelector('#visionRoiSize')?.value),scale:Number(document.querySelector('#visionScale')?.value),orientation:Number(document.querySelector('#visionOrientation')?.value),hardening:window.__WWMSYNC_VISION_HARDENING__?.version}));
               if(!String(boot.contract).startsWith('ANCHOR_FREE_STRUCTURAL_'))fatal.push(`${profile}:contract=${boot.contract}`);
-              if(Math.abs(boot.roi-.20)>1e-6)fatal.push(`${profile}:default-roi=${boot.roi}`);
+              if(boot.hardening!=='REAL_FIXTURE_V1')fatal.push(`${profile}:hardening=${boot.hardening}`);
+              if(Math.abs(boot.roi-.25)>1e-6)fatal.push(`${profile}:default-roi=${boot.roi}`);
               if(Math.abs(boot.scale-1)>1e-6)fatal.push(`${profile}:default-scale=${boot.scale}`);
               if(Math.abs(boot.orientation)>1e-6)fatal.push(`${profile}:default-orientation=${boot.orientation}`);
               const viewportSet=await page.evaluate(v=>window.__WWMSYNC_VISION_TEST__.setViewport(v.lat,v.lng,v.zoom),viewport);
@@ -105,7 +109,7 @@ jobs:
               await page.waitForFunction(()=>window.__WWMSYNC_VISION_BRIDGE__.state().active===true&&window.__WWM_TEST_EXPECTED__?.expectedGlobal,null,{timeout:30000});
               const started=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),expected:window.__WWM_TEST_EXPECTED__}));
               console.log('CAPTURE_STARTED',profile,JSON.stringify({boot,started}));
-              if(Math.abs((started.vision.roi?.size||0)-144)>1)fatal.push(`${profile}:runtime-roi=${started.vision.roi?.size}`);
+              if(Math.abs((started.vision.roi?.size||0)-180)>1)fatal.push(`${profile}:runtime-roi=${started.vision.roi?.size}`);
               await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().globalSearches>=1,null,{timeout:30000});
               await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes>=1&&window.__WWMSYNC_VISION_DIAGNOSTICS__().motionCalibration==='absolute-matrix',null,{timeout:360000});
               const locked=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),ui:{status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent}}));
