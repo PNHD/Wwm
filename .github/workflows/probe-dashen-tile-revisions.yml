@@ -1,0 +1,57 @@
+name: Probe Dashen Tile Revisions
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/probe_dashen_tile_revisions.py'
+      - '.github/workflows/probe-dashen-tile-revisions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PINNED_MAIN_VERSION: '15'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate probe tooling
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/probe_dashen_tile_revisions.py
+          grep -Fq 'tilemap/v15.0' tools/build_dashen_visual_cache.py
+          git diff --exit-code -- vision-sync.js
+
+      - name: Probe public Dashen sequential tile revisions
+        run: |
+          set -euo pipefail
+          rm -rf replay-output
+          mkdir -p replay-output
+          python tools/probe_dashen_tile_revisions.py \
+            --report replay-output/wwmsync-dashen-tile-revision-probe.json \
+            --min-version 1 \
+            --max-version 30
+          test -s replay-output/wwmsync-dashen-tile-revision-probe.json
+
+      - name: Show probe summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if test -s replay-output/wwmsync-dashen-tile-revision-probe.json; then
+            jq '{availableVersions,latestFullyAvailableMainVersion,pinnedMainVersion,newerMainRevisionExists,main:[.byFamilyVersion.main|to_entries[]|select(.value.imageCount>0)|{version:.key,imageCount:.value.imageCount,allImage:.value.allImage,statuses:.value.statuses}],sub4:[.byFamilyVersion.sub4|to_entries[]|select(.value.imageCount>0)|{version:.key,imageCount:.value.imageCount,allImage:.value.allImage,statuses:.value.statuses}]}' replay-output/wwmsync-dashen-tile-revision-probe.json
+          fi
+
+      - name: Upload durable probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-dashen-tile-revision-probe-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
