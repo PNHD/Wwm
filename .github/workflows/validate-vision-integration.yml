@@ -1,4 +1,4 @@
-name: Validate Vision Capture Integration
+name: Validate Anchor-Free Vision Integration
 
 on:
   workflow_dispatch:
@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/validate-vision-integration.yml'
       - 'vision-sync.js'
+      - 'dashen-tile-cache.js'
+      - 'tools/build_dashen_visual_cache.py'
 
 permissions:
   contents: read
@@ -17,23 +19,24 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
-      - name: Wait for Vision bundle on preview
+      - name: Wait for anchor-free structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
-              && grep -Fq '__WWMSYNC_VISION_BRIDGE__' /tmp/vision-sync.js \
-              && grep -Fq 'applyAbsoluteFix' /tmp/vision-sync.js; then
+              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_V2' /tmp/vision-sync.js \
+              && grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
           done
+          echo 'Preview did not surface the anchor-free structural bundle.' >&2
           exit 1
 
-      - name: Capture to absolute marker to optical flow
+      - name: Prove capture-to-absolute lock without anchor or viewport seed
         shell: bash
         run: |
           set -euo pipefail
@@ -45,61 +48,55 @@ jobs:
           const base=process.env.PREVIEW_URL.replace(/\/$/,'');
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--autoplay-policy=no-user-gesture-required']});
-            const page=await browser.newPage({viewport:{width:1440,height:900}});
             const fatal=[];
-            page.on('pageerror',e=>fatal.push(`pageerror:${e.message}`));
-            await page.addInitScript(()=>{
-              const install=()=>{
-                if(!navigator.mediaDevices)return false;
-                Object.defineProperty(navigator.mediaDevices,'getDisplayMedia',{configurable:true,value:async()=>{
-                  const c=document.createElement('canvas');c.width=1280;c.height=720;
-                  const ctx=c.getContext('2d',{alpha:false});
-                  window.__WWM_TEST_DRAW__=(sx=0,sy=0)=>{
-                    ctx.fillStyle='#202020';ctx.fillRect(0,0,c.width,c.height);ctx.save();ctx.translate(sx,sy);
-                    for(let i=0;i<180;i++){
-                      const x=104+((i*47)%158),y=46+((i*73)%158),w=2+(i%7),h=2+((i*5)%6);
-                      ctx.fillStyle=i%4===0?'#f0f0f0':i%4===1?'#727272':i%4===2?'#c4c4c4':'#3a3a3a';ctx.fillRect(x,y,w,h);
-                    }
-                    ctx.strokeStyle='#ddd';ctx.lineWidth=2;
-                    for(let i=0;i<9;i++){ctx.beginPath();ctx.moveTo(108+i*16,52);ctx.lineTo(245-i*9,190);ctx.stroke()}
-                    ctx.restore();
-                  };
-                  window.__WWM_TEST_DRAW__(0,0);return c.captureStream(30);
-                }});return true;
-              };
-              if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});
-            });
-            const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
-            if(!response?.ok())fatal.push(`HTTP:${response?.status()}`);
-            await page.waitForFunction(()=>typeof window.__WWMSYNC_VISION_BRIDGE__==='object'&&!!document.querySelector('#visionStartButton'),null,{timeout:30000});
-            await page.waitForFunction(()=>Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__.state().mapZoom),null,{timeout:30000});
-            await page.click('#visionStartButton');
-            await page.waitForFunction(()=>window.__WWMSYNC_VISION_BRIDGE__.state().active===true,null,{timeout:15000});
-            const target=await page.evaluate(()=>{
-              for(let lat=.25;lat<=2.55;lat+=.25)for(let lng=-2.55;lng<=-.25;lng+=.25)if(window.__WWMSYNC_VISION_BRIDGE__.contains(lat,lng))return{lat,lng};return null;
-            });
-            if(!target)fatal.push('no-in-bounds-target');
-            const applied=target?await page.evaluate(t=>window.__WWMSYNC_VISION_BRIDGE__.applyAbsoluteFix({lat:t.lat,lng:t.lng,motionMatrix:[1,0,0,1],source:'synthetic-ci'}),target):null;
-            if(!applied?.ok)fatal.push(`apply:${JSON.stringify(applied)}`);
-            await page.waitForTimeout(650);
-            const anchored=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
-            if(anchored.absoluteFixes!==1)fatal.push(`absoluteFixes:${anchored.absoluteFixes}`);
-            if(anchored.accepted!==0)fatal.push(`fabricatedAccepted:${anchored.accepted}`);
-            if(anchored.motionCalibration!=='absolute-matrix')fatal.push(`calibration:${anchored.motionCalibration}`);
-            if(!anchored.markerLatLng)fatal.push('marker-missing');
-            await page.evaluate(()=>window.__WWM_TEST_DRAW__(2,1));
-            await page.waitForTimeout(900);
-            const moved=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
-            const markerMovement=anchored.markerLatLng&&moved.markerLatLng?Math.hypot(moved.markerLatLng.lat-anchored.markerLatLng.lat,moved.markerLatLng.lng-anchored.markerLatLng.lng):0;
-            const ui=await page.evaluate(()=>({raw:!!document.querySelector('#visionRawDelta'),corrected:!!document.querySelector('#visionCorrectedDelta'),cumulative:!!document.querySelector('#visionCumulative'),marker:!!document.querySelector('#visionMarkerDelta'),hold:!!document.querySelector('#visionHoldReason')}));
-            console.log('VISION_INTEGRATION',JSON.stringify({target,applied,anchored,moved,markerMovement,ui}));
-            if(!(moved.accepted>=1))fatal.push(`accepted:${moved.accepted}`);
-            if(!(markerMovement>0))fatal.push(`markerMovement:${markerMovement}`);
-            if(Math.hypot(Number(moved.accumX)||0,Number(moved.accumY)||0)<=0)fatal.push('no-cumulative-motion');
-            if(moved.motionCalibration!=='absolute-matrix')fatal.push(`calibrationLost:${moved.motionCalibration}`);
-            if(!Object.values(ui).every(Boolean))fatal.push(`diagnosticsUI:${JSON.stringify(ui)}`);
+            async function runProfile(profile, viewport){
+              const page=await browser.newPage({viewport:{width:1440,height:900}});
+              page.on('pageerror',e=>fatal.push(`${profile}:pageerror:${e.message}`));
+              page.on('console',m=>{if(m.type()==='error')console.log(`${profile}:BROWSER_ERROR`,m.text())});
+              await page.addInitScript(()=>{
+                const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;
+                const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#202020';ctx.fillRect(0,0,canvas.width,canvas.height);
+                window.__WWM_TEST_CANVAS__=canvas;
+                const getDisplayMedia=async()=>canvas.captureStream(30);
+                if(navigator.mediaDevices)Object.defineProperty(navigator.mediaDevices,'getDisplayMedia',{configurable:true,value:getDisplayMedia});
+                else Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getDisplayMedia}});
+              });
+              const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
+              if(!response?.ok())fatal.push(`${profile}:HTTP:${response?.status()}`);
+              await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__==='function'&&typeof window.__WWMSYNC_VISION_TEST__==='object'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
+              const contract=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().contract);
+              if(contract!=='ANCHOR_FREE_STRUCTURAL_V2')fatal.push(`${profile}:contract=${contract}`);
+              const viewportSet=await page.evaluate(v=>window.__WWMSYNC_VISION_TEST__.setViewport(v.lat,v.lng,v.zoom),viewport);
+              if(!viewportSet)fatal.push(`${profile}:viewport-not-set`);
+              const synthetic=await page.evaluate(async p=>window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(window.__WWM_TEST_CANVAS__,p,0,0),profile);
+              const before=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
+              if(before.vision.tracking||before.vision.hasAnchor||before.vision.hasMarker)fatal.push(`${profile}:pre-seeded=${JSON.stringify(before.vision)}`);
+              await page.click('#visionStartButton');
+              await page.waitForFunction(()=>window.__WWMSYNC_VISION_BRIDGE__.state().active===true,null,{timeout:15000});
+              await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().globalSearches>=1,null,{timeout:30000});
+              await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes>=1&&window.__WWMSYNC_VISION_DIAGNOSTICS__().motionCalibration==='absolute-matrix',null,{timeout:180000});
+              const locked=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),ui:{status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent}}));
+              if(!locked.absolute.searchStartedWithoutAnchor)fatal.push(`${profile}:search-used-anchor`);
+              if(!locked.absolute.searchStartedWithoutMarker)fatal.push(`${profile}:search-used-marker`);
+              if(locked.absolute.viewportAtSearch?.zoom!==viewport.zoom)fatal.push(`${profile}:viewport-proof=${JSON.stringify(locked.absolute.viewportAtSearch)}`);
+              if(!locked.motion.markerLatLng)fatal.push(`${profile}:marker-missing-after-lock`);
+              if(locked.motion.motionCalibration!=='absolute-matrix')fatal.push(`${profile}:matrix=${locked.motion.motionCalibration}`);
+              if(locked.motion.absoluteSource!=='structural-global-registration')fatal.push(`${profile}:absoluteSource=${locked.motion.absoluteSource}`);
+              if(String(locked.ui.position||'').includes('ABSOLUTE NOT LOCKED'))fatal.push(`${profile}:ui-not-locked=${JSON.stringify(locked.ui)}`);
+              await page.waitForTimeout(700);
+              await page.evaluate(async p=>window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(window.__WWM_TEST_CANVAS__,p,2,1),profile);
+              await page.waitForFunction(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__().accepted>=1,null,{timeout:8000});
+              const moved=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
+              const markerMovement=locked.motion.markerLatLng&&moved.markerLatLng?Math.hypot(moved.markerLatLng.lat-locked.motion.markerLatLng.lat,moved.markerLatLng.lng-locked.motion.markerLatLng.lng):0;
+              if(!(markerMovement>0))fatal.push(`${profile}:markerMovement=${markerMovement}`);
+              console.log('ANCHOR_FREE_PROFILE',JSON.stringify({profile,viewport,synthetic,before,locked,moved,markerMovement}));
+              await page.close();
+            }
+            await runProfile('gfn',{lat:2.55,lng:-.20,zoom:15});
+            await runProfile('local',{lat:.20,lng:-2.55,zoom:9});
             console.log('INTEGRATION_FATAL',JSON.stringify(fatal));
-            await browser.close();if(fatal.length)process.exit(1);
+            await browser.close();
+            if(fatal.length)process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/vision-integration.cjs
