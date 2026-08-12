@@ -1,4 +1,4 @@
-name: Patch Vision Runtime V7
+name: Patch Vision Structural V8
 
 on:
   push:
@@ -19,23 +19,23 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Patch runtime defaults and ROI invalidation
-        run: python tools/patch_vision_runtime_v7.py
+      - name: Patch full-resolution coarse matcher V8
+        run: python tools/patch_vision_structural_v8.py
       - name: Validate JavaScript
         run: |
           node --check vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V7' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V8' vision-sync.js
+          grep -Fq 'normalizedGrayOnly' vision-sync.js
+          grep -Fq 'global full-res recall' vision-sync.js
           grep -Fq "raw=localStorage.getItem(key)" vision-sync.js
-          grep -Fq 'scaleAwareStructuralScore' vision-sync.js
-          grep -Fq 'warpIntensityNccFast' vision-sync.js
-      - name: Commit feature-only runtime patch
+      - name: Commit feature-only matcher patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add vision-sync.js
           if git diff --cached --quiet; then
-            echo 'No runtime changes needed.'
+            echo 'No matcher changes needed.'
             exit 0
           fi
-          git commit -m 'fix: restore real Vision defaults and invalidate stale auto lock'
+          git commit -m 'fix: match coarse candidates at full tile resolution'
           git push origin HEAD:feature/wwm-native-sync-v2
