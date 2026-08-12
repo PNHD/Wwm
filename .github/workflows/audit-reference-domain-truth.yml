@@ -1,0 +1,142 @@
+name: Audit WWMSync Reference Domain Truth
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/build_dashen_reference_audit_cache.py'
+      - 'tools/instrument-real-gfn-expanded-domain.mjs'
+      - 'tools/audit_reference_domain_truth.py'
+      - '.github/workflows/audit-reference-domain-truth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  TEMPORAL_ARTIFACT_ID: '9137099364'
+  TEMPORAL_ARTIFACT_SHA256: 6fd7676259b14a7ef9c1f142b599ad4d909d384c679cef2ca99dca79338905b3
+
+jobs:
+  reference-domain-truth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard production contract and validate replay tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/instrument-real-gfn-production-replay.mjs
+          node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/instrument-real-gfn-invariant-index.mjs
+          node --check tools/instrument-real-gfn-expanded-domain.mjs
+          node --check tools/replay-real-gfn-invariant-index.mjs
+          python -m py_compile tools/build_dashen_reference_audit_cache.py tools/audit_reference_domain_truth.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Install diagnostic dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet numpy opencv-python-headless
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Build expanded replay-only Dashen reference cache
+        run: |
+          set -euo pipefail
+          rm -rf replay-site reference-audit-output reference-audit-work real-fixture temporal-input
+          mkdir -p replay-site reference-audit-output reference-audit-work temporal-input
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_reference_audit_cache.py replay-site/dashen-cache --workers 24
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/3/0_0.png
+          test -s replay-site/dashen-cache/main/5/31_31.png
+          test -s replay-site/dashen-cache/sub3/5/7_7.png
+          test -s replay-site/dashen-cache/sub4/5/7_7.png
+
+      - name: Resolve exact fixture and validated temporal observation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          release_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
+          asset_id="$(printf '%s' "$release_json" | jq -r --arg name "$FIXTURE_BASENAME" '[.[]?.assets[]? | select(.name == $name)][0].id // empty')"
+          test -n "$asset_id"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$fixture"
+          test "$(sha256sum "$fixture" | awk '{print $1}')" = "$FIXTURE_SHA256"
+          unzip -q "$fixture" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          test -n "$capture_path"
+          echo "FIXTURE_DIR=$(dirname "$capture_path")" >> "$GITHUB_ENV"
+
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$TEMPORAL_ARTIFACT_ID" > temporal-input/artifact.json
+          test "$(jq -r '.digest' temporal-input/artifact.json)" = "sha256:$TEMPORAL_ARTIFACT_SHA256"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$TEMPORAL_ARTIFACT_ID/zip" > temporal-input/artifact.zip
+          unzip -q temporal-input/artifact.zip -d temporal-input/unpacked
+          observation="$(find temporal-input/unpacked -type f -name '40-frames-combinedStructural.png' -print -quit)"
+          test -s "$observation"
+          echo "TEMPORAL_OBSERVATION=$observation" >> "$GITHUB_ENV"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg fixtureSha "$FIXTURE_SHA256" --arg asset "$asset_id" --arg artifact "$TEMPORAL_ARTIFACT_ID" --arg artifactSha "$TEMPORAL_ARTIFACT_SHA256" '{fixture:$fixture,fixtureSha256:$fixtureSha,releaseAssetId:($asset|tonumber),temporalArtifactId:($artifact|tonumber),temporalArtifactSha256:$artifactSha,status:"VERIFIED"}' > reference-audit-output/input-provenance.json
+
+      - name: Instrument replay copy only for full-main coverage search
+        run: |
+          set -euo pipefail
+          node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-invariant-index.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-expanded-domain.mjs replay-site/vision-sync.js
+          node --check replay-site/vision-sync.js
+          cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'replay copy was not instrumented' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Run expanded full-main invariant candidate recall
+        run: |
+          set -euo pipefail
+          node tools/replay-real-gfn-invariant-index.mjs \
+            --site replay-site \
+            --fixture "$FIXTURE_DIR" \
+            --observation "$TEMPORAL_OBSERVATION" \
+            --report reference-audit-output/expanded-full-main-invariant.json \
+            --top-k 8
+          test -s reference-audit-output/expanded-full-main-invariant.json
+
+      - name: Run reference-domain truth audit and positive control
+        run: |
+          set -euo pipefail
+          python tools/audit_reference_domain_truth.py \
+            --fixture "$FIXTURE_DIR" \
+            --cache replay-site/dashen-cache \
+            --expanded-invariant reference-audit-output/expanded-full-main-invariant.json \
+            --report reference-audit-output/reference-domain-truth.json \
+            --work-dir reference-audit-work
+          test -s reference-audit-output/reference-domain-truth.json
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Show decision summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -s reference-audit-output/reference-domain-truth.json ]; then
+            jq '{decision,exactRemainingFailureStage,referenceInventory:{mapConfig:.referenceInventory.mapConfig,subTypeToZone:.referenceInventory.subTypeToZone,multiPlaneMaterials:[.referenceInventory.multiPlaneMaterials[]|{layer,count,mapSubTypes}]},coverage,domainSimilarity:{closestPublicRasterFamilyByRobustDistribution,currentMainPlausibility,families},positiveControl:{expectedControl,expectedWorld,pass,verdict,limitation,attempts:[.positiveControl.attempts[]|{page,fetch,registered:[.images[]|select(.registered==true)|{url,inliers,inlierRatio,expectedPoiInsideRegisteredImage,registeredImageCenterToExpectedPoiPx}]}]},expandedFullMainReplay,productionChangeJustified,liveTestingJustified,acceptance}' reference-audit-output/reference-domain-truth.json
+          else
+            echo 'reference-domain truth report missing'
+          fi
+
+      - name: Upload durable reference-domain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-reference-domain-truth-${{ github.run_id }}
+          path: reference-audit-output/
+          if-no-files-found: error
+          retention-days: 30
