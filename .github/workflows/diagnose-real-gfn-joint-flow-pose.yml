@@ -1,0 +1,127 @@
+name: Diagnose Real GFN Joint Flow Pose
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'tools/build_dashen_visual_cache.py'
+      - 'tools/instrument-real-gfn-production-replay.mjs'
+      - 'tools/instrument-real-gfn-candidate-diagnostics.mjs'
+      - 'tools/replay-real-gfn-joint-flow-pose.mjs'
+      - '.github/workflows/diagnose-real-gfn-joint-flow-pose.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  FIXTURE_RELEASE_ASSET_ID: '511291145'
+  DINO_SEQUENCE_ARTIFACT_ID: '9139382335'
+  DINO_SEQUENCE_ARTIFACT_SHA256: 363958b8264b57bbb00907e261e8fb3bcefca39da0cc74ee853be2d3a8b7f9cf
+  DINO_SEQUENCE_HEAD: 6e772797fe71d2412b7e075e80799694365e126b
+
+jobs:
+  joint-flow-pose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate replay-only joint-pose tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/instrument-real-gfn-production-replay.mjs
+          node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/replay-real-gfn-joint-flow-pose.mjs
+          python -m py_compile tools/build_dashen_visual_cache.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Build replay-only diagnostic site
+        run: |
+          set -euo pipefail
+          rm -rf replay-site replay-output real-fixture prior-dino
+          mkdir -p replay-site replay-output real-fixture prior-dino
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node --check replay-site/vision-sync.js
+          cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'expected replay-only instrumentation but copy is unchanged' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js
+
+      - name: Resolve exact real GFN fixture
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_RELEASE_ASSET_ID" > "$target"
+          actual="$(sha256sum "$target" | awk '{print $1}')"
+          test "$actual" = "$FIXTURE_SHA256"
+          unzip -q "$target" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          test -n "$capture_path"
+          fixture_dir="$(dirname "$capture_path")"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg sha "$FIXTURE_SHA256" --arg source "release_asset:$FIXTURE_RELEASE_ASSET_ID" '{fixture:$fixture,sha256:$sha,status:"AVAILABLE",source:$source}' > replay-output/fixture-resolution.json
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse pinned raw-frame DINO recurrence evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dino-sequence-artifact.zip"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$DINO_SEQUENCE_ARTIFACT_ID/zip" > "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$DINO_SEQUENCE_ARTIFACT_SHA256"
+          unzip -q "$archive" -d prior-dino
+          test -s prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses.json
+          test -s prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json
+          test "$(jq -r '.scope.productRuntimeChanged' prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses.json)" = false
+          jq -n --arg artifactId "$DINO_SEQUENCE_ARTIFACT_ID" --arg sha256 "$DINO_SEQUENCE_ARTIFACT_SHA256" --arg head "$DINO_SEQUENCE_HEAD" '{source:"validated-prior-ci-artifact",artifactId:$artifactId,sha256:$sha256,head:$head}' > replay-output/dino-sequence-provenance.json
+
+      - name: Install replay browser dependency
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Optimize one pose against the production flow trajectory
+        run: |
+          set -euo pipefail
+          node tools/replay-real-gfn-joint-flow-pose.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --candidates prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses.json \
+            --prior-sequence prior-dino/wwmsync-real-gfn-dinov2-sequence-hypotheses-sequence.json \
+            --report replay-output/wwmsync-real-gfn-joint-flow-pose.json \
+            --map-id 1
+          test -s replay-output/wwmsync-real-gfn-joint-flow-pose.json
+
+      - name: Show joint-pose evidence summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if test -s replay-output/wwmsync-real-gfn-joint-flow-pose.json; then
+            jq '{jointPoseVerdict,exactRemainingFailureStage,productChangeJustified,liveTestingJustified,opticalFlow,acceptance,hardNegativeSeparation,bestJointPose:(.bestJointPose|if .==null then null else {seedRank,dinoRank,pose,flowObjective:.flowMetrics.objective,flowStructural:.flowMetrics.structural,flowStructuralPassCount:.flowMetrics.structuralPassCount,staticObjective:.staticMetrics.objective,reverseObjective:.reverseMetrics.objective,orthogonalObjective:.orthogonalMetrics.objective,motionControlMargin,earlyStructural:.earlyMetrics.structural,earlyPassCount:.earlyMetrics.structuralPassCount,lateStructural:.lateMetrics.structural,latePassCount:.lateMetrics.structuralPassCount} end),finals:[.finals[]|{seedRank,dinoRank,pose,flowObjective:.flowMetrics.objective,structuralMedian:.flowMetrics.structural.median,structuralPassCount:.flowMetrics.structuralPassCount,motionControlMargin}]}' replay-output/wwmsync-real-gfn-joint-flow-pose.json
+          fi
+
+      - name: Upload durable joint-pose evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-real-gfn-joint-flow-pose-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
