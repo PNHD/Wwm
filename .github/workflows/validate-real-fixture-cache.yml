@@ -2,11 +2,10 @@ name: Build WWMSync Replay Cache
 
 on:
   push:
-    branches:
-      - feature/wwm-native-sync-v2
+    branches: [feature/wwm-native-sync-v2]
     paths:
-      - 'vision-sync-loader.js'
       - 'vision-sync.js'
+      - 'index.html'
       - 'dashen-tile-cache.js'
       - 'tools/build_dashen_visual_cache.py'
       - 'tools/replay-real-capture.mjs'
@@ -25,21 +24,23 @@ jobs:
       - name: Validate replay tooling
         run: |
           set -euo pipefail
-          node --check vision-sync-loader.js
+          node --check vision-sync.js
           node --check tools/replay-real-capture.mjs
           python -m py_compile tools/build_dashen_visual_cache.py
-      - name: Build same-origin Dashen replay cache
+          grep -Fq 'REAL_FIXTURE_V1_DIRECT' vision-sync.js
+      - name: Build offline replay site
         run: |
           set -euo pipefail
-          rm -rf replay-cache
-          python tools/build_dashen_visual_cache.py replay-cache
-          test -s replay-cache/manifest.json
-          test -s replay-cache/main/3/0_0.png
-          test -s replay-cache/main/5/20_15.png
-          test -s replay-cache/sub4/5/3_3.png
-      - name: Upload replay cache
+          rm -rf replay-site && mkdir replay-site
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/3/0_0.png
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          test -s replay-site/dashen-cache/sub4/5/3_3.png
+      - name: Upload replay site
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-real-replay-cache
-          path: replay-cache/
+          name: wwmsync-real-replay-site
+          path: replay-site/
           retention-days: 2

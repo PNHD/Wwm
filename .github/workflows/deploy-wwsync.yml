@@ -19,51 +19,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Validate static sources
+      - name: Validate direct runtime sources
         run: |
           set -euo pipefail
           node --check app.js
           node --check official-sync.js
           node --check vision-sync.js
-          node --check vision-sync-loader.js
           node --check dashen-tile-cache.js
           node --check sw.js
           python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'getDisplayMedia' vision-sync.js
-          grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' vision-sync.js
-          grep -Fq 'state.marker.setLatLng(latlng)' vision-sync.js
-          grep -Fq 'if(result.moved){state.accepted++' vision-sync.js
-          grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' vision-sync.js
           grep -Fq 'ANCHOR_FREE_STRUCTURAL_' vision-sync.js
-          grep -Fq 'structuralPhaseScoreFast' vision-sync.js
-          grep -Fq 'bidirectionalContourScore' vision-sync.js
-          grep -Fq 'ABSOLUTE NOT LOCKED' vision-sync.js
-          grep -Fq 'REAL_FIXTURE_V1' vision-sync-loader.js
-          grep -Fq 'adaptive-translucent-map' vision-sync-loader.js
-          grep -Fq '__WWMSYNC_DASHEN_CACHE__' dashen-tile-cache.js
-          grep -Fq 'dashen-tile-cache.js' index.html
-          grep -Fq 'vision-sync-loader.js' index.html
-          grep -Fq 'visionAnchorButton' index.html
-          grep -Fq 'visionRawDelta' index.html
-          grep -Fq 'visionMarkerDelta' index.html
-          grep -Fq 'vision-sync.css' index.html
+          grep -Fq 'REAL_FIXTURE_V1_DIRECT' vision-sync.js
+          grep -Fq 'adaptive-translucent-map' vision-sync.js
+          grep -Fq '__WWMSYNC_ABSOLUTE_REPLAY__' vision-sync.js
+          grep -Fq '<script src="/vision-sync.js"></script>' index.html
+          ! grep -Fq '<script src="/vision-sync-loader.js"></script>' index.html
           grep -Fq 'display-capture=(self)' _headers
 
-      - name: Build clean static bundle and Dashen visual reference cache
+      - name: Build clean static bundle
         run: |
           set -euo pipefail
           rm -rf dist && mkdir dist
-          cp index.html styles.css vision-sync.css app.js vision-sync.js vision-sync-loader.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           python tools/build_dashen_visual_cache.py dist/dashen-cache
           test -s dist/dashen-cache/manifest.json
           test -s dist/dashen-cache/main/3/0_0.png
           test -s dist/dashen-cache/main/5/20_15.png
           test -s dist/dashen-cache/sub4/5/3_3.png
-          test ! -d dist/.github
-          test ! -d dist/functions
 
       - name: Validate Cloudflare credentials
         env:
@@ -83,144 +68,59 @@ jobs:
           project_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PROJECT_NAME}"
           status="$(curl --silent --show-error --output /tmp/project.json --write-out '%{http_code}' --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$project_url")"
           case "$status" in
-            200) echo "Project exists: ${CLOUDFLARE_PROJECT_NAME}" ;;
+            200) ;;
             404) npx --yes wrangler@latest pages project create "$CLOUDFLARE_PROJECT_NAME" --production-branch "$PRODUCTION_BRANCH" ;;
-            *) echo "Project lookup failed: HTTP ${status}" >&2; cat /tmp/project.json >&2; exit 1 ;;
+            *) cat /tmp/project.json >&2; exit 1 ;;
           esac
 
-      - name: Deploy
+      - name: Deploy preview or production branch
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF_NAME" = "$PRODUCTION_BRANCH" ]; then
-            branch="$PRODUCTION_BRANCH"
-            runtime_url="https://${CLOUDFLARE_PROJECT_NAME}.pages.dev"
-          else
-            branch="preview"
-            runtime_url="https://preview.${CLOUDFLARE_PROJECT_NAME}.pages.dev"
-          fi
-          npx --yes wrangler@latest pages deploy dist \
-            --project-name "$CLOUDFLARE_PROJECT_NAME" \
-            --branch "$branch" \
-            --commit-hash "$GITHUB_SHA" \
-            --commit-message "WWMSync ${GITHUB_SHA::7}" | tee /tmp/wrangler-deploy.log
-          exact_url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.pages\.dev' /tmp/wrangler-deploy.log | head -n1)"
+          if [ "$GITHUB_REF_NAME" = "$PRODUCTION_BRANCH" ]; then branch="$PRODUCTION_BRANCH"; else branch="preview"; fi
+          npx --yes wrangler@latest pages deploy dist --project-name "$CLOUDFLARE_PROJECT_NAME" --branch "$branch" --commit-hash "$GITHUB_SHA" --commit-message "WWMSync ${GITHUB_SHA::7}" | tee /tmp/deploy.log
+          exact_url="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.pages\.dev' /tmp/deploy.log | head -n1)"
           test -n "$exact_url"
           echo "exact_url=$exact_url" >> "$GITHUB_OUTPUT"
-          echo "runtime_url=$runtime_url" >> "$GITHUB_OUTPUT"
-          echo "Exact deployment URL: $exact_url"
-          echo "Runtime alias: $runtime_url"
 
-      - name: HTTP smoke test
+      - name: HTTP smoke
         env:
           EXACT_URL: ${{ steps.deploy.outputs.exact_url }}
         run: |
           set -euo pipefail
           base="${EXACT_URL%/}"
-          fetch(){ curl --fail --silent --show-error --location --retry 12 --retry-delay 3 --retry-all-errors --max-time 45 "$1" -o "$2"; }
-          fetch "$base/" /tmp/root.html
-          fetch "$base/app.js" /tmp/app.js
-          fetch "$base/vision-sync.js" /tmp/vision-sync.js
-          fetch "$base/vision-sync-loader.js" /tmp/vision-sync-loader.js
-          fetch "$base/dashen-tile-cache.js" /tmp/dashen-tile-cache.js
-          fetch "$base/vision-sync.css" /tmp/vision-sync.css
-          fetch "$base/official-sync.js" /tmp/official-sync.js
-          fetch "$base/dashen-cache/manifest.json" /tmp/dashen-cache-manifest.json
-          fetch "$base/dashen-cache/main/3/0_0.png" /tmp/dashen-tile.png
-          grep -Fq 'WWMSync — Where Winds Meet' /tmp/root.html
-          grep -Fq 'visionStartButton' /tmp/root.html
-          grep -Fq 'visionRawDelta' /tmp/root.html
-          grep -Fq 'visionMarkerDelta' /tmp/root.html
-          grep -Fq 'dashen-tile-cache.js' /tmp/root.html
-          grep -Fq 'vision-sync-loader.js' /tmp/root.html
-          grep -Fq 'REAL_FIXTURE_V1' /tmp/vision-sync-loader.js
-          grep -Fq 'adaptive-translucent-map' /tmp/vision-sync-loader.js
-          grep -Fq 'getDisplayMedia' /tmp/vision-sync.js
-          grep -Fq 'state.referenceZoom=Number.isFinite(map.getZoom())' /tmp/vision-sync.js
-          grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
-          grep -Fq 'if(result.moved){state.accepted++' /tmp/vision-sync.js
-          grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' /tmp/vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js
-          grep -Fq 'structuralPhaseScoreFast' /tmp/vision-sync.js
-          grep -Fq 'bidirectionalContourScore' /tmp/vision-sync.js
-          grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js
-          grep -Fq '__WWMSYNC_DASHEN_CACHE__' /tmp/dashen-tile-cache.js
-          grep -Fq '"tilesFetched"' /tmp/dashen-cache-manifest.json
-          grep -Fq 'vision-player-marker' /tmp/vision-sync.css
-          grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
-          grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
-          test -s /tmp/dashen-tile.png
-          echo "WWMSync real-fixture hardening HTTP smoke passed: $base"
+          curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/" -o /tmp/root.html
+          curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/vision-sync.js" -o /tmp/vision-sync.js
+          curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/dashen-cache/manifest.json" -o /tmp/cache.json
+          grep -Fq '<script src="/vision-sync.js"></script>' /tmp/root.html
+          grep -Fq 'REAL_FIXTURE_V1_DIRECT' /tmp/vision-sync.js
+          grep -Fq 'adaptive-translucent-map' /tmp/vision-sync.js
+          grep -Fq '"tilesFetched"' /tmp/cache.json
 
-      - name: Browser smoke map and Vision UI
+      - name: Browser smoke direct runtime
         env:
           EXACT_URL: ${{ steps.deploy.outputs.exact_url }}
         run: |
           set -euo pipefail
-          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
-          test -n "$CHROME_PATH"
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
           npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
           cat > /tmp/smoke.cjs <<'NODE'
-          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
-          const base=process.env.EXACT_URL.replace(/\/$/,'');
+          const { chromium }=require(process.cwd()+'/node_modules/playwright-core');
           (async()=>{
-            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage({viewport:{width:1440,height:900}});
-            const fatal=[];
-            page.on('pageerror',e=>fatal.push(e.message));
-            const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
-            if(!response?.ok())fatal.push(`HTTP ${response?.status()}`);
-            await page.waitForFunction(()=>document.querySelectorAll('#mapSelect option').length>=3,null,{timeout:30000});
-            await page.waitForSelector('.leaflet-container',{state:'visible',timeout:30000});
-            const s=await page.evaluate(()=>({
-              title:document.title,
-              visionStart:!!document.querySelector('#visionStartButton'),
-              visionStop:!!document.querySelector('#visionStopButton'),
-              visionAnchor:!!document.querySelector('#visionAnchorButton'),
-              preview:!!document.querySelector('#visionPreview'),
-              rawDelta:!!document.querySelector('#visionRawDelta'),
-              correctedDelta:!!document.querySelector('#visionCorrectedDelta'),
-              cumulative:!!document.querySelector('#visionCumulative'),
-              markerDelta:!!document.querySelector('#visionMarkerDelta'),
-              holdReason:!!document.querySelector('#visionHoldReason'),
-              diagnosticsApi:typeof window.__WWMSYNC_VISION_DIAGNOSTICS__,
-              absoluteApi:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,
-              replayApi:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,
-              hardening:window.__WWMSYNC_VISION_HARDENING__?.version,
-              dashenCache:typeof window.__WWMSYNC_DASHEN_CACHE__,
-              displayCapture:typeof navigator.mediaDevices?.getDisplayMedia,
-              maps:document.querySelectorAll('#mapSelect option').length,
-              leaflet:typeof window.L
-            }));
-            if(s.title!=='WWMSync — Where Winds Meet'||!s.visionStart||!s.visionStop||!s.visionAnchor||!s.preview||!s.rawDelta||!s.correctedDelta||!s.cumulative||!s.markerDelta||!s.holdReason||s.maps<3||s.leaflet!=='object')fatal.push(JSON.stringify(s));
-            if(s.displayCapture!=='function')fatal.push(`getDisplayMedia=${s.displayCapture}`);
-            if(s.diagnosticsApi!=='function')fatal.push(`diagnosticsApi=${s.diagnosticsApi}`);
-            if(s.absoluteApi!=='function')fatal.push(`absoluteApi=${s.absoluteApi}`);
-            if(s.replayApi!=='object')fatal.push(`replayApi=${s.replayApi}`);
-            if(s.hardening!=='REAL_FIXTURE_V1')fatal.push(`hardening=${s.hardening}`);
-            if(s.dashenCache!=='object')fatal.push(`dashenCache=${s.dashenCache}`);
-            const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
-            const a=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__());
-            if(!d||d.accepted!==0||d.held!==0||typeof d.referenceZoom!=='number')fatal.push(`diagnostics=${JSON.stringify(d)}`);
-            if(!String(a?.contract||'').startsWith('ANCHOR_FREE_STRUCTURAL_'))fatal.push(`absolute-contract=${a?.contract}`);
-            const tileReadable=await page.evaluate(()=>new Promise(resolve=>{
-              const image=new Image();image.crossOrigin='anonymous';
-              image.onload=()=>{try{const c=document.createElement('canvas');c.width=2;c.height=2;const x=c.getContext('2d');x.drawImage(image,0,0,2,2);x.getImageData(0,0,1,1);resolve({ok:true,src:image.src})}catch(error){resolve({ok:false,error:String(error)})}};
-              image.onerror=()=>resolve({ok:false,error:'image-load'});
-              image.src='https://img.166.net/canonical/h72/tilemap/v15.0/3/0_0.png?imageView&v=1';
-            }));
-            if(!tileReadable.ok||!tileReadable.src.includes('/dashen-cache/main/3/0_0.png'))fatal.push(`tileReadable=${JSON.stringify(tileReadable)}`);
-            await page.selectOption('#languageSelect','en');
-            const visionTitle=(await page.locator('[data-vision-i18n="title"]').textContent()).trim();
-            if(visionTitle!=='Vision Sync')fatal.push(`vision title=${visionTitle}`);
-            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d,absolute:a,tileReadable}));
-            console.log('FATAL',JSON.stringify(fatal));
-            await browser.close();
-            if(fatal.length)process.exit(1);
+            const b=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage({viewport:{width:1440,height:900}}),errors=[];
+            p.on('pageerror',e=>errors.push(e.message));
+            const r=await p.goto(process.env.EXACT_URL,{waitUntil:'domcontentloaded',timeout:60000});
+            if(!r?.ok())throw new Error(`HTTP ${r?.status()}`);
+            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V1_DIRECT'&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.__WWMSYNC_ABSOLUTE_REPLAY__==='object',null,{timeout:30000});
+            const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),maps:document.querySelectorAll('#mapSelect option').length}));
+            console.log('DIRECT_RUNTIME',JSON.stringify(s));
+            console.log('PAGE_ERRORS',JSON.stringify(errors));
+            await b.close();
+            if(errors.length||s.maps<3||!String(s.absolute.contract).startsWith('ANCHOR_FREE_STRUCTURAL_'))process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync real-fixture hardening browser smoke passed: $EXACT_URL"

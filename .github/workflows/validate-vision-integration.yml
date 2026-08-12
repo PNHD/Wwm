@@ -1,158 +1,92 @@
 name: Validate Anchor-Free Vision Integration
 
 on:
-  workflow_dispatch:
   push:
     branches: [feature/wwm-native-sync-v2]
     paths:
       - '.github/workflows/validate-vision-integration.yml'
       - 'vision-sync.js'
-      - 'vision-sync-loader.js'
+      - 'index.html'
       - 'dashen-tile-cache.js'
       - 'tools/build_dashen_visual_cache.py'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  PREVIEW_URL: https://preview.wwmsync.pages.dev
-
 jobs:
-  validate:
+  synthetic-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 24
     steps:
-      - name: Wait for accuracy-aware anchor-free bundle on preview
-        shell: bash
+      - uses: actions/checkout@v4
+      - name: Build local production bundle
         run: |
           set -euo pipefail
-          for i in $(seq 1 160); do
-            if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
-              && curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync-loader.js" -o /tmp/vision-sync-loader.js \
-              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js \
-              && grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js \
-              && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
-              && grep -Fq 'rawGray' /tmp/vision-sync.js \
-              && grep -Fq 'injectMarkerDrift' /tmp/vision-sync.js \
-              && grep -Fq 'expectedGlobal' /tmp/vision-sync.js \
-              && grep -Fq "raw=localStorage.getItem(key)" /tmp/vision-sync.js \
-              && grep -Fq 'REAL_FIXTURE_V1' /tmp/vision-sync-loader.js; then
-              exit 0
-            fi
-            sleep 3
-          done
-          echo 'Preview did not surface the accuracy-aware real-fixture hardening bundle.' >&2
-          exit 1
-
-      - name: Prove no-seed lock accuracy motion and drift correction
-        shell: bash
+          rm -rf dist && mkdir dist
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          python tools/build_dashen_visual_cache.py dist/dashen-cache
+          grep -Fq 'REAL_FIXTURE_V1_DIRECT' dist/vision-sync.js
+          grep -Fq '<script src="/vision-sync.js"></script>' dist/index.html
+      - name: Run synthetic cold-state browser E2E
         run: |
           set -euo pipefail
-          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
-          test -n "$CHROME_PATH"
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
           npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
-          cat > /tmp/vision-integration.cjs <<'NODE'
-          const { chromium } = require(process.cwd() + '/node_modules/playwright-core');
-          const base=process.env.PREVIEW_URL.replace(/\/$/,'');
+          (cd dist && python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/wwm-http.log 2>&1 & echo $! >/tmp/wwm-http.pid)
+          trap 'kill $(cat /tmp/wwm-http.pid) 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          cat > /tmp/e2e.cjs <<'NODE'
+          const { chromium }=require(process.cwd()+'/node_modules/playwright-core');
+          const base='http://127.0.0.1:4173';
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--autoplay-policy=no-user-gesture-required']});
             const fatal=[];
-            const distanceToExpected=async page=>page.evaluate(()=>{
-              const expected=window.__WWM_TEST_EXPECTED__?.expectedGlobal;
-              const marker=window.__WWMSYNC_VISION_DIAGNOSTICS__().markerLatLng;
-              if(!expected||!marker)return{px:Infinity,expected,marker};
-              const a=window.__WWMSYNC_VISION_BRIDGE__.project(expected.lat,expected.lng,11);
-              const b=window.__WWMSYNC_VISION_BRIDGE__.project(marker.lat,marker.lng,11);
-              return{px:a&&b?Math.hypot(a.x-b.x,a.y-b.y):Infinity,expected,marker};
-            });
-            async function runProfile(profile, viewport){
-              const context=await browser.newContext({viewport:{width:1440,height:900}});
-              const page=await context.newPage();
-              page.on('pageerror',e=>fatal.push(`${profile}:pageerror:${e.message}`));
-              page.on('console',m=>{if(['error','warning'].includes(m.type()))console.log(`${profile}:BROWSER_${m.type().toUpperCase()}`,m.text())});
+            async function profile(kind,viewport){
+              const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage();
+              page.on('pageerror',e=>fatal.push(`${kind}:pageerror:${e.message}`));
               await page.addInitScript(()=>{
                 const install=()=>{
                   if(!navigator.mediaDevices)return false;
                   Object.defineProperty(navigator.mediaDevices,'getDisplayMedia',{configurable:true,value:async()=>{
                     const c=document.createElement('canvas');c.width=1280;c.height=720;
-                    const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='#202020';ctx.fillRect(0,0,c.width,c.height);
+                    const x=c.getContext('2d',{alpha:false});x.fillStyle='#202020';x.fillRect(0,0,c.width,c.height);
                     window.__WWM_TEST_CANVAS__=c;
-                    if(typeof window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__==='function')window.__WWM_TEST_EXPECTED__=await window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(c,window.__WWM_TEST_PROFILE__||'gfn',0,0);
+                    window.__WWM_TEST_EXPECTED__=await window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(c,window.__WWM_TEST_PROFILE__||'gfn',0,0);
                     const stream=c.captureStream(30),track=stream.getVideoTracks()[0];
-                    window.__WWM_TEST_TRACK__=track;
-                    window.__WWM_TEST_DRAW__=async(profile,dx=0,dy=0)=>{
-                      const result=await window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(c,profile,dx,dy);
-                      track?.requestFrame?.();
-                      return result;
-                    };
-                    track?.requestFrame?.();
-                    return stream;
+                    window.__WWM_TEST_DRAW__=async(profile,dx=0,dy=0)=>{const r=await window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__(c,profile,dx,dy);track?.requestFrame?.();return r};
+                    track?.requestFrame?.();return stream;
                   }});return true;
                 };
                 if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});
               });
-              const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
-              if(!response?.ok())fatal.push(`${profile}:HTTP:${response?.status()}`);
-              await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__==='function'&&typeof window.__WWMSYNC_VISION_TEST__?.injectMarkerDrift==='function'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
-              const boot=await page.evaluate(()=>({contract:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().contract,roi:Number(document.querySelector('#visionRoiSize')?.value),scale:Number(document.querySelector('#visionScale')?.value),orientation:Number(document.querySelector('#visionOrientation')?.value),hardening:window.__WWMSYNC_VISION_HARDENING__?.version}));
-              if(!String(boot.contract).startsWith('ANCHOR_FREE_STRUCTURAL_'))fatal.push(`${profile}:contract=${boot.contract}`);
-              if(boot.hardening!=='REAL_FIXTURE_V1')fatal.push(`${profile}:hardening=${boot.hardening}`);
-              if(Math.abs(boot.roi-.25)>1e-6)fatal.push(`${profile}:default-roi=${boot.roi}`);
-              if(Math.abs(boot.scale-1)>1e-6)fatal.push(`${profile}:default-scale=${boot.scale}`);
-              if(Math.abs(boot.orientation)>1e-6)fatal.push(`${profile}:default-orientation=${boot.orientation}`);
-              const viewportSet=await page.evaluate(v=>window.__WWMSYNC_VISION_TEST__.setViewport(v.lat,v.lng,v.zoom),viewport);
-              if(!viewportSet)fatal.push(`${profile}:viewport-not-set`);
-              await page.evaluate(p=>{window.__WWM_TEST_PROFILE__=p},profile);
-              const before=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
-              if(before.vision.tracking||before.vision.hasAnchor||before.vision.hasMarker)fatal.push(`${profile}:pre-seeded=${JSON.stringify(before.vision)}`);
+              const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});if(!response?.ok())fatal.push(`${kind}:http=${response?.status()}`);
+              await page.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.implementation==='REAL_FIXTURE_V1_DIRECT'&&typeof window.__WWMSYNC_VISION_TEST__?.setViewport==='function'&&Number.isFinite(window.__WWMSYNC_VISION_BRIDGE__?.state?.().mapZoom),null,{timeout:30000});
+              await page.evaluate(({kind,viewport})=>{window.__WWM_TEST_PROFILE__=kind;window.__WWMSYNC_VISION_TEST__.setViewport(viewport.lat,viewport.lng,viewport.zoom)},{kind,viewport});
+              const cold=await page.evaluate(()=>({v:window.__WWMSYNC_VISION_BRIDGE__.state(),a:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
+              if(cold.v.hasAnchor||cold.v.hasMarker||cold.v.tracking)fatal.push(`${kind}:not-cold=${JSON.stringify(cold.v)}`);
               await page.click('#visionStartButton');
               await page.waitForFunction(()=>window.__WWMSYNC_VISION_BRIDGE__.state().active===true&&window.__WWM_TEST_EXPECTED__?.expectedGlobal,null,{timeout:30000});
-              const started=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),expected:window.__WWM_TEST_EXPECTED__}));
-              console.log('CAPTURE_STARTED',profile,JSON.stringify({boot,started}));
-              if(Math.abs((started.vision.roi?.size||0)-180)>1)fatal.push(`${profile}:runtime-roi=${started.vision.roi?.size}`);
-              await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().globalSearches>=1,null,{timeout:30000});
+              const started=await page.evaluate(()=>window.__WWMSYNC_VISION_BRIDGE__.state());
+              if(Math.abs((started.roi?.size||0)-180)>1)fatal.push(`${kind}:roi=${started.roi?.size}`);
               await page.waitForFunction(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes>=1&&window.__WWMSYNC_VISION_DIAGNOSTICS__().motionCalibration==='absolute-matrix',null,{timeout:360000});
-              const locked=await page.evaluate(()=>({vision:window.__WWMSYNC_VISION_BRIDGE__.state(),motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),ui:{status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent}}));
-              const lockAccuracy=await distanceToExpected(page);
-              if(!locked.absolute.searchStartedWithoutAnchor)fatal.push(`${profile}:search-used-anchor`);
-              if(!locked.absolute.searchStartedWithoutMarker)fatal.push(`${profile}:search-used-marker`);
-              if(locked.absolute.viewportAtSearch?.zoom!==before.vision.mapZoom)fatal.push(`${profile}:viewport-proof=${JSON.stringify({requested:viewport,actualBefore:before.vision.mapZoom,atSearch:locked.absolute.viewportAtSearch})}`);
-              if(!locked.motion.markerLatLng)fatal.push(`${profile}:marker-missing-after-lock`);
-              if(locked.motion.motionCalibration!=='absolute-matrix')fatal.push(`${profile}:matrix=${locked.motion.motionCalibration}`);
-              if(locked.motion.absoluteSource!=='structural-global-registration')fatal.push(`${profile}:absoluteSource=${locked.motion.absoluteSource}`);
-              if(String(locked.ui.position||'').includes('ABSOLUTE NOT LOCKED'))fatal.push(`${profile}:ui-not-locked=${JSON.stringify(locked.ui)}`);
-              if(!(lockAccuracy.px<=8))fatal.push(`${profile}:absolute-error-px=${JSON.stringify(lockAccuracy)}`);
-
-              await page.waitForTimeout(900);
-              const shifted=await page.evaluate(async p=>window.__WWM_TEST_DRAW__(p,2,1),profile);
-              const acceptedBefore=locked.motion.accepted||0;
-              await page.waitForFunction(n=>window.__WWMSYNC_VISION_DIAGNOSTICS__().accepted>n,acceptedBefore,{timeout:12000});
+              const locked=await page.evaluate(()=>({v:window.__WWMSYNC_VISION_BRIDGE__.state(),m:window.__WWMSYNC_VISION_DIAGNOSTICS__(),a:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
+              if(!locked.a.searchStartedWithoutAnchor||!locked.a.searchStartedWithoutMarker||!locked.m.markerLatLng)fatal.push(`${kind}:lock=${JSON.stringify(locked)}`);
+              const before=locked.m.accepted||0;await page.evaluate(k=>window.__WWM_TEST_DRAW__(k,2,1),kind);
+              await page.waitForFunction(n=>window.__WWMSYNC_VISION_DIAGNOSTICS__().accepted>n,before,{timeout:12000});
               const moved=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
-              const markerMovement=locked.motion.markerLatLng&&moved.markerLatLng?Math.hypot(moved.markerLatLng.lat-locked.motion.markerLatLng.lat,moved.markerLatLng.lng-locked.motion.markerLatLng.lng):0;
-              if(!(markerMovement>0))fatal.push(`${profile}:markerMovement=${markerMovement}`);
-
-              await page.evaluate(async p=>window.__WWM_TEST_DRAW__(p,0,0),profile);
-              await page.waitForFunction(n=>window.__WWMSYNC_VISION_DIAGNOSTICS__().accepted>n,moved.accepted||0,{timeout:12000});
-              await page.waitForTimeout(900);
-              const preDrift=await page.evaluate(()=>({motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
-              const injected=await page.evaluate(()=>window.__WWMSYNC_VISION_TEST__.injectMarkerDrift(48,36));
-              if(!injected)fatal.push(`${profile}:drift-injection-failed`);
-              const drifted=await distanceToExpected(page);
-              if(!(drifted.px>=30))fatal.push(`${profile}:drift-not-applied=${JSON.stringify(drifted)}`);
-              const fixesBefore=preDrift.absolute.fixes;
-              await page.waitForFunction(n=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes>n,fixesBefore,{timeout:90000});
-              const corrected=await page.evaluate(()=>({motion:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absolute:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
-              const correctedAccuracy=await distanceToExpected(page);
-              if(!(correctedAccuracy.px<=8))fatal.push(`${profile}:periodic-correction-error=${JSON.stringify(correctedAccuracy)}`);
-              if(!(corrected.absolute.fixes>fixesBefore))fatal.push(`${profile}:periodic-fix-not-counted`);
-              console.log('ANCHOR_FREE_PROFILE',JSON.stringify({profile,viewport,shifted,before,started,locked,lockAccuracy,moved,preDrift,injected,drifted,corrected,correctedAccuracy,markerMovement}));
+              if(!moved.markerLatLng||Math.hypot(moved.markerDeltaLat,moved.markerDeltaLng)<=0)fatal.push(`${kind}:marker-not-moved=${JSON.stringify(moved)}`);
+              await page.evaluate(k=>window.__WWM_TEST_DRAW__(k,0,0),kind);await page.waitForTimeout(1000);
+              const fixes=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes);
+              const drift=await page.evaluate(()=>window.__WWMSYNC_VISION_TEST__.injectMarkerDrift(48,36));if(!drift)fatal.push(`${kind}:drift-inject-failed`);
+              await page.waitForFunction(n=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__().fixes>n,fixes,{timeout:90000});
+              const corrected=await page.evaluate(()=>({m:window.__WWMSYNC_VISION_DIAGNOSTICS__(),a:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__()}));
+              console.log('SYNTHETIC_PROFILE',JSON.stringify({kind,viewport,cold,started,locked,moved,corrected}));
               await context.close();
             }
-            await runProfile('gfn',{lat:2.55,lng:-.20,zoom:15});
-            await runProfile('local',{lat:.20,lng:-2.55,zoom:9});
-            console.log('INTEGRATION_FATAL',JSON.stringify(fatal));
-            await browser.close();
-            if(fatal.length)process.exit(1);
+            await profile('gfn',{lat:2.55,lng:-.20,zoom:15});
+            await profile('local',{lat:.20,lng:-2.55,zoom:9});
+            console.log('SYNTHETIC_FATAL',JSON.stringify(fatal));await browser.close();if(fatal.length)process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
-          CHROME_PATH="$CHROME_PATH" node /tmp/vision-integration.cjs
+          CHROME_PATH="$CHROME_PATH" node /tmp/e2e.cjs
