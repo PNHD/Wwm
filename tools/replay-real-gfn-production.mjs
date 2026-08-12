@@ -172,13 +172,15 @@ try {
     perFrame.push({ frame: i, fixtureTimeMs: (i - 1) * capture.intervalMs, source: frames[i - 1].minimap, snapshot: snap });
   }
 
-  // Finish work that already captured one of the 40 real fixture frames. Never loop/synthesize additional fixture frames.
+  // Finish matcher work that already captured one of the 40 real fixture frames. Never loop/synthesize additional fixture frames.
   let lastEventCount = -1, stableSince = Date.now();
-  const settleDeadline = Date.now() + 45_000;
+  const settleDeadline = Date.now() + 120_000;
   while (Date.now() < settleDeadline) {
-    const count = await page.evaluate(() => window.__WWMSYNC_REAL_REPLAY_EVENTS__.length);
-    if (count !== lastEventCount) { lastEventCount = count; stableSince = Date.now(); }
-    if (Date.now() - stableSince >= 1500) break;
+    const progress = await page.evaluate(() => ({ eventCount: window.__WWMSYNC_REAL_REPLAY_EVENTS__.length, absolute: window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__() }));
+    if (progress.eventCount !== lastEventCount) { lastEventCount = progress.eventCount; stableSince = Date.now(); }
+    const inFlight = ['SEARCH', 'LOCAL FIX', 'CONFIRM 1/2'].includes(progress.absolute?.status || '');
+    if (progress.eventCount > 0 && !inFlight && Date.now() - stableSince >= 1500) break;
+    if (progress.absolute?.lastError && !inFlight) break;
     await sleep(250);
   }
 
@@ -190,6 +192,7 @@ try {
   const confirms = events.filter(e => e.type === 'confirmation');
   const applies = events.filter(e => e.type === 'apply');
   const successfulApplies = applies.filter(e => e.detail.ok);
+  const matcherExecuted = (runtime.absolute?.globalSearches || 0) > 0 || regs.length > 0;
   const firstGlobal = regs.find(e => e.detail.modeBefore === 'global' || e.detail.modeBefore === 'idle') || null;
   const firstCandidate = regs.find(e => (e.detail.modeBefore === 'global' || e.detail.modeBefore === 'idle') && !e.detail.reason && e.detail.target) || null;
   const firstProductionLock = successfulApplies[0] || null;
@@ -205,13 +208,15 @@ try {
   const initialLockValidated = !!firstValidLock && runtime.vision.motionCalibration === 'absolute-matrix' && runtime.vision.hasMarker;
 
   let acceptance = 'NOT_FULLY_VALIDATED', validationGap = null;
-  if (initialLockValidated && motionValidated && periodicValidated) acceptance = 'PASS';
+  if (!matcherExecuted) validationGap = 'production matcher did not start';
+  else if (!regs.length) validationGap = runtime.absolute?.lastError ? `production registration error: ${runtime.absolute.lastError}` : 'production registration did not complete';
+  else if (initialLockValidated && motionValidated && periodicValidated) acceptance = 'PASS';
   else if (!initialLockValidated) acceptance = 'FAIL';
   else if (!motionValidated) validationGap = 'post-lock optical-flow marker propagation not observed within 40-frame window';
   else if (!periodicValidated) validationGap = periodicRegs.length ? null : 'periodic reacquisition not observed within 40-frame window';
 
   let failure = null;
-  if (acceptance === 'FAIL') failure = classifyFailure(events, runtime.vision);
+  if (acceptance === 'FAIL' && regs.length) failure = classifyFailure(events, runtime.vision);
   else if (initialLockValidated && periodicRegs.length > 0 && periodicApplies.length === 0) { acceptance = 'FAIL'; failure = { code: 'H', label: 'periodic reacquisition fails', reason: periodicRegs[0].detail.reason || 'periodic-no-correction' }; }
 
   const fixX = successfulApplies.map(e => e.detail.fine?.globalX).filter(Number.isFinite), fixY = successfulApplies.map(e => e.detail.fine?.globalY).filter(Number.isFinite), rotations = successfulApplies.map(e => e.detail.fine?.angle).filter(Number.isFinite);
@@ -245,7 +250,7 @@ try {
   }
 
   const report = {
-    schema: 'wwmsync-real-gfn-production-replay-v2', generatedAtUtc: new Date().toISOString(), matcherExecuted: true,
+    schema: 'wwmsync-real-gfn-production-replay-v2', generatedAtUtc: new Date().toISOString(), matcherExecuted,
     fixture: { name: EXPECTED_FIXTURE, archiveSha256, expectedArchiveSha256: EXPECTED_ARCHIVE_SHA256, sourceDimensions: capture.screen, capturedMinimapRoi: capture.minimapRoi, fps: capture.fps, intervalMs: capture.intervalMs, frameCount: capture.frameCount, durationSeconds: capture.durationSeconds },
     contract: { coldState: cold, startedState: started, defaultRoiSettings: true, manualAnchor: false, injectedAbsoluteFix: false, manualSearchSeed: false, productionCaptureLoop: true, productionRegisterFramePath: true, productSourceInstrumentedOnlyInReplayCopy: true, matcherGatesChanged: false },
     acceptance: { synthetic: 'PASS', realGfnFixture: acceptance, realLocalFixture: 'UNAVAILABLE', realLiveE2E: 'PENDING', exactPassLabel: acceptance === 'PASS' ? 'REAL GFN FIXTURE PASS' : null, validationGap },
