@@ -1,4 +1,4 @@
-name: Patch Vision Structural V9
+name: Patch Vision Acceptance V10
 
 on:
   push:
@@ -19,23 +19,23 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Patch unclipped local-NCC matcher V9
-        run: python tools/patch_vision_structural_v9.py
+      - name: Patch absolute-accuracy and drift acceptance hooks
+        run: python tools/patch_vision_acceptance_v10.py
       - name: Validate JavaScript
         run: |
           node --check vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V9' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V10' vision-sync.js
+          grep -Fq 'injectMarkerDrift' vision-sync.js
+          grep -Fq 'expectedGlobal' vision-sync.js
           grep -Fq 'rawGray' vision-sync.js
-          grep -Fq 'intensityCount' vision-sync.js
-          grep -Fq "raw=localStorage.getItem(key)" vision-sync.js
-      - name: Commit feature-only matcher patch
+      - name: Commit feature-only acceptance patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add vision-sync.js
           if git diff --cached --quiet; then
-            echo 'No matcher changes needed.'
+            echo 'No acceptance changes needed.'
             exit 0
           fi
-          git commit -m 'fix: use unclipped luminance for local NCC'
+          git commit -m 'test: expose absolute accuracy and drift recovery hooks'
           git push origin HEAD:feature/wwm-native-sync-v2
