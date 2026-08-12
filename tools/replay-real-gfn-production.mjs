@@ -17,6 +17,7 @@ const visualDir = path.resolve(arg('--visual-dir') || 'replay-output/visuals');
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const parseJsonFile = file => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 const mean = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 const variance = values => { const m = mean(values); return m == null ? null : values.reduce((s, v) => s + (v - m) ** 2, 0) / values.length; };
 const angleDelta = (a, b) => ((a - b + 540) % 360) - 180;
@@ -36,7 +37,7 @@ function parseFixture() {
   if (archiveSha256 !== EXPECTED_ARCHIVE_SHA256) throw new Error(`fixture SHA-256 mismatch: ${archiveSha256}`);
   const capturePath = path.join(fixtureDir, 'capture.json');
   if (!fs.existsSync(capturePath)) throw new Error(`capture.json missing under ${fixtureDir}`);
-  const capture = JSON.parse(fs.readFileSync(capturePath, 'utf8'));
+  const capture = parseJsonFile(capturePath);
   if (capture.status !== 'complete') throw new Error(`fixture status is ${capture.status}`);
   if (capture.frameCount !== 40 || capture.fps !== 5 || capture.intervalMs !== 200) throw new Error('unexpected fixture timing contract');
   if (capture.screen?.width !== 2048 || capture.screen?.height !== 864) throw new Error('unexpected source dimensions');
