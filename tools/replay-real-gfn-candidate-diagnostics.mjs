@@ -43,7 +43,6 @@ function saveDataUrl(dataUrl, file) {
   ensureDir(path.dirname(file)); fs.writeFileSync(file, Buffer.from(m[1], 'base64')); return file;
 }
 
-function distribution(records, key) { return stats(records.map(r => r?.[key])); }
 function sep(trueRecords, negativeRecords, key) {
   const t = trueRecords.map(r => r?.[key]).filter(Number.isFinite), n = negativeRecords.map(r => r?.[key]).filter(Number.isFinite);
   return { true: stats(t), hardNegatives: stats(n), conservativeGap: t.length && n.length ? quantile(t, .10) - quantile(n, .90) : null, meanGap: t.length && n.length ? mean(t) - mean(n) : null };
@@ -87,6 +86,19 @@ try {
     seed = { ...seed, x: out.track.globalX, y: out.track.globalY, radius: out.track.radius, angle: out.track.angle };
   }
 
+  // Replay-only forced global probes: do not accept/apply a fix. These compensate for wall-clock scheduler compression in CI replay and expose independent global ranking over fixture time.
+  const diagnosticProbeFrames = [1, 10, 20, 30, 40];
+  const diagnosticGlobalProbes = [];
+  for (const frameIndex of diagnosticProbeFrames) {
+    const probe = await page.evaluate(async ({ name }) => {
+      const img = new Image(); img.decoding = 'sync'; img.src = `/fixture/${name}`; await img.decode();
+      const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.getContext('2d', { alpha: false }).drawImage(img, 0, 0, 216, 216, 0, 0, 192, 192);
+      return window.__WWMSYNC_REAL_GFN_CANDIDATE_DIAG__.globalProbe(c, 1, 8);
+    }, { name: frames[frameIndex - 1].minimap });
+    if (!probe?.candidates?.length) throw new Error(`forced global probe produced no candidates at frame ${frameIndex}`);
+    diagnosticGlobalProbes.push({ frame: frameIndex, fixtureTimeMs: (frameIndex - 1) * capture.intervalMs, source: frames[frameIndex - 1].minimap, ...probe });
+  }
+
   const stepComparisons = [];
   let predX = 0, predY = 0, actualX = 0, actualY = 0;
   const cumulative = [{ frame: 1, actualX: 0, actualY: 0, predictedX: 0, predictedY: 0 }];
@@ -112,9 +124,9 @@ try {
   const angleStability = { meanDeg: mean(trackAngles), stdDegLinear: std(trackAngles.map(a => { let d = ((a - trackAngles[0] + 540) % 360) - 180; return d; })), maxDeltaFromStartDeg: Math.max(...trackAngles.map(a => angleDelta(a, trackAngles[0]))) };
   const scaleStability = { radius: stats(trackRadii), logStd: std(trackRadii.map(r => Math.log(r))), maxRelativeDeltaFromStart: Math.max(...trackRadii.map(r => Math.abs(r / trackRadii[0] - 1))) };
 
-  const globalRecurrence = globalFrames.slice(1).map(g => {
-    const t = tracked[g.frame - 1]; const ranked = (g.alternatives || []).map(c => ({ ...c, distanceToTrackedBasin: hypot(c.x - t.globalX, c.y - t.globalY), angleDeltaToTracked: angleDelta(c.angle, t.angle), scaleLogDeltaToTracked: Math.abs(Math.log((c.radius || 1) / (t.radius || 1))) })).sort((a, b) => a.distanceToTrackedBasin - b.distanceToTrackedBasin); const nearest = ranked[0] || null;
-    return { frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, globalWinner: g.alternatives?.[0] || null, nearestTrackedBasinCandidate: nearest, sameBasin: !!nearest && nearest.distanceToTrackedBasin <= 120 && nearest.angleDeltaToTracked <= 25 && nearest.scaleLogDeltaToTracked <= .20 };
+  const globalRecurrence = diagnosticGlobalProbes.slice(1).map(g => {
+    const t = tracked[g.frame - 1]; const ranked = (g.candidates || []).map(c => ({ ...c, distanceToTrackedBasin: hypot(c.x - t.globalX, c.y - t.globalY), angleDeltaToTracked: angleDelta(c.angle, t.angle), scaleLogDeltaToTracked: Math.abs(Math.log((c.radius || 1) / (t.radius || 1))) })).sort((a, b) => a.distanceToTrackedBasin - b.distanceToTrackedBasin); const nearest = ranked[0] || null;
+    return { frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, globalWinner: g.candidates?.[0] || null, nearestTrackedBasinCandidate: nearest, sameBasin: !!nearest && nearest.distanceToTrackedBasin <= 120 && nearest.angleDeltaToTracked <= 25 && nearest.scaleLogDeltaToTracked <= .20 };
   });
   const sameBasinRecurrenceRate = globalRecurrence.length ? globalRecurrence.filter(x => x.sameBasin).length / globalRecurrence.length : null;
 
@@ -129,14 +141,14 @@ try {
   ];
   const generatedNegativeScores = [];
   for (const [kind, candidate] of generatedNegatives) generatedNegativeScores.push({ kind, sourceFrame: 1, candidate, ...(await firstFrameCanvasScore(candidate, `neg:${kind}`)) });
-  const beamNegatives = globalFrames.flatMap(g => (g.alternatives || []).slice(1).map(c => ({ kind: 'neighboring-structural-basin', sourceFrame: g.frame, ...c })));
+  const beamNegatives = diagnosticGlobalProbes.flatMap(g => (g.candidates || []).slice(1).map(c => ({ kind: 'neighboring-structural-basin', sourceFrame: g.frame, ...c })));
   const hardNegatives = [...beamNegatives, ...generatedNegativeScores];
   const hypothesisFrames = [1, 10, 20, 30, 40].map(i => ({ kind: 'tracked-hypothesis', sourceFrame: i, ...tracked[i - 1] }));
   const separation = {
     scaleAwareStructure: sep(hypothesisFrames, hardNegatives, 'scaleScore'),
     ncc: sep(hypothesisFrames, hardNegatives, 'intensityNcc'),
     combinedScore: sep(hypothesisFrames, hardNegatives, 'combinedScore'),
-    beamMargin: sep(globalFrames.map(g => g.alternatives?.[0]).filter(Boolean), beamNegatives, 'beamMargin')
+    beamMargin: sep(diagnosticGlobalProbes.map(g => g.candidates?.[0]).filter(Boolean), beamNegatives, 'beamMargin')
   };
 
   const ablation = await page.evaluate(async ({ name, candidate }) => {
@@ -179,7 +191,9 @@ try {
     schema: 'wwmsync-real-gfn-candidate-diagnostics-v1', generatedAtUtc: new Date().toISOString(), productionReport: path.basename(productionReportPath),
     fixture: { frameCount: capture.frameCount, fps: capture.fps, intervalMs: capture.intervalMs, sourceDimensions: capture.screen, capturedMinimapRoi: capture.minimapRoi },
     candidateConsistencyVerdict: verdict,
-    globalSearchFrames: globalFrames.map(g => ({ frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, gateReason: g.gateReason, coarseScore: g.coarseScore, fineScore: g.fineScore, beamMargin: g.separation, candidates: g.alternatives })),
+    productionGlobalSearchFrames: globalFrames.map(g => ({ frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, gateReason: g.gateReason, coarseScore: g.coarseScore, fineScore: g.fineScore, beamMargin: g.separation, candidates: g.alternatives })),
+    diagnosticGlobalProbes,
+    globalSearchFrames: diagnosticGlobalProbes.map(g => ({ frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, coarse: g.coarse, fine: g.fine, candidates: g.candidates })),
     consistency: { positionCluster, angleStability, scaleStability, sameBasinRecurrenceRate, globalRecurrence, flowConsistency, stepComparisons, trackedSequence: tracked },
     hardNegativeCalibration: { hypothesisSamples: hypothesisFrames, hardNegatives, separation },
     structuralScoreBreakdown: structuralLossBreakdown,
@@ -188,7 +202,7 @@ try {
     liveTestingJustified: false
   };
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.log(JSON.stringify({ report: reportPath, verdict, globalSearchFrames: globalFrames.map(x => x.frame), sameBasinRecurrenceRate, flowMeanCosine: flowCos, structuralConservativeGap: structureGap, combinedConservativeGap: combinedGap, liveTestingJustified: false }, null, 2));
+  console.log(JSON.stringify({ report: reportPath, verdict, productionGlobalSearchFrames: globalFrames.map(x => x.frame), diagnosticGlobalProbeFrames: diagnosticGlobalProbes.map(x => x.frame), sameBasinRecurrenceRate, flowMeanCosine: flowCos, structuralConservativeGap: structureGap, combinedConservativeGap: combinedGap, liveTestingJustified: false }, null, 2));
 } finally {
   if (browser) await browser.close(); server.close();
 }
