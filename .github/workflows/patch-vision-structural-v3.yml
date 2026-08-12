@@ -1,4 +1,4 @@
-name: Patch Vision Structural V4
+name: Patch Vision Structural V4 Retry
 
 on:
   push:
@@ -19,8 +19,10 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Patch matcher V4
-        run: python tools/patch_vision_structural_v4.py
+      - name: Fix patch syntax and patch matcher V4
+        run: |
+          python tools/fix_patch_v4_syntax.py
+          python tools/patch_vision_structural_v4.py
       - name: Validate JavaScript
         run: |
           node --check vision-sync.js
