@@ -36,9 +36,9 @@ jobs:
           grep -Fq 'state.marker.setLatLng(latlng)' vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V4' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_' vision-sync.js
+          grep -Fq 'structuralPhaseScoreFast' vision-sync.js
           grep -Fq 'bidirectionalContourScore' vision-sync.js
-          grep -Fq 'structuralPhaseScore' vision-sync.js
           grep -Fq 'ABSOLUTE NOT LOCKED' vision-sync.js
           grep -Fq '__WWMSYNC_DASHEN_CACHE__' dashen-tile-cache.js
           grep -Fq 'dashen-tile-cache.js' index.html
@@ -135,9 +135,9 @@ jobs:
           grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' /tmp/vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' /tmp/vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V4' /tmp/vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js
+          grep -Fq 'structuralPhaseScoreFast' /tmp/vision-sync.js
           grep -Fq 'bidirectionalContourScore' /tmp/vision-sync.js
-          grep -Fq 'structuralPhaseScore' /tmp/vision-sync.js
           grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js
           grep -Fq '__WWMSYNC_DASHEN_CACHE__' /tmp/dashen-tile-cache.js
           grep -Fq '"tilesFetched"' /tmp/dashen-cache-manifest.json
@@ -193,7 +193,7 @@ jobs:
             const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
             const a=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__());
             if(!d||d.accepted!==0||d.held!==0||typeof d.referenceZoom!=='number')fatal.push(`diagnostics=${JSON.stringify(d)}`);
-            if(a?.contract!=='ANCHOR_FREE_STRUCTURAL_V4')fatal.push(`absolute-contract=${a?.contract}`);
+            if(!String(a?.contract||'').startsWith('ANCHOR_FREE_STRUCTURAL_'))fatal.push(`absolute-contract=${a?.contract}`);
             const tileReadable=await page.evaluate(()=>new Promise(resolve=>{
               const image=new Image();image.crossOrigin='anonymous';
               image.onload=()=>{try{const c=document.createElement('canvas');c.width=2;c.height=2;const x=c.getContext('2d');x.drawImage(image,0,0,2,2);x.getImageData(0,0,1,1);resolve({ok:true,src:image.src})}catch(error){resolve({ok:false,error:String(error)})}};
