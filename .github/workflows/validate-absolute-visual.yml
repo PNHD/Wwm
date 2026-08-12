@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Wait for full-resolution scale-aware structural bundle on preview
+      - name: Wait for unclipped local-NCC structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
@@ -29,7 +29,8 @@ jobs:
               && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
               && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
               && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js \
-              && grep -Fq 'normalizedGrayOnly' /tmp/vision-sync.js; then
+              && grep -Fq 'rawGray' /tmp/vision-sync.js \
+              && grep -Fq 'intensityCount' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
@@ -63,6 +64,7 @@ jobs:
               if(!(result.scaleScore>=.58))fatal.push(`${profile}:structural=${result.scaleScore}`);
               if(!(result.intensityScore>=.42))fatal.push(`${profile}:recall=${result.intensityScore}`);
               if(!(result.coarseScore>=.50))fatal.push(`${profile}:coarse=${result.coarseScore}`);
+              if(!(result.truth?.intensityCount>=20))fatal.push(`${profile}:truth-count=${result.truth?.intensityCount}`);
             }
             const unlocked=await page.evaluate(()=>({diag:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent,motion:window.__WWMSYNC_VISION_DIAGNOSTICS__()}));
             if(!String(unlocked.status).includes('ABSOLUTE NOT LOCKED'))fatal.push(`unlocked-status=${unlocked.status}`);
