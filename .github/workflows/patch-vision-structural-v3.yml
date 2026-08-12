@@ -1,4 +1,4 @@
-name: Patch Vision Structural V8
+name: Patch Vision Structural V9
 
 on:
   push:
@@ -19,14 +19,14 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Patch full-resolution coarse matcher V8
-        run: python tools/patch_vision_structural_v8.py
+      - name: Patch unclipped local-NCC matcher V9
+        run: python tools/patch_vision_structural_v9.py
       - name: Validate JavaScript
         run: |
           node --check vision-sync.js
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V8' vision-sync.js
-          grep -Fq 'normalizedGrayOnly' vision-sync.js
-          grep -Fq 'global full-res recall' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V9' vision-sync.js
+          grep -Fq 'rawGray' vision-sync.js
+          grep -Fq 'intensityCount' vision-sync.js
           grep -Fq "raw=localStorage.getItem(key)" vision-sync.js
       - name: Commit feature-only matcher patch
         run: |
@@ -37,5 +37,5 @@ jobs:
             echo 'No matcher changes needed.'
             exit 0
           fi
-          git commit -m 'fix: match coarse candidates at full tile resolution'
+          git commit -m 'fix: use unclipped luminance for local NCC'
           git push origin HEAD:feature/wwm-native-sync-v2
