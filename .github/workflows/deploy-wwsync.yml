@@ -36,6 +36,8 @@ jobs:
           grep -Fq 'state.marker.setLatLng(latlng)' vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V2' vision-sync.js
+          grep -Fq 'ABSOLUTE NOT LOCKED' vision-sync.js
           grep -Fq '__WWMSYNC_DASHEN_CACHE__' dashen-tile-cache.js
           grep -Fq 'dashen-tile-cache.js' index.html
           grep -Fq 'visionAnchorButton' index.html
@@ -131,13 +133,15 @@ jobs:
           grep -Fq 'state.marker.setLatLng(latlng)' /tmp/vision-sync.js
           grep -Fq 'if(result.moved){state.accepted++' /tmp/vision-sync.js
           grep -Fq '__WWMSYNC_VISION_DIAGNOSTICS__' /tmp/vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V2' /tmp/vision-sync.js
+          grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js
           grep -Fq '__WWMSYNC_DASHEN_CACHE__' /tmp/dashen-tile-cache.js
           grep -Fq '"tilesFetched"' /tmp/dashen-cache-manifest.json
           grep -Fq 'vision-player-marker' /tmp/vision-sync.css
           grep -Fq "https://s2.easebar.com/39f12eda6b86452b" /tmp/app.js
           grep -Fq 'h72na_map_accessToken' /tmp/official-sync.js
           test -s /tmp/dashen-tile.png
-          echo "WWMSync hybrid visual HTTP smoke passed: $base"
+          echo "WWMSync anchor-free structural HTTP smoke passed: $base"
 
       - name: Browser smoke map and Vision UI
         env:
@@ -183,7 +187,9 @@ jobs:
             if(s.absoluteApi!=='function')fatal.push(`absoluteApi=${s.absoluteApi}`);
             if(s.dashenCache!=='object')fatal.push(`dashenCache=${s.dashenCache}`);
             const d=await page.evaluate(()=>window.__WWMSYNC_VISION_DIAGNOSTICS__());
+            const a=await page.evaluate(()=>window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__());
             if(!d||d.accepted!==0||d.held!==0||typeof d.referenceZoom!=='number')fatal.push(`diagnostics=${JSON.stringify(d)}`);
+            if(a?.contract!=='ANCHOR_FREE_STRUCTURAL_V2')fatal.push(`absolute-contract=${a?.contract}`);
             const tileReadable=await page.evaluate(()=>new Promise(resolve=>{
               const image=new Image();image.crossOrigin='anonymous';
               image.onload=()=>{try{const c=document.createElement('canvas');c.width=2;c.height=2;const x=c.getContext('2d');x.drawImage(image,0,0,2,2);x.getImageData(0,0,1,1);resolve({ok:true,src:image.src})}catch(error){resolve({ok:false,error:String(error)})}};
@@ -193,12 +199,12 @@ jobs:
             if(!tileReadable.ok||!tileReadable.src.includes('/dashen-cache/main/3/0_0.png'))fatal.push(`tileReadable=${JSON.stringify(tileReadable)}`);
             await page.selectOption('#languageSelect','en');
             const visionTitle=(await page.locator('[data-vision-i18n="title"]').textContent()).trim();
-            if(visionTitle!=='GFN Vision Sync')fatal.push(`vision title=${visionTitle}`);
-            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d,tileReadable}));
+            if(visionTitle!=='Vision Sync')fatal.push(`vision title=${visionTitle}`);
+            console.log('VISION_BROWSER_STATE',JSON.stringify({...s,diagnostics:d,absolute:a,tileReadable}));
             console.log('FATAL',JSON.stringify(fatal));
             await browser.close();
             if(fatal.length)process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
-          echo "WWMSync hybrid visual browser smoke passed: $EXACT_URL"
+          echo "WWMSync anchor-free structural browser smoke passed: $EXACT_URL"
