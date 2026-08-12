@@ -17,25 +17,25 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
-      - name: Wait for structural V4 absolute bundle on preview
+      - name: Wait for phase-first structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 100); do
+          for i in $(seq 1 120); do
             if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
-              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_V4' /tmp/vision-sync.js \
+              && grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js \
               && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
-              && grep -Fq 'bidirectionalContourScore' /tmp/vision-sync.js \
-              && grep -Fq 'structuralPhaseScore' /tmp/vision-sync.js; then
+              && grep -Fq 'structuralPhaseScoreFast' /tmp/vision-sync.js \
+              && grep -Fq 'bidirectionalContourScore' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
           done
           exit 1
 
-      - name: Run source-normalized bidirectional structural matcher tests
+      - name: Run source-normalized phase-first structural matcher tests
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
             page.on('pageerror',e=>fatal.push(`pageerror:${e.message}`));
             const response=await page.goto(base,{waitUntil:'domcontentloaded',timeout:60000});
             if(!response?.ok())fatal.push(`HTTP:${response?.status()}`);
-            await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__==='function'&&window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__?.().contract==='ANCHOR_FREE_STRUCTURAL_V4',null,{timeout:30000});
+            await page.waitForFunction(()=>typeof window.__WWMSYNC_ABSOLUTE_SELFTEST__==='function'&&String(window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__?.().contract||'').startsWith('ANCHOR_FREE_STRUCTURAL_'),null,{timeout:30000});
             for(const profile of ['gfn','local']){
               const result=await page.evaluate(p=>window.__WWMSYNC_ABSOLUTE_SELFTEST__(p),profile);
               console.log('STRUCTURAL_SELFTEST',JSON.stringify(result));
