@@ -1,0 +1,44 @@
+name: Audit WWMSync Public HUD Controls
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/mine_public_hud_controls.py'
+      - '.github/workflows/audit-public-hud-controls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+
+jobs:
+  public-hud-mining:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install mining dependencies
+        run: python -m pip install --disable-pip-version-check opencv-python-headless numpy
+      - name: Guard production matcher and mine public HUD candidates
+        run: |
+          set -euo pipefail
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          rm -rf public-hud-output
+          python tools/mine_public_hud_controls.py --out-dir public-hud-output
+          test -s public-hud-output/public-hud-mining.json
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          jq '{scope,sources:[.sources[]|{id,page,image,published,lineage,landmark,httpStatus,error,width,height,bytes,sha256,productionDefaultRoi,rawFile,roiFile}],dashenPointQuery}' public-hud-output/public-hud-mining.json
+      - name: Upload public HUD mining evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-public-hud-mining-${{ github.run_id }}
+          path: public-hud-output/
+          if-no-files-found: warn
+          retention-days: 30
