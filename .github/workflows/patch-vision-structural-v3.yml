@@ -1,4 +1,4 @@
-name: Patch WWMSync V3 CI Contract
+name: Patch Vision Structural V4
 
 on:
   push:
@@ -19,20 +19,22 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
-      - name: Patch deploy contract marker
-        run: python tools/patch_ci_contract_v3.py
-      - name: Validate deploy workflow marker
+      - name: Patch matcher V4
+        run: python tools/patch_vision_structural_v4.py
+      - name: Validate JavaScript
         run: |
-          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V3' .github/workflows/deploy-wwsync.yml
-          if grep -Fq 'ANCHOR_FREE_STRUCTURAL_V2' .github/workflows/deploy-wwsync.yml; then exit 1; fi
-      - name: Commit feature-only CI patch
+          node --check vision-sync.js
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V4' vision-sync.js
+          grep -Fq 'bidirectionalContourScore' vision-sync.js
+          grep -Fq 'structuralPhaseScore' vision-sync.js
+      - name: Commit feature-only matcher patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/deploy-wwsync.yml
+          git add vision-sync.js
           if git diff --cached --quiet; then
-            echo 'No CI patch changes needed.'
+            echo 'No matcher changes needed.'
             exit 0
           fi
-          git commit -m 'ci: validate structural V3 preview bundle'
+          git commit -m 'fix: use bidirectional structural registration'
           git push origin HEAD:feature/wwm-native-sync-v2
