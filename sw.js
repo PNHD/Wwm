@@ -1,4 +1,4 @@
-const CACHE='wwmsync-shell-v5';
+const CACHE='wwmsync-shell-v6';
 const SHELL=['/','/index.html','/styles.css','/vision-sync.css','/app.js','/vision-sync.js','/official-sync.js','/manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
