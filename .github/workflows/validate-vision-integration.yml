@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Wait for scale-aware anchor-free bundle on preview
+      - name: Wait for full-resolution scale-aware anchor-free bundle on preview
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +31,13 @@ jobs:
               && grep -Fq 'ABSOLUTE NOT LOCKED' /tmp/vision-sync.js \
               && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
               && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js \
+              && grep -Fq 'normalizedGrayOnly' /tmp/vision-sync.js \
               && grep -Fq "raw=localStorage.getItem(key)" /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
           done
-          echo 'Preview did not surface the scale-aware anchor-free bundle.' >&2
+          echo 'Preview did not surface the full-resolution scale-aware anchor-free bundle.' >&2
           exit 1
 
       - name: Prove capture-to-absolute lock without anchor or viewport seed
