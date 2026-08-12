@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Wait for scale-aware structural bundle on preview
+      - name: Wait for full-resolution scale-aware structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
@@ -28,7 +28,8 @@ jobs:
               && grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js \
               && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
               && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
-              && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js; then
+              && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js \
+              && grep -Fq 'normalizedGrayOnly' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
