@@ -1,0 +1,44 @@
+name: Apply Real Fixture Hardening
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/apply_real_fixture_hardening.py'
+      - '.github/workflows/apply-real-fixture-hardening.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+          fetch-depth: 0
+      - name: Apply direct CSP-safe hardening
+        run: |
+          set -euo pipefail
+          python tools/apply_real_fixture_hardening.py
+          node --check vision-sync.js
+          grep -Fq 'REAL_FIXTURE_V1_DIRECT' vision-sync.js
+          grep -Fq 'adaptive-translucent-map' vision-sync.js
+          grep -Fq '<script src="/vision-sync.js"></script>' index.html
+          ! grep -Fq '<script src="/vision-sync-loader.js"></script>' index.html
+      - name: Commit direct runtime patch
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- vision-sync.js index.html; then
+            echo 'No direct runtime changes needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vision-sync.js index.html
+          git commit -m 'fix(vision): apply CSP-safe real fixture hardening'
+          git push origin HEAD:feature/wwm-native-sync-v2
