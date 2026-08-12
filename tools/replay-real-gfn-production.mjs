@@ -41,7 +41,7 @@ function parseFixture() {
   if (capture.status !== 'complete') throw new Error(`fixture status is ${capture.status}`);
   if (capture.frameCount !== 40 || capture.fps !== 5 || capture.intervalMs !== 200) throw new Error('unexpected fixture timing contract');
   if (capture.screen?.width !== 2048 || capture.screen?.height !== 864) throw new Error('unexpected source dimensions');
-  const frames = capture.frames || [];
+  const frames = (capture.frames || []).map(item => ({ ...item, minimap: item.minimap || item.minimapFile || item.cropFile }));
   if (frames.length !== 40) throw new Error(`expected 40 frame records, got ${frames.length}`);
   for (const item of frames) if (!item.minimap || !fs.existsSync(path.join(fixtureDir, item.minimap))) throw new Error(`missing minimap frame ${item.minimap}`);
   return { capture, frames, archiveSha256 };
