@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Wait for unclipped local-NCC structural bundle on preview
+      - name: Wait for subpixel structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
@@ -29,6 +29,8 @@ jobs:
               && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
               && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
               && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js \
+              && grep -Fq 'photometricSubpixelRefine' /tmp/vision-sync.js \
+              && grep -Fq 'subpixelRefined' /tmp/vision-sync.js \
               && grep -Fq 'rawGray' /tmp/vision-sync.js \
               && grep -Fq 'intensityCount' /tmp/vision-sync.js; then
               exit 0
@@ -37,7 +39,7 @@ jobs:
           done
           exit 1
 
-      - name: Run source-normalized scale-aware structural matcher tests
+      - name: Run source-normalized subpixel structural matcher tests
         shell: bash
         run: |
           set -euo pipefail
@@ -58,6 +60,7 @@ jobs:
               const result=await page.evaluate(p=>window.__WWMSYNC_ABSOLUTE_SELFTEST__(p),profile);
               console.log('STRUCTURAL_SELFTEST',JSON.stringify(result));
               if(!result?.ok)fatal.push(`${profile}:selftest=${JSON.stringify(result)}`);
+              if(!result?.subpixelRefined)fatal.push(`${profile}:subpixel-not-run`);
               if(!(result.positiveFeatures>=24))fatal.push(`${profile}:features=${result.positiveFeatures}`);
               if(!(result.error<=10))fatal.push(`${profile}:position=${result.error}`);
               if(!(result.rotationError<=28))fatal.push(`${profile}:rotation=${result.rotationError}`);
