@@ -77,6 +77,12 @@ try {
     const track = await d.track(c, seed, 1, 'primary'); const flow = d.flow(c, resetFlow); return { track, flow };
   }, { name: frames[index - 1].minimap, seed, resetFlow });
 
+  const evalTrackOnly = async (index, seed, key) => page.evaluate(async ({ name, seed, key }) => {
+    const img = new Image(); img.decoding = 'sync'; img.src = `/fixture/${name}`; await img.decode();
+    const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.getContext('2d', { alpha: false }).drawImage(img, 0, 0, 216, 216, 0, 0, 192, 192);
+    return window.__WWMSYNC_REAL_GFN_CANDIDATE_DIAG__.track(c, seed, 1, key);
+  }, { name: frames[index - 1].minimap, seed, key });
+
   const tracked = [];
   let seed = { ...seed0 };
   for (let i = 1; i <= frames.length; i++) {
@@ -118,6 +124,34 @@ try {
     xCorrelation: pearson(cumulative.map(x => x.actualX), cumulative.map(x => x.predictedX)), yCorrelation: pearson(cumulative.map(x => x.actualY), cumulative.map(x => x.predictedY)),
     stepActualMagnitude: stats(stepComparisons.map(x => x.actual.magnitude)), stepPredictedMagnitude: stats(stepComparisons.map(x => x.predictedFromOpticalFlow.magnitude))
   };
+
+  const scoreTrackAgainstFlow = sequence => {
+    const steps = []; let predX = 0, predY = 0, actualX = 0, actualY = 0; const cumulative = [{ frame: 1, actualX: 0, actualY: 0, predictedX: 0, predictedY: 0 }];
+    for (let i = 1; i < sequence.length; i++) {
+      const prev = sequence[i - 1], cur = sequence[i], flow = tracked[i].opticalFlow || {}, adx = cur.globalX - prev.globalX, ady = cur.globalY - prev.globalY;
+      const rad = (prev.angle || 0) * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad), scale = (prev.radius || seed0.radius) / 96, playerX = -(Number(flow.dx) || 0), playerY = -(Number(flow.dy) || 0), pdx = (playerX * c - playerY * s) * scale, pdy = (playerX * s + playerY * c) * scale;
+      const am = hypot(adx, ady), pm = hypot(pdx, pdy), cosine = am > .05 && pm > .05 ? (adx * pdx + ady * pdy) / (am * pm) : null;
+      actualX += adx; actualY += ady; predX += pdx; predY += pdy; cumulative.push({ frame: cur.frame, actualX, actualY, predictedX: predX, predictedY: predY });
+      steps.push({ frame: cur.frame, adx, ady, pdx, pdy, actualMagnitude: am, predictedMagnitude: pm, cosine, flowScore: flow.score ?? null });
+    }
+    const valid = steps.filter(x => Number.isFinite(x.cosine) && (x.flowScore == null || x.flowScore >= .65)).map(x => x.cosine);
+    return { validStepCount: valid.length, meanDirectionCosine: mean(valid), medianDirectionCosine: quantile(valid, .50), actualEndDisplacement: { dx: actualX, dy: actualY, magnitude: hypot(actualX, actualY) }, predictedEndDisplacement: { dx: predX, dy: predY, magnitude: hypot(predX, predY) }, endpointError: hypot(actualX - predX, actualY - predY), xCorrelation: pearson(cumulative.map(x => x.actualX), cumulative.map(x => x.predictedX)), yCorrelation: pearson(cumulative.map(x => x.actualY), cumulative.map(x => x.predictedY)), steps };
+  };
+
+  const alternateBeamTracks = [];
+  for (const initial of firstGlobal.alternatives.slice(0, 8)) {
+    let dynamic = { ...initial }; const sequence = [];
+    for (let i = 1; i <= frames.length; i++) {
+      const out = await evalTrackOnly(i, dynamic, `beam-${initial.rank || firstGlobal.alternatives.indexOf(initial) + 1}`);
+      if (!out) throw new Error(`alternate beam tracking failed rank ${initial.rank} frame ${i}`);
+      sequence.push({ frame: i, fixtureTimeMs: (i - 1) * capture.intervalMs, ...out }); dynamic = { ...dynamic, x: out.globalX, y: out.globalY, radius: out.radius, angle: out.angle };
+    }
+    const recurrence = diagnosticGlobalProbes.slice(1).map(g => { const t = sequence[g.frame - 1]; const ranked = (g.candidates || []).map(c => ({ ...c, distanceToTrack: hypot(c.x - t.globalX, c.y - t.globalY), angleDeltaToTrack: angleDelta(c.angle, t.angle), scaleLogDeltaToTrack: Math.abs(Math.log((c.radius || 1) / (t.radius || 1))) })).sort((a, b) => a.distanceToTrack - b.distanceToTrack); const nearest = ranked[0] || null; return { frame: g.frame, nearest, sameBasin: !!nearest && nearest.distanceToTrack <= 120 && nearest.angleDeltaToTrack <= 25 && nearest.scaleLogDeltaToTrack <= .20 }; });
+    const sameBasinRate = recurrence.length ? recurrence.filter(x => x.sameBasin).length / recurrence.length : null, flow = scoreTrackAgainstFlow(sequence), structural = stats([1, 10, 20, 30, 40].map(i => sequence[i - 1].scaleScore)), combined = stats([1, 10, 20, 30, 40].map(i => sequence[i - 1].combinedScore));
+    alternateBeamTracks.push({ initialRank: initial.rank, initialCandidate: initial, sameBasinRecurrenceRate: sameBasinRate, recurrence, flowConsistency: flow, structural, combined, positionRange: { x: Math.max(...sequence.map(x => x.globalX)) - Math.min(...sequence.map(x => x.globalX)), y: Math.max(...sequence.map(x => x.globalY)) - Math.min(...sequence.map(x => x.globalY)), maxDistanceFromStart: Math.max(...sequence.map(x => hypot(x.globalX - sequence[0].globalX, x.globalY - sequence[0].globalY))) }, angleMaxDeltaFromStart: Math.max(...sequence.map(x => angleDelta(x.angle, sequence[0].angle))), radiusMaxRelativeDeltaFromStart: Math.max(...sequence.map(x => Math.abs(x.radius / sequence[0].radius - 1))), sequence });
+  }
+  alternateBeamTracks.sort((a, b) => (b.sameBasinRecurrenceRate ?? -1) - (a.sameBasinRecurrenceRate ?? -1) || (b.flowConsistency.meanDirectionCosine ?? -2) - (a.flowConsistency.meanDirectionCosine ?? -2));
+  const rankingCandidate = alternateBeamTracks.find(x => (x.sameBasinRecurrenceRate ?? 0) >= .75 && (x.flowConsistency.meanDirectionCosine ?? -1) >= .55) || null;
 
   const firstPos = tracked[0], trackAngles = tracked.map(x => x.angle), trackRadii = tracked.map(x => x.radius), stepDistances = stepComparisons.map(x => x.actual.magnitude);
   const positionCluster = { maxDistanceFromFrame1: Math.max(...tracked.map(x => hypot(x.globalX - firstPos.globalX, x.globalY - firstPos.globalY))), stepDistance: stats(stepDistances), xRange: Math.max(...tracked.map(x => x.globalX)) - Math.min(...tracked.map(x => x.globalX)), yRange: Math.max(...tracked.map(x => x.globalY)) - Math.min(...tracked.map(x => x.globalY)) };
@@ -195,6 +229,8 @@ try {
     diagnosticGlobalProbes,
     globalSearchFrames: diagnosticGlobalProbes.map(g => ({ frame: g.frame, fixtureTimeMs: g.fixtureTimeMs, coarse: g.coarse, fine: g.fine, candidates: g.candidates })),
     consistency: { positionCluster, angleStability, scaleStability, sameBasinRecurrenceRate, globalRecurrence, flowConsistency, stepComparisons, trackedSequence: tracked },
+    alternateBeamTracks,
+    rankingRecommendation: rankingCandidate ? { supported: true, initialRank: rankingCandidate.initialRank, sameBasinRecurrenceRate: rankingCandidate.sameBasinRecurrenceRate, meanDirectionCosine: rankingCandidate.flowConsistency.meanDirectionCosine, reason: 'A lower-ranked basin is both globally recurrent and directionally consistent with measured optical flow; temporal beam consensus is evidence-supported for further product evaluation.' } : { supported: false, reason: 'No first-frame TOP-K basin simultaneously reaches >=0.75 global recurrence and >=0.55 optical-flow direction cosine. Do not promote a new ranking heuristic from this fixture.' },
     hardNegativeCalibration: { hypothesisSamples: hypothesisFrames, hardNegatives, separation },
     structuralScoreBreakdown: structuralLossBreakdown,
     visualDiagnostics: visualRecords,
@@ -202,7 +238,7 @@ try {
     liveTestingJustified: false
   };
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.log(JSON.stringify({ report: reportPath, verdict, productionGlobalSearchFrames: globalFrames.map(x => x.frame), diagnosticGlobalProbeFrames: diagnosticGlobalProbes.map(x => x.frame), sameBasinRecurrenceRate, flowMeanCosine: flowCos, structuralConservativeGap: structureGap, combinedConservativeGap: combinedGap, liveTestingJustified: false }, null, 2));
+  console.log(JSON.stringify({ report: reportPath, verdict, productionGlobalSearchFrames: globalFrames.map(x => x.frame), diagnosticGlobalProbeFrames: diagnosticGlobalProbes.map(x => x.frame), sameBasinRecurrenceRate, flowMeanCosine: flowCos, rankingRecommendation: rankingCandidate ? { supported: true, initialRank: rankingCandidate.initialRank, recurrence: rankingCandidate.sameBasinRecurrenceRate, flowCosine: rankingCandidate.flowConsistency.meanDirectionCosine } : { supported: false }, structuralConservativeGap: structureGap, combinedConservativeGap: combinedGap, liveTestingJustified: false }, null, 2));
 } finally {
   if (browser) await browser.close(); server.close();
 }
