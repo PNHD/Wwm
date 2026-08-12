@@ -1,0 +1,231 @@
+name: Diagnose Real GFN Candidate Consistency
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'tools/build_dashen_visual_cache.py'
+      - 'tools/instrument-real-gfn-production-replay.mjs'
+      - 'tools/replay-real-gfn-production.mjs'
+      - 'tools/instrument-real-gfn-candidate-diagnostics.mjs'
+      - 'tools/replay-real-gfn-candidate-diagnostics.mjs'
+      - '.github/workflows/diagnose-real-gfn-candidates.yml'
+  workflow_dispatch:
+    inputs:
+      fixture_url:
+        description: 'Optional external URL for the exact wwmsync-gfn-motion-20260810-143835.zip archive'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+
+jobs:
+  candidate-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate diagnostic tooling
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/instrument-real-gfn-production-replay.mjs
+          node --check tools/replay-real-gfn-production.mjs
+          node --check tools/instrument-real-gfn-candidate-diagnostics.mjs
+          node --check tools/replay-real-gfn-candidate-diagnostics.mjs
+          python -m py_compile tools/build_dashen_visual_cache.py
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+
+      - name: Build replay-only diagnostic site
+        run: |
+          set -euo pipefail
+          rm -rf replay-site replay-output
+          mkdir -p replay-site replay-output
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
+          python tools/build_dashen_visual_cache.py replay-site/dashen-cache
+          test -s replay-site/dashen-cache/manifest.json
+          test -s replay-site/dashen-cache/main/3/0_0.png
+          test -s replay-site/dashen-cache/main/5/20_15.png
+          node tools/instrument-real-gfn-production-replay.mjs replay-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs replay-site/vision-sync.js
+          node --check replay-site/vision-sync.js
+          cmp -s vision-sync.js replay-site/vision-sync.js && { echo 'expected replay-only instrumentation but copy is unchanged' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js
+
+      - name: Resolve exact real GFN fixture without committing it
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_FIXTURE_URL: ${{ inputs.fixture_url || '' }}
+          REPOSITORY_FIXTURE_URL: ${{ vars.WWMSYNC_REAL_GFN_FIXTURE_URL }}
+        run: |
+          set -uo pipefail
+          target="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          source_kind=''
+          reason=''
+          artifact_candidates=0
+          release_asset_found=false
+          dispatch_provided=false
+          variable_provided=false
+
+          verify_candidate() {
+            local candidate="$1"
+            test -s "$candidate" || return 1
+            local actual
+            actual="$(sha256sum "$candidate" | awk '{print $1}')"
+            test "$actual" = "$FIXTURE_SHA256"
+          }
+
+          if [ -n "${DISPATCH_FIXTURE_URL:-}" ]; then
+            dispatch_provided=true
+            if curl --location --fail --silent --show-error --retry 2 "$DISPATCH_FIXTURE_URL" -o "$target" && verify_candidate "$target"; then
+              source_kind='workflow_dispatch_url'
+            else
+              reason='workflow_dispatch_url_missing_or_sha_mismatch'
+              rm -f "$target"
+            fi
+          elif [ -n "${REPOSITORY_FIXTURE_URL:-}" ]; then
+            variable_provided=true
+            if curl --location --fail --silent --show-error --retry 2 "$REPOSITORY_FIXTURE_URL" -o "$target" && verify_candidate "$target"; then
+              source_kind='repository_variable_url'
+            else
+              reason='repository_variable_url_missing_or_sha_mismatch'
+              rm -f "$target"
+            fi
+          fi
+
+          if [ -z "$source_kind" ] && [ -z "$reason" ]; then
+            artifact_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$FIXTURE_BASENAME&per_page=100" 2>/dev/null || printf '{"artifacts":[]}')"
+            artifact_candidates="$(printf '%s' "$artifact_json" | jq '[.artifacts[]? | select(.expired == false)] | length')"
+            while read -r artifact_id; do
+              [ -n "$artifact_id" ] || continue
+              rm -rf "$RUNNER_TEMP/fixture-artifact" "$RUNNER_TEMP/fixture-artifact.zip"
+              mkdir -p "$RUNNER_TEMP/fixture-artifact"
+              if gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/fixture-artifact.zip" 2>/dev/null && unzip -q "$RUNNER_TEMP/fixture-artifact.zip" -d "$RUNNER_TEMP/fixture-artifact"; then
+                candidate="$(find "$RUNNER_TEMP/fixture-artifact" -type f -name "$FIXTURE_BASENAME" -print -quit)"
+                if [ -n "$candidate" ] && verify_candidate "$candidate"; then
+                  cp "$candidate" "$target"
+                  source_kind="actions_artifact:$artifact_id"
+                  break
+                fi
+              fi
+            done < <(printf '%s' "$artifact_json" | jq -r '.artifacts[]? | select(.expired == false) | .id')
+          fi
+
+          if [ -z "$source_kind" ] && [ -z "$reason" ]; then
+            release_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/releases?per_page=100" 2>/dev/null || printf '[]')"
+            asset_id="$(printf '%s' "$release_json" | jq -r --arg name "$FIXTURE_BASENAME" '[.[]?.assets[]? | select(.name == $name)][0].id // empty')"
+            if [ -n "$asset_id" ]; then
+              release_asset_found=true
+              if gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$target" 2>/dev/null && verify_candidate "$target"; then
+                source_kind="release_asset:$asset_id"
+              else
+                reason='release_asset_sha_mismatch'
+                rm -f "$target"
+              fi
+            fi
+          fi
+
+          if [ -z "$source_kind" ]; then
+            [ -n "$reason" ] || reason='exact_fixture_not_accessible_to_github_actions'
+            jq -n \
+              --arg fixture "$FIXTURE_BASENAME" \
+              --arg sha "$FIXTURE_SHA256" \
+              --arg reason "$reason" \
+              --argjson artifactCandidates "$artifact_candidates" \
+              --argjson dispatchProvided "$dispatch_provided" \
+              --argjson variableProvided "$variable_provided" \
+              --argjson releaseAssetFound "$release_asset_found" \
+              '{fixture:$fixture,sha256:$sha,status:"BLOCKED",reason:$reason,workflowDispatchUrlProvided:$dispatchProvided,repositoryVariableUrlProvided:$variableProvided,nonExpiredActionArtifactCandidates:$artifactCandidates,releaseAssetFound:$releaseAssetFound}' > replay-output/fixture-resolution.json
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          rm -rf real-fixture
+          mkdir real-fixture
+          unzip -q "$target" -d real-fixture
+          capture_path="$(find real-fixture -type f -name capture.json -print -quit)"
+          if [ -z "$capture_path" ]; then
+            echo 'fixture archive has no capture.json' >&2
+            exit 1
+          fi
+          fixture_dir="$(dirname "$capture_path")"
+          jq -n --arg fixture "$FIXTURE_BASENAME" --arg sha "$FIXTURE_SHA256" --arg source "$source_kind" '{fixture:$fixture,sha256:$sha,status:"AVAILABLE",source:$source}' > replay-output/fixture-resolution.json
+          echo 'available=true' >> "$GITHUB_OUTPUT"
+          echo "source_kind=$source_kind" >> "$GITHUB_OUTPUT"
+          echo "archive_path=$target" >> "$GITHUB_OUTPUT"
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Install Playwright runtime
+        if: steps.fixture.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Replay exact 40-frame production matcher
+        id: production_replay
+        if: steps.fixture.outputs.available == 'true'
+        run: |
+          set +e
+          node tools/replay-real-gfn-production.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --archive '${{ steps.fixture.outputs.archive_path }}' \
+            --report replay-output/wwmsync-real-gfn-production-replay.json \
+            --visual-dir replay-output/production-visuals
+          code=$?
+          echo "$code" > replay-output/production-replay-exit-code.txt
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run candidate consistency and hard-negative diagnostics
+        if: steps.fixture.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          test -s replay-output/wwmsync-real-gfn-production-replay.json
+          node tools/replay-real-gfn-candidate-diagnostics.mjs \
+            --site replay-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --production-report replay-output/wwmsync-real-gfn-production-replay.json \
+            --report replay-output/wwmsync-real-gfn-candidate-diagnostics.json \
+            --visual-dir replay-output/candidate-visuals
+          test -s replay-output/wwmsync-real-gfn-candidate-diagnostics.json
+
+      - name: Show diagnostic summary
+        if: always() && steps.fixture.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          jq '{candidateConsistencyVerdict,productionReplay,consistency,hardNegativeCalibration,structuralScoreBreakdown,decision}' replay-output/wwmsync-real-gfn-candidate-diagnostics.json
+
+      - name: Upload durable candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-real-gfn-candidate-diagnostics-${{ github.run_id }}
+          path: replay-output/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce diagnostic completion
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ '${{ steps.fixture.outputs.available }}' != 'true' ]; then
+            echo 'Exact real GFN fixture unavailable to diagnostics.' >&2
+            exit 78
+          fi
+          test -s replay-output/wwmsync-real-gfn-candidate-diagnostics.json
+          jq -e '.candidateConsistencyVerdict == "TRUE-LIKE" or .candidateConsistencyVerdict == "FALSE-LIKE" or .candidateConsistencyVerdict == "AMBIGUOUS"' replay-output/wwmsync-real-gfn-candidate-diagnostics.json >/dev/null
