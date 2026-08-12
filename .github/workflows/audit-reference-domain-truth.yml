@@ -7,6 +7,8 @@ on:
       - 'tools/build_dashen_reference_audit_cache.py'
       - 'tools/instrument-real-gfn-expanded-domain.mjs'
       - 'tools/audit_reference_domain_truth.py'
+      - 'tools/build_reference_positive_control.py'
+      - 'tools/replay-reference-positive-control.mjs'
       - '.github/workflows/audit-reference-domain-truth.yml'
   workflow_dispatch:
 
@@ -19,6 +21,8 @@ env:
   FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
   TEMPORAL_ARTIFACT_ID: '9137099364'
   TEMPORAL_ARTIFACT_SHA256: 6fd7676259b14a7ef9c1f142b599ad4d909d384c679cef2ca99dca79338905b3
+  POSITIVE_CONTROL_IMAGE: https://static.icy-veins.com/wp/wp-content/uploads/2025/11/wwm-general-shrine.webp
+  POSITIVE_CONTROL_PAGE: https://all.gg/news/where-winds-meet-her-legacy-and-dream-in-flames-guide/
 
 jobs:
   reference-domain-truth:
@@ -36,7 +40,8 @@ jobs:
           node --check tools/instrument-real-gfn-invariant-index.mjs
           node --check tools/instrument-real-gfn-expanded-domain.mjs
           node --check tools/replay-real-gfn-invariant-index.mjs
-          python -m py_compile tools/build_dashen_reference_audit_cache.py tools/audit_reference_domain_truth.py
+          node --check tools/replay-reference-positive-control.mjs
+          python -m py_compile tools/build_dashen_reference_audit_cache.py tools/audit_reference_domain_truth.py tools/build_reference_positive_control.py
           grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
 
@@ -52,7 +57,7 @@ jobs:
       - name: Build expanded replay-only Dashen reference cache
         run: |
           set -euo pipefail
-          rm -rf replay-site reference-audit-output reference-audit-work real-fixture temporal-input
+          rm -rf replay-site control-site reference-audit-output reference-audit-work real-fixture temporal-input
           mkdir -p replay-site reference-audit-output reference-audit-work temporal-input
           cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt replay-site/
           python tools/build_dashen_reference_audit_cache.py replay-site/dashen-cache --workers 24
@@ -110,7 +115,7 @@ jobs:
             --top-k 8
           test -s reference-audit-output/expanded-full-main-invariant.json
 
-      - name: Run reference-domain truth audit and positive control
+      - name: Run reference-domain truth audit
         run: |
           set -euo pipefail
           python tools/audit_reference_domain_truth.py \
@@ -122,12 +127,77 @@ jobs:
           test -s reference-audit-output/reference-domain-truth.json
           git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
 
+      - name: Build direct known-location Global-client positive control
+        run: |
+          set -euo pipefail
+          mkdir -p control-site/positive-control
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt control-site/
+          cp -a replay-site/dashen-cache control-site/dashen-cache
+          curl -L --fail --retry 3 --retry-all-errors --connect-timeout 15 --max-time 90 "$POSITIVE_CONTROL_IMAGE" -o reference-audit-work/general-shrine.webp
+          test -s reference-audit-work/general-shrine.webp
+          world_x="$(jq -r '.positiveControl.expectedWorld[0] // empty' reference-audit-output/reference-domain-truth.json)"
+          world_y="$(jq -r '.positiveControl.expectedWorld[1] // empty' reference-audit-output/reference-domain-truth.json)"
+          test -n "$world_x" && test -n "$world_y"
+          python tools/build_reference_positive_control.py \
+            --cache control-site/dashen-cache \
+            --image reference-audit-work/general-shrine.webp \
+            --out-dir control-site/positive-control \
+            --report reference-audit-output/positive-control-source.json \
+            --world-x "$world_x" \
+            --world-y "$world_y" \
+            --source-url "$POSITIVE_CONTROL_IMAGE" \
+            --source-page "$POSITIVE_CONTROL_PAGE"
+          test -s reference-audit-output/positive-control-source.json
+          test -s control-site/positive-control/general-shrine-256.png
+
+      - name: Run unchanged production global matcher against positive control
+        run: |
+          set -euo pipefail
+          node tools/instrument-real-gfn-production-replay.mjs control-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs control-site/vision-sync.js
+          node --check control-site/vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          node tools/replay-reference-positive-control.mjs \
+            --site control-site \
+            --control-report reference-audit-output/positive-control-source.json \
+            --report reference-audit-output/positive-control-matcher.json
+          test -s reference-audit-output/positive-control-matcher.json
+
+      - name: Finalize decision tree with mandatory positive control
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('reference-audit-output/reference-domain-truth.json')
+          r=json.loads(p.read_text(encoding='utf-8'))
+          m=json.loads(Path('reference-audit-output/positive-control-matcher.json').read_text(encoding='utf-8'))
+          pc=r.setdefault('positiveControl',{})
+          pc['productionMatcherControl']=m
+          pc['pass']=bool(m.get('productionReferencePipelinePositiveControlPass'))
+          pc['verdict']=m.get('verdict')
+          pc['limitation']='Known-location Global-client full-map rendering control. It proves public Dashen raster/coordinate compatibility and production global candidate recall at this control when PASS; it does not by itself prove HUD minimap artwork, LOD, region, or content-lineage identity for the failing GFN fixture.'
+          expanded=r.get('expandedFullMainReplay',{})
+          if pc['pass'] and expanded.get('candidateRecallVerdict')!='TRUE-LIKE-CANDIDATE-SURFACED':
+              r['decision']='CASE-A-WITH-HUD-DOMAIN-LIMITATION'
+              r['exactRemainingFailureStage']='reference-domain-hud-minimap-or-content-lineage'
+          elif not pc['pass']:
+              r['decision']='CASE-B-PRODUCTION-REFERENCE-PIPELINE-FAILS-POSITIVE-CONTROL'
+              r['exactRemainingFailureStage']='reference-pipeline-known-location-positive-control'
+          r['productionChangeJustified']=expanded.get('candidateRecallVerdict')=='TRUE-LIKE-CANDIDATE-SURFACED'
+          r['liveTestingJustified']=False
+          r['acceptance']={'SYNTHETIC':'PASS','REAL_GFN':'FAIL','REAL_LOCAL':'UNAVAILABLE','LIVE_E2E':'PENDING / NOT JUSTIFIED'}
+          p.write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'decision':r['decision'],'exactRemainingFailureStage':r['exactRemainingFailureStage'],'positiveControl':{'pass':pc['pass'],'verdict':pc['verdict'],'bestTopKHit':m.get('bestTopKHit'),'bestKnownCoordinateScore':m.get('bestKnownCoordinateScore')},'domainMain':r.get('domainSimilarity',{}).get('families',{}).get('main'),'expandedFullMainReplay':expanded,'productionChangeJustified':r['productionChangeJustified'],'liveTestingJustified':False,'acceptance':r['acceptance']},ensure_ascii=False,indent=2))
+          PY
+
       - name: Show decision summary
         if: always()
         run: |
           set -euo pipefail
           if [ -s reference-audit-output/reference-domain-truth.json ]; then
-            jq '{decision,exactRemainingFailureStage,referenceInventory:{mapConfig:.referenceInventory.mapConfig,subTypeToZone:.referenceInventory.subTypeToZone,multiPlaneMaterials:[.referenceInventory.multiPlaneMaterials[]|{layer,count,mapSubTypes}]},coverage,domainSimilarity:{closestPublicRasterFamilyByRobustDistribution,currentMainPlausibility,families},positiveControl:{expectedControl,expectedWorld,pass,verdict,limitation,attempts:[.positiveControl.attempts[]|{page,fetch,registered:[.images[]|select(.registered==true)|{url,inliers,inlierRatio,expectedPoiInsideRegisteredImage,registeredImageCenterToExpectedPoiPx}]}]},expandedFullMainReplay,productionChangeJustified,liveTestingJustified,acceptance}' reference-audit-output/reference-domain-truth.json
+            jq '{decision,exactRemainingFailureStage,referenceInventory:{mapConfig:.referenceInventory.mapConfig,subTypeToZone:.referenceInventory.subTypeToZone,multiPlaneMaterials:[.referenceInventory.multiPlaneMaterials[]|{layer,count,mapSubTypes}]},coverage,domainSimilarity:{closestPublicRasterFamilyByRobustDistribution:.domainSimilarity.closestPublicRasterFamilyByRobustDistribution,currentMainPlausibility:.domainSimilarity.currentMainPlausibility,families:.domainSimilarity.families},positiveControl:{expectedControl:.positiveControl.expectedControl,expectedWorld:.positiveControl.expectedWorld,pass:.positiveControl.pass,verdict:.positiveControl.verdict,limitation:.positiveControl.limitation,productionMatcherControl:.positiveControl.productionMatcherControl},expandedFullMainReplay,productionChangeJustified,liveTestingJustified,acceptance}' reference-audit-output/reference-domain-truth.json
           else
             echo 'reference-domain truth report missing'
           fi
