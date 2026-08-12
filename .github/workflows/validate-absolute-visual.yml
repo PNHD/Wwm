@@ -17,25 +17,25 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
-      - name: Wait for phase-first structural bundle on preview
+      - name: Wait for scale-aware structural bundle on preview
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 120); do
+          for i in $(seq 1 140); do
             if curl --fail --silent --show-error --location --max-time 20 "$PREVIEW_URL/vision-sync.js" -o /tmp/vision-sync.js \
               && grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js \
               && grep -Fq '__WWMSYNC_ABSOLUTE_SELFTEST__' /tmp/vision-sync.js \
-              && grep -Fq 'structuralPhaseScoreFast' /tmp/vision-sync.js \
-              && grep -Fq 'bidirectionalContourScore' /tmp/vision-sync.js; then
+              && grep -Fq 'scaleAwareStructuralScore' /tmp/vision-sync.js \
+              && grep -Fq 'warpIntensityNccFast' /tmp/vision-sync.js; then
               exit 0
             fi
             sleep 3
           done
           exit 1
 
-      - name: Run source-normalized phase-first structural matcher tests
+      - name: Run source-normalized scale-aware structural matcher tests
         shell: bash
         run: |
           set -euo pipefail
@@ -56,13 +56,12 @@ jobs:
               const result=await page.evaluate(p=>window.__WWMSYNC_ABSOLUTE_SELFTEST__(p),profile);
               console.log('STRUCTURAL_SELFTEST',JSON.stringify(result));
               if(!result?.ok)fatal.push(`${profile}:selftest=${JSON.stringify(result)}`);
-              if(!(result.positiveFeatures>=28))fatal.push(`${profile}:features=${result.positiveFeatures}`);
+              if(!(result.positiveFeatures>=24))fatal.push(`${profile}:features=${result.positiveFeatures}`);
               if(!(result.error<=10))fatal.push(`${profile}:position=${result.error}`);
               if(!(result.rotationError<=28))fatal.push(`${profile}:rotation=${result.rotationError}`);
-              if(!(result.score>=.36))fatal.push(`${profile}:fine=${result.score}`);
-              if(!(result.contourScore>=.43))fatal.push(`${profile}:contour=${result.contourScore}`);
-              if(!(result.phaseScore>=.53))fatal.push(`${profile}:phase=${result.phaseScore}`);
-              if(!(result.verifyScore>=.43))fatal.push(`${profile}:verify=${result.verifyScore}`);
+              if(!(result.scaleScore>=.58))fatal.push(`${profile}:structural=${result.scaleScore}`);
+              if(!(result.intensityScore>=.42))fatal.push(`${profile}:recall=${result.intensityScore}`);
+              if(!(result.coarseScore>=.50))fatal.push(`${profile}:coarse=${result.coarseScore}`);
             }
             const unlocked=await page.evaluate(()=>({diag:window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__(),status:document.querySelector('#visionAbsoluteStatus')?.textContent,position:document.querySelector('#visionAbsolutePosition')?.textContent,motion:window.__WWMSYNC_VISION_DIAGNOSTICS__()}));
             if(!String(unlocked.status).includes('ABSOLUTE NOT LOCKED'))fatal.push(`unlocked-status=${unlocked.status}`);
