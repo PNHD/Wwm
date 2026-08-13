@@ -8,6 +8,8 @@ on:
     paths:
       - scripts/replay/wwmsync_same_session_gfn_diff_audit.py
       - .github/workflows/wwmsync-same-session-gfn-diff-audit.yml
+      - fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg
+      - fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg
 
 permissions:
   contents: write
@@ -30,8 +32,6 @@ jobs:
       REPLAY_SITE_ARTIFACT: "9127953239"
       REAL_GFN_ASSET_ID: "511291145"
       REAL_GFN_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
-      EAST_MAP_ROI_BLOB: 08302ab9044458ee0e58a07f1108973212942ac8
-      GENERAL_MAP_ROI_BLOB: 552eaff452e911b15f31a6609eddf695d39fd766
       REPORT_PATH: docs/wwmsync/audits/same-session-gfn-worldmap-hud-differential-2026-08-13.md
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -54,11 +54,11 @@ jobs:
           printf '%s\n' "${CHANGED[@]}"
           for p in "${CHANGED[@]}"; do
             case "$p" in
-              scripts/replay/wwmsync_same_session_gfn_diff_audit.py|.github/workflows/wwmsync-same-session-gfn-diff-audit.yml) ;;
+              scripts/replay/wwmsync_same_session_gfn_diff_audit.py|.github/workflows/wwmsync-same-session-gfn-diff-audit.yml|fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg|fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg) ;;
               *) echo "Unexpected pre-audit path: $p" >&2; exit 1 ;;
             esac
           done
-          if git diff "${EXPECTED_START_HEAD}..HEAD" -- ':!scripts/replay/wwmsync_same_session_gfn_diff_audit.py' ':!.github/workflows/wwmsync-same-session-gfn-diff-audit.yml' | grep -q .; then
+          if git diff "${EXPECTED_START_HEAD}..HEAD" -- ':!scripts/replay/wwmsync_same_session_gfn_diff_audit.py' ':!.github/workflows/wwmsync-same-session-gfn-diff-audit.yml' ':!fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg' ':!fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg' | grep -q .; then
             echo "Non replay/CI diff detected" >&2
             exit 1
           fi
@@ -123,43 +123,36 @@ jobs:
           gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${REAL_GFN_ASSET_ID}" > .audit-inputs/aux/real-fixture/wwmsync-gfn-motion-20260810-143835.zip
           echo "${REAL_GFN_SHA256}  .audit-inputs/aux/real-fixture/wwmsync-gfn-motion-20260810-143835.zip" | sha256sum -c -
 
-      - name: Reconstruct replay carriers from exact owner provenance
+      - name: Verify tracked exact map fixtures and reconstruct replay carriers
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .audit-inputs/replay-sources /tmp/wwmsync-owner-map-roi
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_BLOB}" > /tmp/wwmsync-owner-map-roi/east-blob.json
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_BLOB}" > /tmp/wwmsync-owner-map-roi/general-blob.json
+          mkdir -p .audit-inputs/replay-sources
           python - <<'PY'
-          import base64, hashlib, json
+          import hashlib, json
           from pathlib import Path
           import cv2
           import numpy as np
-          expected={
-              'east': {'shape':(171,320),'sha256':'48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6'},
-              'general': {'shape':(140,320),'sha256':'73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba'},
+          from PIL import Image
+
+          fixtures = {
+              'east': (Path('fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg'), '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6', (320,171)),
+              'general': (Path('fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg'), '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba', (320,140)),
           }
-          for stem in ('east','general'):
-              meta=json.loads(Path(f'/tmp/wwmsync-owner-map-roi/{stem}-blob.json').read_text())
-              assert meta.get('encoding') == 'base64', meta
-              encoded=''.join(meta['content'].split())
-              raw=base64.b64decode(encoded, validate=True)
+          for stem,(path,expected_sha,dims) in fixtures.items():
+              raw=path.read_bytes()
               got=hashlib.sha256(raw).hexdigest()
-              assert got == expected[stem]['sha256'], (stem,got,expected[stem]['sha256'])
-              assert raw.startswith(b'\xff\xd8') and raw.endswith(b'\xff\xd9'), f'{stem}: single-decoded payload is not a complete JPEG'
-              out=Path(f'/tmp/wwmsync-owner-map-roi/{stem}.jpg')
-              out.write_bytes(raw)
-              im=cv2.imdecode(np.frombuffer(raw,dtype=np.uint8),cv2.IMREAD_GRAYSCALE)
-              assert im is not None, f'{stem}: OpenCV JPEG decode failed'
-              assert im.shape == expected[stem]['shape'], (stem, im.shape, expected[stem]['shape'])
-              print(json.dumps({'stem':stem,'decodeCount':1,'sha256':got,'bytes':len(raw),'dimensions':[im.shape[1],im.shape[0]],'jpeg':True}))
-          PY
-          echo '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6  /tmp/wwmsync-owner-map-roi/east.jpg' | sha256sum -c -
-          echo '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba  /tmp/wwmsync-owner-map-roi/general.jpg' | sha256sum -c -
-          python - <<'PY'
-          import cv2, hashlib, json
-          import numpy as np
-          from pathlib import Path
+              assert got == expected_sha, (stem,got,expected_sha)
+              assert raw[:2] == b'\xff\xd8' and raw[-2:] == b'\xff\xd9', f'{stem}: JPEG SOI/EOI failure'
+              with Image.open(path) as pil:
+                  assert pil.format == 'JPEG', (stem,pil.format)
+                  pil.load()
+                  assert pil.size == dims, (stem,pil.size,dims)
+              dec=cv2.imdecode(np.frombuffer(raw,dtype=np.uint8),cv2.IMREAD_GRAYSCALE)
+              assert dec is not None, f'{stem}: OpenCV decode failed'
+              assert (dec.shape[1],dec.shape[0]) == dims, (stem,dec.shape,dims)
+              print(json.dumps({'fixture':str(path),'sha256':got,'bytes':len(raw),'dimensions':list(dims),'jpeg_soi_eoi':True,'pillow_decode':True,'opencv_decode':True}))
+
           W,H=2048,863
           out=Path('.audit-inputs/replay-sources')
           def map_carrier(src,norm,dst):
@@ -179,8 +172,8 @@ jobs:
               assert cv2.imwrite(str(dst),canvas)
               return {'authoritative_work_canvas':[192,192],'carrier_semantic_roi':[0,0,216,216]}
           p={}
-          p['east_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/east.jpg'),(.500,.505),out/'east-cross-world-map.png')
-          p['general_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/general.jpg'),(.557,.288),out/'general-shrine-world-map.png')
+          p['east_map_carrier']=map_carrier(fixtures['east'][0],(.500,.505),out/'east-cross-world-map.png')
+          p['general_map_carrier']=map_carrier(fixtures['general'][0],(.557,.288),out/'general-shrine-world-map.png')
           p['east_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('east-cross-roi-192.png'))),out/'east-cross-gameplay-hud.png')
           p['general_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('general-shrine-roi-192.png'))),out/'general-shrine-gameplay-hud.png')
           p['exact_owner_sources']={
@@ -189,13 +182,13 @@ jobs:
             'general_shrine_map':{'dimensions':[2048,863],'bytes':3027787,'sha256':'99841c9b467a63299cded38d3598e5ef136e349f0896cc21d31275b9e7c88de7','derived_map_roi_original_box':[526,77,1755,615],'derived_map_anchor_local':[615.3446327683616,176.3050847457627],'derived_fixture_dimensions':[320,140],'derived_fixture_sha256':'73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba'},
             'general_shrine_hud':{'dimensions':[2048,863],'bytes':3879049,'sha256':'dd73ea17c9a269535b74eb7fd83bd491df2bdbba56dcd2f7d9be074068120378','authoritative_roi_sha256':'f0acddeef0e5d1c6f433e2e9347a48631bf7cbe84057f2c3adb1c8a01cc32999'}
           }
-          p['reconstruction_note']='The exact original 2048x863 source bytes were validated in the owner-control round. GitHub Actions cannot mount conversation attachments directly. World-map replay transport uses fixed map-only derivatives generated from those exact source bytes; these binary JPEG Git blobs are decoded exactly once from the GitHub git/blobs JSON content field. HUD transport reconstructs the authoritative 192x192 work canvases from run 31666927302/artifact 9168284675. Replay carriers are never relabeled as original screenshots. Original SHA/dimensions/byte counts remain authoritative provenance and authoritative HUD matcher verdicts are reused, not rerun.'
+          p['tracked_map_fixtures']={stem:{'path':str(path),'sha256':sha,'dimensions':list(dims)} for stem,(path,sha,dims) in fixtures.items()}
+          p['reconstruction_note']='Exact world-map JPEG derivatives are normal tracked repository files and are verified by SHA-256, JPEG SOI/EOI, Pillow decode, OpenCV decode and dimensions before any audit execution. HUD transport reconstructs the authoritative 192x192 work canvases from run 31666927302/artifact 9168284675. No runtime Git blob API, recovery artifact, legacy carrier, or conversation attachment is used by the authoritative audit.'
           for f in sorted(out.glob('*.png')):
               b=f.read_bytes(); p.setdefault('carrier_files',{})[f.name]={'sha256':hashlib.sha256(b).hexdigest(),'bytes':len(b)}
           (out/'exact-owner-provenance.json').write_text(json.dumps(p,indent=2),encoding='utf-8')
           print(json.dumps(p,indent=2))
           PY
-          rm -rf /tmp/wwmsync-owner-map-roi
 
       - name: Execute same-session world-map ↔ HUD differential audit
         shell: bash
@@ -232,9 +225,9 @@ jobs:
           ins+='- **Exact original owner bytes remain authoritative provenance.** CI replay carriers below are transport derivatives only; they are not relabeled as original screenshots.\n'
           for k in ('east_cross_map','east_cross_hud','general_shrine_map','general_shrine_hud'):
               m=exact[k]; ins+=f"- **{k} ORIGINAL** — `{m['dimensions'][0]}×{m['dimensions'][1]}`, {m['bytes']} bytes, SHA-256 `{m['sha256']}`.\n"
-          ins+='- World-map carriers: fixed map-only derivatives from the exact owner bytes, deterministically grayscale + INTER_AREA width-320 + JPEG q92; each binary Git blob is decoded exactly once from GitHub JSON, then its expected SHA, JPEG validity, OpenCV decode and dimensions are verified before use.\n'
+          ins+='- World-map inputs: exact derivative JPEGs are normal tracked repository files; SHA-256, JPEG SOI/EOI, Pillow/OpenCV decode and dimensions are verified before audit execution. Replay carriers are built only after that verification.\n'
           ins+='- HUD carriers: reconstructed from the authoritative `192×192` work canvases in run `31666927302` / artifact `9168284675`; authoritative HUD matcher results are reused and are **not** rerun or redefined by these carriers.\n'
-          ins+='- This replay transport does not change GT, the production gate, production code, or source provenance.\n'
+          ins+='- The authoritative audit has no runtime dependency on recovery artifacts, legacy carriers, raw Git blob SHAs, or conversation attachments. GT, the production gate, production code, and source provenance remain unchanged.\n'
           if needle not in text: raise SystemExit('report provenance heading not found')
           rp.write_text(text.replace(needle,ins,1),encoding='utf-8')
           PY
