@@ -1,0 +1,312 @@
+name: Replay Owner GFN Controls + Audit
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/replay-owner-gfn-controls-owner-evidence-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay-owner-gfn-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install replay dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet opencv-python-headless numpy
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Recover immutable owner replay inputs
+        env:
+          GH_REPO: PNHD/Wwm
+        run: |
+          set -euo pipefail
+          mkdir -p fixtures/owner-gfn-controls tools
+          fetch_blob_text() {
+            local sha="$1" out="$2"
+            curl -fsSL -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GH_REPO}/git/blobs/${sha}" \
+              | python -c 'import sys,json,base64; o=json.load(sys.stdin); sys.stdout.buffer.write(base64.b64decode(o["content"]))' \
+              > "$out"
+          }
+
+          # Replay metadata/tool are immutable replay-only blobs created for this audit.
+          fetch_blob_text 96b98cf5930c04b04b6decf49b9194104e31feb9 fixtures/owner-gfn-controls/metadata.json
+          fetch_blob_text f36efa4a1f59f6e76478602bceda69be7a09abf6 tools/replay-owner-gfn-controls.mjs
+
+          # If exact binary fixtures were already committed by an authenticated owner checkout, reuse them.
+          # Otherwise reconstruct the exact lossless 216x216 top-left source crops from immutable text blobs.
+          if ! echo '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792  fixtures/owner-gfn-controls/east-cross-top-left-216.webp' | sha256sum -c - >/dev/null 2>&1; then
+            : > /tmp/east.b64
+            for sha in \
+              8e02ab12952203d0d083fda317377b6be37b6412 \
+              9094ede50a7026b88a5f8e3945b9c2917cadf2b9 \
+              027a935b55c3a1ec13caa39d77a3e4b72ad68865 \
+              36488fc8ce1fd2f26a38bd06aa4f89aee1d03b59; do
+              fetch_blob_text "$sha" /tmp/part
+              cat /tmp/part >> /tmp/east.b64
+            done
+            base64 -d /tmp/east.b64 > fixtures/owner-gfn-controls/east-cross-top-left-216.webp
+          fi
+
+          if ! echo '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55  fixtures/owner-gfn-controls/general-shrine-top-left-216.webp' | sha256sum -c - >/dev/null 2>&1; then
+            : > /tmp/general.b64
+            for sha in \
+              0fe5215680f26fd3046213354095723c6307b0bb \
+              ee0a6615584a4b04bb9699e78d613043d25e19d6 \
+              0839c4af3ca71c82dd9c37a0f0d96c17b33f37cc; do
+              fetch_blob_text "$sha" /tmp/part
+              cat /tmp/part >> /tmp/general.b64
+            done
+            base64 -d /tmp/general.b64 > fixtures/owner-gfn-controls/general-shrine-top-left-216.webp
+          fi
+
+          echo '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792  fixtures/owner-gfn-controls/east-cross-top-left-216.webp' | sha256sum -c -
+          echo '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55  fixtures/owner-gfn-controls/general-shrine-top-left-216.webp' | sha256sum -c -
+
+      - name: Verify frozen production baseline and provenance
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "9388960a8bff53a9cfc7471372af144b7a28c34f"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "1a227d06ae41660ea3e3b832e7f1921cc507c0d7"
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          node --check vision-sync.js
+          node --check tools/replay-owner-gfn-controls.mjs
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('fixtures/owner-gfn-controls/metadata.json').read_text(encoding='utf-8'))
+          assert m['productionBaselineHead']=='ffbb1c51f80410d21685bf178647554f575ab582'
+          for c in m['controls']:
+              assert c['provenance']['gameplayAttachment']['dimensions']==[2048,863]
+              assert c['roi']['sourceCrop']==[0,0,215.75,215.75]
+              assert c['roi']['workCanvas']==[192,192]
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Build replay-only cache and instrument a copy
+        run: |
+          set -euo pipefail
+          rm -rf owner-gfn-site owner-gfn-output
+          mkdir -p owner-gfn-site/owner-gfn owner-gfn-output
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt owner-gfn-site/
+          cp fixtures/owner-gfn-controls/east-cross-top-left-216.webp owner-gfn-site/owner-gfn/
+          cp fixtures/owner-gfn-controls/general-shrine-top-left-216.webp owner-gfn-site/owner-gfn/
+          python tools/build_dashen_reference_audit_cache.py owner-gfn-site/dashen-cache --workers 24
+          test -s owner-gfn-site/dashen-cache/main/5/31_31.png
+          node tools/instrument-real-gfn-production-replay.mjs owner-gfn-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs owner-gfn-site/vision-sync.js
+          node --check owner-gfn-site/vision-sync.js
+          cmp -s vision-sync.js owner-gfn-site/vision-sync.js && { echo 'replay copy was not instrumented' >&2; exit 1; } || true
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Replay unchanged production matcher
+        run: |
+          set -euo pipefail
+          node tools/replay-owner-gfn-controls.mjs \
+            --site owner-gfn-site \
+            --metadata fixtures/owner-gfn-controls/metadata.json \
+            --output owner-gfn-output \
+            --top-k 8
+          test -s owner-gfn-output/east-cross-matcher.json
+          test -s owner-gfn-output/general-shrine-matcher.json
+          test -s owner-gfn-output/summary.json
+          sha256sum owner-gfn-output/* | tee owner-gfn-output/SHA256SUMS.txt
+          jq '{baseline,structuralGate,controls:[.controls[]|{id,name,classification,expectedBasin,bestLocal,roi,groundTruth}]}' owner-gfn-output/summary.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Generate audit documentation from replay evidence
+        env:
+          AUDIT_RUN_ID: ${{ github.run_id }}
+          AUDIT_JOB: ${{ github.job }}
+          AUDIT_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p docs
+          python - <<'PY'
+          import json, os, hashlib
+          from pathlib import Path
+
+          root=Path('.')
+          out=root/'owner-gfn-output'
+          meta=json.loads((root/'fixtures/owner-gfn-controls/metadata.json').read_text(encoding='utf-8'))
+          summary=json.loads((out/'summary.json').read_text(encoding='utf-8'))
+          matchers={}
+          for p in out.glob('*-matcher.json'):
+              matchers[p.stem.replace('-matcher','')]=json.loads(p.read_text(encoding='utf-8'))
+
+          controls=summary.get('controls',[])
+          def v(d,*names,default=None):
+              if not isinstance(d,dict): return default
+              for n in names:
+                  if n in d and d[n] is not None: return d[n]
+              return default
+          def fmt(x):
+              if x is None: return 'N/A'
+              if isinstance(x,bool): return 'PASS' if x else 'FAIL'
+              if isinstance(x,float): return f'{x:.6f}'
+              return str(x)
+          def global_pass(c):
+              eb=c.get('expectedBasin') or {}
+              cls=str(c.get('classification','')).upper()
+              if cls=='PASS': return True
+              return bool(v(eb,'surfaced','inTopK',default=False)) and bool(v(eb,'matchGateAccepted','gateAccepted','accepted',default=False))
+          def local_pass(c):
+              b=c.get('bestLocal') or {}
+              return bool(v(b,'matchGateAccepted','gateAccepted','accepted',default=False))
+
+          gps=[global_pass(c) for c in controls]
+          lps=[local_pass(c) for c in controls]
+          if any(gps): case='G1'
+          elif any(lps): case='G2'
+          else: case='G3'
+
+          lines=[]
+          a=lines.append
+          a('# WWMSync Owner-Provided Known-Location GFN HUD Control Audit — 2026-08-13')
+          a('')
+          a('## Scope and guardrails')
+          a('')
+          a('- Replay/CI-only evidence round. No production matcher, cache, preprocessing, DD/native/memory, `main`, or `production/wwsync` change.')
+          a('- Frozen production structural gate: `0.58`.')
+          a('- Production baseline for matcher semantics: `ffbb1c51f80410d21685bf178647554f575ab582`.')
+          a(f'- CI source commit: `{os.environ.get("AUDIT_SOURCE_SHA","")}`; run `{os.environ.get("AUDIT_RUN_ID","")}`; job `{os.environ.get("AUDIT_JOB","")}`.')
+          a('')
+          a('## Provenance validation')
+          a('')
+          a('The owner supplied two world-map/gameplay pairs and stated that each gameplay image was captured immediately after selecting/teleporting to the paired landmark without significant relocation. The mounted PNG bytes are `2048×863` even though the owner described the capture session as 1920×1080 GFN. Byte dimensions, not the stated resolution, are used for ROI math.')
+          a('')
+          for m in meta.get('controls',[]):
+              prov=m.get('provenance',{})
+              gt=m.get('groundTruth',{})
+              gp=prov.get('gameplayAttachment',{})
+              mp=prov.get('worldMapAttachment',{})
+              a(f'### {m.get("name",m.get("id"))}')
+              a('')
+              a(f'- Pair acceptance: **{prov.get("acceptance","accepted")}**.')
+              a(f'- World-map source SHA-256: `{mp.get("sha256","N/A")}`; dimensions: `{mp.get("dimensions","N/A")}`.')
+              a(f'- Gameplay source SHA-256: `{gp.get("sha256","N/A")}`; dimensions: `{gp.get("dimensions","N/A")}`.')
+              a(f'- Ground truth method: {gt.get("method","independent audited coordinate")}.')
+              a(f'- World coordinate: `{gt.get("world","N/A")}`; expected z5: `{gt.get("z5","N/A")}`.')
+              if gt.get('pointId') is not None: a(f'- pointId: `{gt.get("pointId")}`; authoritative name: `{gt.get("authoritativeName",gt.get("name",""))}`.')
+              a('')
+          a('## ROI provenance')
+          a('')
+          a('- Actual gameplay source dimensions: `2048×863`.')
+          a('- `unit = min(width,height) = 863`.')
+          a('- `roiFraction = 0.25`; raw semantic crop: `(0,0) → (215.75,215.75)`.')
+          a('- Replay fixture preserves the unmodified top-left source pixels covering that semantic crop; production-equivalent canvas crop/resample produces the `192×192` matcher input.')
+          a('- No beautification, sharpening, denoising, contrast manipulation, or production preprocessing change.')
+          a('')
+          a('## Unchanged production global matcher and fixed-coordinate diagnostics')
+          a('')
+          for c in controls:
+              cid=c.get('id','')
+              a(f'### {c.get("name",cid)}')
+              a('')
+              eb=c.get('expectedBasin') or {}
+              bl=c.get('bestLocal') or {}
+              a(f'- Control classification: **{c.get("classification","N/A")}**.')
+              a(f'- Expected-basin rank: `{fmt(v(eb,"rank"))}`; distance: `{fmt(v(eb,"distance","distanceZ5Px"))}` z5 px.')
+              a(f'- Expected-basin coarse: `{fmt(v(eb,"coarse","coarseScore"))}`; raw structure: `{fmt(v(eb,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure: `{fmt(v(eb,"scaleAwareStructure","scaleScore"))}`.')
+              a(f'- Expected-basin intensity: `{fmt(v(eb,"intensity"))}`; NCC: `{fmt(v(eb,"ncc","NCC"))}`; combined: `{fmt(v(eb,"combined","score"))}`; angle: `{fmt(v(eb,"angle"))}`; scale: `{fmt(v(eb,"scale"))}`.')
+              a(f'- Expected-basin matchGate: **{fmt(v(eb,"matchGateAccepted","gateAccepted","accepted"))}**.')
+              false_out=v(eb,'falseBasinOutranks','falseBasinOutranked',default=None)
+              if false_out is not None: a(f'- False basin outranks expected basin: **{fmt(bool(false_out))}**.')
+              if not global_pass(c):
+                  a(f'- Fixed known-coordinate local best: radius `{fmt(v(bl,"radius"))}`, scale `{fmt(v(bl,"scale"))}`, angle `{fmt(v(bl,"angle"))}`; raw structure `{fmt(v(bl,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure `{fmt(v(bl,"scaleAwareStructure","scaleScore"))}`; intensity `{fmt(v(bl,"intensity"))}`; NCC `{fmt(v(bl,"ncc","NCC"))}`; combined `{fmt(v(bl,"combined","score"))}`; gate **{fmt(v(bl,"matchGateAccepted","gateAccepted","accepted"))}**.')
+              a('')
+              data=matchers.get(cid,{})
+              top=v(c,'topK','candidates',default=None) or v(data,'topK','candidates','finalists',default=None) or []
+              if isinstance(top,dict): top=list(top.values())
+              if top:
+                  a('TOP-K production candidates:')
+                  a('')
+                  a('| rank | x | y | region | coarse | raw struct | scale struct | intensity | NCC | combined | angle | scale | gate |')
+                  a('|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|')
+                  for i,t in enumerate(top[:8],1):
+                      pos=v(t,'position','planar',default={}) or {}
+                      x=v(t,'x',default=v(pos,'x')) ; y=v(t,'y',default=v(pos,'y'))
+                      gate=v(t,'matchGateAccepted','gateAccepted','accepted')
+                      reason=v(t,'matchGateReason','gateReason','reason',default='')
+                      gs=fmt(gate)+(f' ({reason})' if reason else '')
+                      a(f'| {fmt(v(t,"rank",default=i))} | {fmt(x)} | {fmt(y)} | {fmt(v(t,"region"))} | {fmt(v(t,"coarse","coarseScore"))} | {fmt(v(t,"rawStructure","structure","rawStructuralScore"))} | {fmt(v(t,"scaleAwareStructure","scaleScore"))} | {fmt(v(t,"intensity"))} | {fmt(v(t,"ncc","NCC"))} | {fmt(v(t,"combined","score"))} | {fmt(v(t,"angle"))} | {fmt(v(t,"scale"))} | {gs} |')
+                  a('')
+          a('## Joint interpretation')
+          a('')
+          a(f'Outcome family: **CASE {case}**.')
+          if case=='G1':
+              a('- At least one known-location GFN HUD control globally PASSes. Therefore GFN does not universally destroy localization. H2, if present, cannot be universal; this does not by itself prove H1 or exclude GFN-specific degradation in other states.')
+          elif case=='G2':
+              a('- At least one known-location GFN HUD control FAILs globally while the independently known neighborhood remains locally viable above the unchanged `0.58` structure gate. This strengthens the same global expected-basin candidate recall/surfacing pattern already observed for the Steam Global PC Fang Xu / General Shrine HUD control.')
+              a('- This is H1-like evidence, but because these new controls are still GFN it does not cleanly eliminate H2 or quantify a GFN degradation effect.')
+          else:
+              a('- The failing GFN controls are not locally viable at the independently known coordinate under the unchanged gate. Provenance remains accepted, but minimap state/teleport offset/capture-domain characteristics remain plausible contributors; no matcher change is inferred from this alone.')
+          a('- Prior FULL-MAP General Shrine positive control remains PASS, establishing that the Dashen reference/coordinate architecture is not globally broken.')
+          a('- Prior Steam Global PC Fang Xu / General Shrine normal HUD remains global HUD-FAIL with fixed expected-coordinate local viability above `0.58`.')
+          a('- Prior real 40-frame GFN fixture remains FAIL.')
+          a('- These owner controls materially reduce the known-location GFN control uncertainty, but they do **not** replace native-PC Stage-A evidence needed to discriminate H1 versus H2 cleanly.')
+          a('- **No production change is justified by this round.** Structural gate `0.58` remains unchanged; no production matcher/cache/preprocessing file is modified.')
+          a('')
+          a('## Evidence digests')
+          a('')
+          for p in sorted(out.iterdir()):
+              if p.is_file():
+                  h=hashlib.sha256(p.read_bytes()).hexdigest()
+                  a(f'- `{p.name}` — SHA-256 `{h}`')
+          a('')
+          a('## Final acceptance')
+          a('')
+          a('- SYNTHETIC = PASS (unchanged prior acceptance).')
+          for c in controls: a(f'- KNOWN-LOCATION GFN HUD — {c.get("name",c.get("id"))} = **{c.get("classification","N/A")}**.')
+          a('- REAL 40-FRAME GFN FIXTURE = FAIL (unchanged prior acceptance).')
+          a('- REAL LOCAL / native-PC Stage-A control = still required / unavailable in current evidence round.')
+          a('- LIVE E2E = PENDING / NOT JUSTIFIED.')
+          a('- PRODUCTION STRUCTURAL GATE = `0.58`, unchanged.')
+          a('- PRODUCTION CHANGE = NOT JUSTIFIED.')
+
+          Path('docs/WWMSYNC_OWNER_GFN_CONTROL_AUDIT_2026-08-13.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          PY
+          test -s docs/WWMSYNC_OWNER_GFN_CONTROL_AUDIT_2026-08-13.md
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Commit replay audit documentation only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/WWMSYNC_OWNER_GFN_CONTROL_AUDIT_2026-08-13.md
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = 'docs/WWMSYNC_OWNER_GFN_CONTROL_AUDIT_2026-08-13.md'
+          git diff --cached --check
+          git commit -m 'docs(replay): record owner GFN HUD control audit'
+          git push origin HEAD:feature/wwm-native-sync-v2
+
+      - name: Upload owner GFN control evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-owner-gfn-controls-${{ github.run_id }}
+          path: owner-gfn-output/
+          if-no-files-found: error
+          retention-days: 30
