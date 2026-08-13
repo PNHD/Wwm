@@ -30,8 +30,8 @@ jobs:
       REPLAY_SITE_ARTIFACT: "9127953239"
       REAL_GFN_ASSET_ID: "511291145"
       REAL_GFN_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
-      EAST_MAP_ROI_BLOB: e15f85702ff8d039783a631200208e278d2605d9
-      GENERAL_MAP_ROI_BLOB: b10d2247a2d04522faa7b6b2f6aa73e34241f06d
+      EAST_MAP_ROI_TEXT_BLOB: 41bed99418a09856ed470d84468e176121879f22
+      GENERAL_MAP_ROI_TEXT_BLOB: 66e7d42d24c2c4aede69a5ba21c281ce0347b099
       REPORT_PATH: docs/wwmsync/audits/same-session-gfn-worldmap-hud-differential-2026-08-13.md
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -128,12 +128,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit-inputs/replay-sources /tmp/wwmsync-owner-map-roi
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_BLOB}" --jq .content | tr -d '\n' | base64 -d > /tmp/wwmsync-owner-map-roi/east.webp
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_BLOB}" --jq .content | tr -d '\n' | base64 -d > /tmp/wwmsync-owner-map-roi/general.webp
-          echo 'c5038f3c0bcdec4da9a348c2d43e71db18ea8598185a0e2509c3e88eaebf6164  /tmp/wwmsync-owner-map-roi/east.webp' | sha256sum -c -
-          echo 'c99350565341b331f4f8426020171f391bc136a03ec8cab13ae79f00f0f55965  /tmp/wwmsync-owner-map-roi/general.webp' | sha256sum -c -
-          EAST_HUD="$(find .audit-inputs/exact/content -type f -name east-cross-roi-192.png -print -quit)"
-          GENERAL_HUD="$(find .audit-inputs/exact/content -type f -name general-shrine-roi-192.png -print -quit)"
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_TEXT_BLOB}" --jq .content | tr -d '\n' | base64 -d | base64 -d > /tmp/wwmsync-owner-map-roi/east.jpg
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_TEXT_BLOB}" --jq .content | tr -d '\n' | base64 -d | base64 -d > /tmp/wwmsync-owner-map-roi/general.jpg
+          echo '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6  /tmp/wwmsync-owner-map-roi/east.jpg' | sha256sum -c -
+          echo '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba  /tmp/wwmsync-owner-map-roi/general.jpg' | sha256sum -c -
           python - <<'PY'
           import cv2, hashlib, json
           import numpy as np
@@ -157,17 +155,17 @@ jobs:
               assert cv2.imwrite(str(dst),canvas)
               return {'authoritative_work_canvas':[192,192],'carrier_semantic_roi':[0,0,216,216]}
           p={}
-          p['east_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/east.webp'),(.500,.505),out/'east-cross-world-map.png')
-          p['general_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/general.webp'),(.557,.288),out/'general-shrine-world-map.png')
+          p['east_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/east.jpg'),(.500,.505),out/'east-cross-world-map.png')
+          p['general_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/general.jpg'),(.557,.288),out/'general-shrine-world-map.png')
           p['east_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('east-cross-roi-192.png'))),out/'east-cross-gameplay-hud.png')
           p['general_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('general-shrine-roi-192.png'))),out/'general-shrine-gameplay-hud.png')
           p['exact_owner_sources']={
-            'east_cross_map':{'dimensions':[2048,863],'bytes':2728396,'sha256':'1dffb5a484be50d753e40472dc8ef9f84d22633fa6ef2a976a81aee6f1536e9e','derived_map_roi_original_box':[408,139,1637,795],'derived_map_anchor_local':[614.712146422629,293.783693843594],'derived_fixture_sha256':'c5038f3c0bcdec4da9a348c2d43e71db18ea8598185a0e2509c3e88eaebf6164'},
+            'east_cross_map':{'dimensions':[2048,863],'bytes':2728396,'sha256':'1dffb5a484be50d753e40472dc8ef9f84d22633fa6ef2a976a81aee6f1536e9e','derived_map_roi_original_box':[408,139,1637,795],'derived_map_anchor_local':[614.712146422629,293.783693843594],'derived_fixture_dimensions':[320,171],'derived_fixture_sha256':'48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6'},
             'east_cross_hud':{'dimensions':[2048,863],'bytes':3879098,'sha256':'c20d317a745b897b2d9cfb6d622521b2327afd961b8adae4649eaed23de256ad','authoritative_roi_sha256':'0551d584aec4df0fff3b6ccd115ddead1281be84e98239621148d3382c6e442c'},
-            'general_shrine_map':{'dimensions':[2048,863],'bytes':3027787,'sha256':'99841c9b467a63299cded38d3598e5ef136e349f0896cc21d31275b9e7c88de7','derived_map_roi_original_box':[526,77,1755,615],'derived_map_anchor_local':[615.3446327683616,176.3050847457627],'derived_fixture_sha256':'c99350565341b331f4f8426020171f391bc136a03ec8cab13ae79f00f0f55965'},
+            'general_shrine_map':{'dimensions':[2048,863],'bytes':3027787,'sha256':'99841c9b467a63299cded38d3598e5ef136e349f0896cc21d31275b9e7c88de7','derived_map_roi_original_box':[526,77,1755,615],'derived_map_anchor_local':[615.3446327683616,176.3050847457627],'derived_fixture_dimensions':[320,140],'derived_fixture_sha256':'73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba'},
             'general_shrine_hud':{'dimensions':[2048,863],'bytes':3879049,'sha256':'dd73ea17c9a269535b74eb7fd83bd491df2bdbba56dcd2f7d9be074068120378','authoritative_roi_sha256':'f0acddeef0e5d1c6f433e2e9347a48631bf7cbe84057f2c3adb1c8a01cc32999'}
           }
-          p['reconstruction_note']='The exact original 2048x863 source bytes were validated in the owner-control round. CI cannot retrieve conversation attachments directly, so world-map analysis carriers are deterministic map-only regions derived from those exact bytes and HUD carriers reconstruct the authoritative 192x192 work canvases from run 31666927302/artifact 9168284675. These carriers are replay-only transport; original SHA/dimensions remain source provenance and authoritative HUD matcher verdicts are reused, not rerun.'
+          p['reconstruction_note']='The exact original 2048x863 source bytes were validated in the owner-control round. GitHub Actions cannot mount conversation attachments directly. World-map replay transport therefore uses the fixed source ROI from those exact bytes, converted deterministically to grayscale, INTER_AREA-resized to width 320, and JPEG-encoded at quality 92; HUD transport reconstructs the authoritative 192x192 work canvases from run 31666927302/artifact 9168284675. These are replay-only carriers, never relabeled as original screenshots. Original SHA/dimensions/byte counts remain authoritative provenance and authoritative HUD matcher verdicts are reused, not rerun.'
           for f in sorted(out.glob('*.png')):
               b=f.read_bytes(); p.setdefault('carrier_files',{})[f.name]={'sha256':hashlib.sha256(b).hexdigest(),'bytes':len(b)}
           (out/'exact-owner-provenance.json').write_text(json.dumps(p,indent=2),encoding='utf-8')
@@ -210,7 +208,7 @@ jobs:
           ins+='- **Exact original owner bytes remain authoritative provenance.** CI replay carriers below are transport derivatives only; they are not relabeled as original screenshots.\n'
           for k in ('east_cross_map','east_cross_hud','general_shrine_map','general_shrine_hud'):
               m=exact[k]; ins+=f"- **{k} ORIGINAL** — `{m['dimensions'][0]}×{m['dimensions'][1]}`, {m['bytes']} bytes, SHA-256 `{m['sha256']}`.\n"
-          ins+='- World-map carriers: deterministic map-only crops from the exact owner bytes, grayscale/lossless-downsampled for CI transport; original crop bounds and derived fixture SHA are recorded in `exact-owner-provenance.json`.\n'
+          ins+='- World-map carriers: fixed map-only crops from the exact owner bytes, deterministically grayscale + INTER_AREA width-320 + JPEG q92 for CI transport; original crop bounds, derived dimensions and derived SHA are recorded in `exact-owner-provenance.json`.\n'
           ins+='- HUD carriers: reconstructed from the authoritative `192×192` work canvases in run `31666927302` / artifact `9168284675`; authoritative HUD matcher results are reused and are **not** rerun or redefined by these carriers.\n'
           ins+='- This transport reconstruction exists because GitHub Actions cannot directly mount conversation attachments; it does not change GT, the production gate, production code, or source provenance.\n'
           if needle not in text: raise SystemExit('report provenance heading not found')
