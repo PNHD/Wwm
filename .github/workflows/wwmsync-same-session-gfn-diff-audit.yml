@@ -39,7 +39,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/replay/wwmsync_same_session_gfn_diff_audit.py --help >/dev/null
+          test -s scripts/replay/wwmsync_same_session_gfn_diff_audit.py
+          python -m py_compile scripts/replay/wwmsync_same_session_gfn_diff_audit.py
           FIRST="$(git rev-list --first-parent --reverse "${EXPECTED_START_HEAD}..HEAD" | head -n1)"
           test -n "$FIRST"
           test "$(git rev-parse "${FIRST}^")" = "$EXPECTED_START_HEAD"
@@ -71,6 +72,7 @@ jobs:
             pillow==11.3.0 \
             scipy==1.15.3 \
             scikit-image==0.25.2
+          python scripts/replay/wwmsync_same_session_gfn_diff_audit.py --help >/dev/null
 
       - name: Recover immutable authoritative HUD-control artifact pool
         shell: bash
@@ -92,7 +94,7 @@ jobs:
           gh run view "$AUTHORITATIVE_RUN" --repo "$GITHUB_REPOSITORY" --log > .audit-inputs/authoritative-run/authoritative-run.log
 
           python - <<'PY'
-          import hashlib, json, pathlib, zipfile
+          import hashlib, pathlib
           root=pathlib.Path('.audit-inputs/exact')
           z=root/'artifact-9168284675.zip'
           print('authoritative artifact archive sha256',hashlib.sha256(z.read_bytes()).hexdigest())
