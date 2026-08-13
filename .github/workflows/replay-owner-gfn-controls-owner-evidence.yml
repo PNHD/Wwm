@@ -1,0 +1,135 @@
+name: Replay Owner GFN Known-Location HUD Controls
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/replay-owner-gfn-controls-owner-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay-owner-gfn-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install replay dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet opencv-python-headless numpy
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Recover owner replay inputs by immutable blob digest
+        env:
+          GH_REPO: PNHD/Wwm
+        run: |
+          set -euo pipefail
+          mkdir -p fixtures/owner-gfn-controls tools
+          fetch_blob_text() {
+            local sha="$1" out="$2"
+            curl -fsSL -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GH_REPO}/git/blobs/${sha}" \
+              | python -c 'import sys,json,base64; o=json.load(sys.stdin); sys.stdout.buffer.write(base64.b64decode(o["content"]))' \
+              > "$out"
+          }
+          fetch_blob_text 96b98cf5930c04b04b6decf49b9194104e31feb9 fixtures/owner-gfn-controls/metadata.json
+          fetch_blob_text f36efa4a1f59f6e76478602bceda69be7a09abf6 tools/replay-owner-gfn-controls.mjs
+
+          : > /tmp/east.b64
+          for sha in \
+            8e02ab12952203d0d083fda317377b6be37b6412 \
+            9094ede50a7026b88a5f8e3945b9c2917cadf2b9 \
+            027a935b55c3a1ec13caa39d77a3e4b72ad68865 \
+            36488fc8ce1fd2f26a38bd06aa4f89aee1d03b59; do
+            fetch_blob_text "$sha" /tmp/part
+            cat /tmp/part >> /tmp/east.b64
+          done
+          base64 -d /tmp/east.b64 > fixtures/owner-gfn-controls/east-cross-top-left-216.webp
+
+          : > /tmp/general.b64
+          for sha in \
+            0fe5215680f26fd3046213354095723c6307b0bb \
+            ee0a6615584a4b04bb9699e78d613043d25e19d6 \
+            0839c4af3ca71c82dd9c37a0f0d96c17b33f37cc; do
+            fetch_blob_text "$sha" /tmp/part
+            cat /tmp/part >> /tmp/general.b64
+          done
+          base64 -d /tmp/general.b64 > fixtures/owner-gfn-controls/general-shrine-top-left-216.webp
+
+          echo '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792  fixtures/owner-gfn-controls/east-cross-top-left-216.webp' | sha256sum -c -
+          echo '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55  fixtures/owner-gfn-controls/general-shrine-top-left-216.webp' | sha256sum -c -
+
+      - name: Verify frozen production baseline and provenance metadata
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "9388960a8bff53a9cfc7471372af144b7a28c34f"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "1a227d06ae41660ea3e3b832e7f1921cc507c0d7"
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          node --check vision-sync.js
+          node --check tools/replay-owner-gfn-controls.mjs
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('fixtures/owner-gfn-controls/metadata.json').read_text(encoding='utf-8'))
+          assert m['productionBaselineHead']=='ffbb1c51f80410d21685bf178647554f575ab582'
+          for c in m['controls']:
+              assert c['provenance']['gameplayAttachment']['dimensions']==[2048,863]
+              assert c['roi']['sourceCrop']==[0,0,215.75,215.75]
+              assert c['roi']['workCanvas']==[192,192]
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Build replay-only cache and instrument a copy
+        run: |
+          set -euo pipefail
+          rm -rf owner-gfn-site owner-gfn-output
+          mkdir -p owner-gfn-site/owner-gfn owner-gfn-output
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt owner-gfn-site/
+          cp fixtures/owner-gfn-controls/east-cross-top-left-216.webp owner-gfn-site/owner-gfn/
+          cp fixtures/owner-gfn-controls/general-shrine-top-left-216.webp owner-gfn-site/owner-gfn/
+          python tools/build_dashen_reference_audit_cache.py owner-gfn-site/dashen-cache --workers 24
+          test -s owner-gfn-site/dashen-cache/main/5/31_31.png
+          node tools/instrument-real-gfn-production-replay.mjs owner-gfn-site/vision-sync.js
+          node tools/instrument-real-gfn-candidate-diagnostics.mjs owner-gfn-site/vision-sync.js
+          node --check owner-gfn-site/vision-sync.js
+          cmp -s vision-sync.js owner-gfn-site/vision-sync.js && { echo 'replay copy was not instrumented' >&2; exit 1; } || true
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Replay unchanged production global matcher
+        run: |
+          set -euo pipefail
+          node tools/replay-owner-gfn-controls.mjs \
+            --site owner-gfn-site \
+            --metadata fixtures/owner-gfn-controls/metadata.json \
+            --output owner-gfn-output \
+            --top-k 8
+          test -s owner-gfn-output/east-cross-matcher.json
+          test -s owner-gfn-output/general-shrine-matcher.json
+          test -s owner-gfn-output/summary.json
+          sha256sum owner-gfn-output/* | tee owner-gfn-output/SHA256SUMS.txt
+          jq '{baseline,structuralGate,controls:[.controls[]|{id,name,classification,expectedBasin,bestLocal,roi,groundTruth}]}' owner-gfn-output/summary.json
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --exit-code ffbb1c51f80410d21685bf178647554f575ab582 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Upload owner GFN control evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-owner-gfn-controls-${{ github.run_id }}
+          path: owner-gfn-output/
+          if-no-files-found: error
+          retention-days: 30
