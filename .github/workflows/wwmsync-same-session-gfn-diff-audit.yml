@@ -128,8 +128,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit-inputs/replay-sources /tmp/wwmsync-owner-map-roi
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_TEXT_BLOB}" --jq .content | tr -d '\n' | base64 -d | base64 -d > /tmp/wwmsync-owner-map-roi/east.jpg
-          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_TEXT_BLOB}" --jq .content | tr -d '\n' | base64 -d | base64 -d > /tmp/wwmsync-owner-map-roi/general.jpg
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_TEXT_BLOB}" > /tmp/wwmsync-owner-map-roi/east-blob.json
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_TEXT_BLOB}" > /tmp/wwmsync-owner-map-roi/general-blob.json
+          python - <<'PY'
+          import base64, json
+          from pathlib import Path
+          for stem in ('east','general'):
+              meta=json.loads(Path(f'/tmp/wwmsync-owner-map-roi/{stem}-blob.json').read_text())
+              assert meta.get('encoding') == 'base64', meta
+              outer=''.join(meta['content'].split())
+              inner=base64.b64decode(outer, validate=True)
+              raw=base64.b64decode(inner, validate=True)
+              Path(f'/tmp/wwmsync-owner-map-roi/{stem}.jpg').write_bytes(raw)
+          PY
           echo '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6  /tmp/wwmsync-owner-map-roi/east.jpg' | sha256sum -c -
           echo '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba  /tmp/wwmsync-owner-map-roi/general.jpg' | sha256sum -c -
           python - <<'PY'
