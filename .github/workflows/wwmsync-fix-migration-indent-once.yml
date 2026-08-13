@@ -1,0 +1,38 @@
+name: WWMSync Fix Migration Indent Once
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: [.github/workflows/wwmsync-fix-migration-indent-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+          fetch-depth: 0
+      - name: Fix one YAML indentation defect and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/wwmsync-enable-tracked-map-fixtures-once.yml')
+          s=p.read_text()
+          old="\n'''\n          s = s[:start] + new_block + s[end:]"
+          new="\n          '''\n          s = s[:start] + new_block + s[end:]"
+          assert s.count(old) == 1
+          p.write_text(s.replace(old,new,1))
+          PY
+          rm .github/workflows/wwmsync-fix-migration-indent-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- .github/workflows/wwmsync-enable-tracked-map-fixtures-once.yml .github/workflows/wwmsync-fix-migration-indent-once.yml
+          git diff --cached --check
+          git commit -m 'ci(wwmsync): fix tracked-fixture migration indentation'
+          git push origin HEAD:feature/wwm-native-sync-v2
