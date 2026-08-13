@@ -31,50 +31,33 @@ jobs:
           from PIL import Image
 
           specs = {
-            'east': ('east-cross-world-map-roi.jpg','48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6',(320,171)),
-            'general': ('general-shrine-world-map-roi.jpg','73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba',(320,140)),
+            'east': ('east-cross-world-map-roi.jpg','48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6',(320,171),28416),
+            'general': ('general-shrine-world-map-roi.jpg','73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba',(320,140),19280),
           }
 
-          def compact(x: bytes) -> bytes:
-              return b''.join(x.split())
-
-          def decode_if_well_formed(x: bytes):
-              x = compact(x)
-              if len(x) % 4 != 0:
-                  return None
-              try:
-                  return base64.b64decode(x, validate=True)
-              except Exception:
-                  return None
-
-          for stem,(name,want,size) in specs.items():
+          for stem,(name,want,size,expected_text_len) in specs.items():
               meta=json.loads(Path(f'/tmp/wwmsync-map-recovery/{stem}.json').read_text())
-              content=compact(meta['content'].encode('ascii'))
-              print(f'{stem}: api_encoding={meta.get("encoding")} content_len={len(content)} mod4={len(content)%4} prefix={content[:16]!r} suffix={content[-16:]!r}')
+              api_b64=''.join(meta['content'].split()).encode('ascii')
+              assert len(api_b64)%4==0, (stem,'API wrapper length',len(api_b64))
+              text_b64=base64.b64decode(api_b64,validate=True)
+              text_b64=b''.join(text_b64.split())
+              print(f'{stem}: legacy_text_len={len(text_b64)} expected_exact_text_len={expected_text_len} prefix={text_b64[:16]!r} exact_boundary_tail={text_b64[max(0,expected_text_len-16):expected_text_len]!r}')
+              assert text_b64.startswith(b'/9j/'), (stem,text_b64[:16])
+              assert len(text_b64)>=expected_text_len, (stem,len(text_b64),expected_text_len)
 
-              # Standard GitHub REST JSON for the old text-carrier is two layers:
-              # API base64 wrapper -> ASCII /9j/... text -> JPEG bytes.
-              layer1=decode_if_well_formed(content)
-              if layer1 is not None:
-                  print(f'{stem}: layer1_len={len(layer1)} layer1_prefix={layer1[:16]!r} layer1_suffix={layer1[-16:]!r}')
-              raw=decode_if_well_formed(layer1) if layer1 is not None else None
-
-              # Some GitHub clients expose the already-decoded blob text in .content.
-              # This is diagnostic fallback only; exact SHA is still the acceptance gate.
-              if raw is None or hashlib.sha256(raw).hexdigest()!=want:
-                  direct=decode_if_well_formed(content) if content.startswith(b'/9j/') else None
-                  if direct is not None and hashlib.sha256(direct).hexdigest()==want:
-                      raw=direct
-                      print(f'{stem}: client exposed decoded text-carrier content; used one text-base64 decode')
-
-              assert raw is not None, f'{stem}: no complete base64 layer could be decoded'
+              exact_text=text_b64[:expected_text_len]
+              assert len(exact_text)%4==0
+              raw=base64.b64decode(exact_text,validate=True)
               got=hashlib.sha256(raw).hexdigest()
               assert got==want,(stem,got,want,len(raw),raw[:8],raw[-8:])
               assert raw[:2]==b'\xff\xd8' and raw[-2:]==b'\xff\xd9'
-              out=Path('fixtures/same-session-gfn-diff')/name; out.write_bytes(raw)
+              out=Path('fixtures/same-session-gfn-diff')/name
+              out.write_bytes(raw)
+              with Image.open(out) as im:
+                  im.verify()
               with Image.open(out) as im:
                   assert im.format=='JPEG' and im.size==size,(stem,im.format,im.size)
-              print(f'{stem}: VERIFIED sha256={got} dimensions={size[0]}x{size[1]}')
+              print(f'{stem}: VERIFIED sha256={got} dimensions={size[0]}x{size[1]} JPEG=OK')
           PY
           echo '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6  fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg' | sha256sum -c -
           echo '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba  fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg' | sha256sum -c -
