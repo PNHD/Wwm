@@ -26,6 +26,12 @@ jobs:
       EXPECTED_START_HEAD: f199258d4abdebe8f3ae75d99b56442ef76e1e38
       AUTHORITATIVE_RUN: "31666927302"
       AUTHORITATIVE_ARTIFACT: "9168284675"
+      PUBLIC_HUD_ARTIFACT: "9146646914"
+      REPLAY_SITE_ARTIFACT: "9127953239"
+      REAL_GFN_ASSET_ID: "511291145"
+      REAL_GFN_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+      EAST_MAP_ROI_BLOB: e15f85702ff8d039783a631200208e278d2605d9
+      GENERAL_MAP_ROI_BLOB: b10d2247a2d04522faa7b6b2f6aa73e34241f06d
       REPORT_PATH: docs/wwmsync/audits/same-session-gfn-worldmap-hud-differential-2026-08-13.md
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -79,62 +85,95 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit-inputs/authoritative-run .audit-inputs/exact .audit-inputs/aux
-
           META="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUTHORITATIVE_ARTIFACT}")"
           test "$(jq -r '.expired' <<<"$META")" = "false"
           test "$(jq -r '.workflow_run.id' <<<"$META")" = "$AUTHORITATIVE_RUN"
+          test "$(jq -r '.digest' <<<"$META")" = 'sha256:5ab08d0bf1745556b0b10d3f72cb70779fa65367afff6f057014f050a1d634d8'
           URL="$(jq -r '.archive_download_url' <<<"$META")"
-          curl --fail --location --silent --show-error \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "$URL" -o .audit-inputs/exact/artifact-${AUTHORITATIVE_ARTIFACT}.zip
+          curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$URL" -o .audit-inputs/exact/artifact-${AUTHORITATIVE_ARTIFACT}.zip
           unzip -q .audit-inputs/exact/artifact-${AUTHORITATIVE_ARTIFACT}.zip -d .audit-inputs/exact/content
-
           gh run download "$AUTHORITATIVE_RUN" --repo "$GITHUB_REPOSITORY" -D .audit-inputs/authoritative-run
           gh run view "$AUTHORITATIVE_RUN" --repo "$GITHUB_REPOSITORY" --log > .audit-inputs/authoritative-run/authoritative-run.log
+          echo '0551d584aec4df0fff3b6ccd115ddead1281be84e98239621148d3382c6e442c' "$(find .audit-inputs/exact/content -type f -name east-cross-roi-192.png -print -quit)" | sha256sum -c -
+          echo 'f0acddeef0e5d1c6f433e2e9347a48631bf7cbe84057f2c3adb1c8a01cc32999' "$(find .audit-inputs/exact/content -type f -name general-shrine-roi-192.png -print -quit)" | sha256sum -c -
 
-          python - <<'PY'
-          import hashlib, pathlib
-          root=pathlib.Path('.audit-inputs/exact')
-          z=root/'artifact-9168284675.zip'
-          print('authoritative artifact archive sha256',hashlib.sha256(z.read_bytes()).hexdigest())
-          print('authoritative artifact files',sum(1 for p in (root/'content').rglob('*') if p.is_file()))
-          PY
-
-      - name: Recover auxiliary prior controls and exact 40-frame fixture when available
+      - name: Recover deterministic prior cross-controls and Dashen replay cache
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
-            --jq '.artifacts[] | select(.expired == false) | [.id,.name,.size_in_bytes,.archive_download_url,.workflow_run.id] | @tsv' \
-            > .audit-inputs/artifacts.tsv
+          fetch_artifact() {
+            local aid="$1" expected="$2" dest="$3"
+            mkdir -p "$dest"
+            local meta url
+            meta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}")"
+            test "$(jq -r '.expired' <<<"$meta")" = false
+            test "$(jq -r '.digest' <<<"$meta")" = "sha256:${expected}"
+            url="$(jq -r '.archive_download_url' <<<"$meta")"
+            curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$url" -o "$dest/artifact.zip"
+            unzip -q "$dest/artifact.zip" -d "$dest/content"
+          }
+          fetch_artifact "$PUBLIC_HUD_ARTIFACT" b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041 .audit-inputs/aux/public-hud
+          fetch_artifact "$REPLAY_SITE_ARTIFACT" 1542e60310197707f892e7ee9ebbbdb65c3f58926fcedb4ec80454d4b9eaf8d3 .audit-inputs/aux/reference-site
+          FANG_SRC="$(find .audit-inputs/aux/public-hud/content -type f -name 'steam-general-shrine-1-roi.png' -print -quit)"
+          FANG_GT="$(find .audit-inputs/aux/public-hud/content -type f -name 'steam-general-shrine-ground-truth.json' -print -quit)"
+          test -s "$FANG_SRC" && test -s "$FANG_GT"
+          cp "$FANG_SRC" .audit-inputs/aux/public-hud/fang-xu-steam-hud.png
+          cp "$FANG_GT" .audit-inputs/aux/public-hud/fang-xu-ground-truth.json
+          mkdir -p .audit-inputs/aux/real-fixture
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${REAL_GFN_ASSET_ID}" > .audit-inputs/aux/real-fixture/wwmsync-gfn-motion-20260810-143835.zip
+          echo "${REAL_GFN_SHA256}  .audit-inputs/aux/real-fixture/wwmsync-gfn-motion-20260810-143835.zip" | sha256sum -c -
+
+      - name: Reconstruct replay carriers from exact owner provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .audit-inputs/replay-sources /tmp/wwmsync-owner-map-roi
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${EAST_MAP_ROI_BLOB}" --jq .content | tr -d '\n' | base64 -d > /tmp/wwmsync-owner-map-roi/east.webp
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${GENERAL_MAP_ROI_BLOB}" --jq .content | tr -d '\n' | base64 -d > /tmp/wwmsync-owner-map-roi/general.webp
+          echo 'c5038f3c0bcdec4da9a348c2d43e71db18ea8598185a0e2509c3e88eaebf6164  /tmp/wwmsync-owner-map-roi/east.webp' | sha256sum -c -
+          echo 'c99350565341b331f4f8426020171f391bc136a03ec8cab13ae79f00f0f55965  /tmp/wwmsync-owner-map-roi/general.webp' | sha256sum -c -
+          EAST_HUD="$(find .audit-inputs/exact/content -type f -name east-cross-roi-192.png -print -quit)"
+          GENERAL_HUD="$(find .audit-inputs/exact/content -type f -name general-shrine-roi-192.png -print -quit)"
           python - <<'PY'
-          import pathlib,re
-          src=pathlib.Path('.audit-inputs/artifacts.tsv').read_text().splitlines()
-          tokens=re.compile(r'(wwm|gfn|owner|replay|control|fang|motion|absolute|localiz|audit|reference|dashen)',re.I)
-          picked=[]
-          for line in src:
-              cols=line.split('\t')
-              if len(cols)<5: continue
-              aid,name,size,url,run=cols[:5]
-              if aid=='9168284675': continue
-              if int(size)>650_000_000: continue
-              if tokens.search(name): picked.append(line)
-              if len(picked)>=20: break
-          pathlib.Path('.audit-inputs/selected-artifacts.tsv').write_text('\n'.join(picked)+('\n' if picked else ''))
-          print('selected auxiliary artifacts',len(picked))
+          import cv2, hashlib, json
+          import numpy as np
+          from pathlib import Path
+          W,H=2048,863
+          out=Path('.audit-inputs/replay-sources')
+          def map_carrier(src,norm,dst):
+              g=cv2.imread(str(src),cv2.IMREAD_GRAYSCALE); assert g is not None
+              ax,ay=norm[0]*W,norm[1]*H
+              x0=max(0,int(ax-.30*W)); x1=min(W,int(ax+.30*W))
+              y0=max(int(.09*H),int(ay-.34*H)); y1=min(int(.94*H),int(ay+.42*H))
+              canvas=np.full((H,W),int(np.median(g)),np.uint8)
+              canvas[y0:y1,x0:x1]=cv2.resize(g,(x1-x0,y1-y0),interpolation=cv2.INTER_LINEAR)
+              assert cv2.imwrite(str(dst),canvas)
+              return {'carrier_box':[x0,y0,x1,y1],'fixed_anchor_screen':[ax,ay],'fixture_dimensions':[g.shape[1],g.shape[0]]}
+          def hud_carrier(src,dst):
+              im=cv2.imread(str(src),cv2.IMREAD_COLOR); assert im is not None and im.shape[:2]==(192,192)
+              med=np.median(im.reshape(-1,3),axis=0).astype(np.uint8)
+              canvas=np.empty((H,W,3),np.uint8); canvas[:]=med
+              canvas[:216,:216]=cv2.resize(im,(216,216),interpolation=cv2.INTER_LINEAR)
+              assert cv2.imwrite(str(dst),canvas)
+              return {'authoritative_work_canvas':[192,192],'carrier_semantic_roi':[0,0,216,216]}
+          p={}
+          p['east_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/east.webp'),(.500,.505),out/'east-cross-world-map.png')
+          p['general_map_carrier']=map_carrier(Path('/tmp/wwmsync-owner-map-roi/general.webp'),(.557,.288),out/'general-shrine-world-map.png')
+          p['east_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('east-cross-roi-192.png'))),out/'east-cross-gameplay-hud.png')
+          p['general_hud_carrier']=hud_carrier(Path(next(Path('.audit-inputs/exact/content').rglob('general-shrine-roi-192.png'))),out/'general-shrine-gameplay-hud.png')
+          p['exact_owner_sources']={
+            'east_cross_map':{'dimensions':[2048,863],'bytes':2728396,'sha256':'1dffb5a484be50d753e40472dc8ef9f84d22633fa6ef2a976a81aee6f1536e9e','derived_map_roi_original_box':[408,139,1637,795],'derived_map_anchor_local':[614.712146422629,293.783693843594],'derived_fixture_sha256':'c5038f3c0bcdec4da9a348c2d43e71db18ea8598185a0e2509c3e88eaebf6164'},
+            'east_cross_hud':{'dimensions':[2048,863],'bytes':3879098,'sha256':'c20d317a745b897b2d9cfb6d622521b2327afd961b8adae4649eaed23de256ad','authoritative_roi_sha256':'0551d584aec4df0fff3b6ccd115ddead1281be84e98239621148d3382c6e442c'},
+            'general_shrine_map':{'dimensions':[2048,863],'bytes':3027787,'sha256':'99841c9b467a63299cded38d3598e5ef136e349f0896cc21d31275b9e7c88de7','derived_map_roi_original_box':[526,77,1755,615],'derived_map_anchor_local':[615.3446327683616,176.3050847457627],'derived_fixture_sha256':'c99350565341b331f4f8426020171f391bc136a03ec8cab13ae79f00f0f55965'},
+            'general_shrine_hud':{'dimensions':[2048,863],'bytes':3879049,'sha256':'dd73ea17c9a269535b74eb7fd83bd491df2bdbba56dcd2f7d9be074068120378','authoritative_roi_sha256':'f0acddeef0e5d1c6f433e2e9347a48631bf7cbe84057f2c3adb1c8a01cc32999'}
+          }
+          p['reconstruction_note']='The exact original 2048x863 source bytes were validated in the owner-control round. CI cannot retrieve conversation attachments directly, so world-map analysis carriers are deterministic map-only regions derived from those exact bytes and HUD carriers reconstruct the authoritative 192x192 work canvases from run 31666927302/artifact 9168284675. These carriers are replay-only transport; original SHA/dimensions remain source provenance and authoritative HUD matcher verdicts are reused, not rerun.'
+          for f in sorted(out.glob('*.png')):
+              b=f.read_bytes(); p.setdefault('carrier_files',{})[f.name]={'sha256':hashlib.sha256(b).hexdigest(),'bytes':len(b)}
+          (out/'exact-owner-provenance.json').write_text(json.dumps(p,indent=2),encoding='utf-8')
+          print(json.dumps(p,indent=2))
           PY
-          while IFS=$'\t' read -r aid name size url run; do
-            test -n "${aid:-}" || continue
-            mkdir -p ".audit-inputs/aux/${aid}"
-            if curl --fail --location --silent --show-error \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "$url" -o ".audit-inputs/aux/${aid}/artifact.zip"; then
-              unzip -q ".audit-inputs/aux/${aid}/artifact.zip" -d ".audit-inputs/aux/${aid}/content" || true
-              printf '%s\t%s\t%s\n' "$aid" "$name" "$run" > ".audit-inputs/aux/${aid}/artifact-provenance.tsv"
-            fi
-          done < .audit-inputs/selected-artifacts.tsv
+          rm -rf /tmp/wwmsync-owner-map-roi
 
       - name: Execute same-session world-map ↔ HUD differential audit
         shell: bash
@@ -144,12 +183,39 @@ jobs:
           mkdir -p .audit-output
           python scripts/replay/wwmsync_same_session_gfn_diff_audit.py \
             --repo . \
-            --inputs .audit-inputs \
+            --inputs .audit-inputs/replay-sources \
             --aux .audit-inputs/aux \
             --out .audit-output \
             --expected-start "$EXPECTED_START_HEAD"
           test -s .audit-output/final_report.md
           test -s .audit-output/audit.json
+
+      - name: Bind exact owner provenance into authoritative report
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .audit-inputs/replay-sources/exact-owner-provenance.json .audit-output/exact-owner-provenance.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          prov=json.loads(Path('.audit-output/exact-owner-provenance.json').read_text())
+          ap=Path('.audit-output/audit.json'); audit=json.loads(ap.read_text())
+          audit['exact_owner_provenance']=prov['exact_owner_sources']
+          audit['input_reconstruction']={k:v for k,v in prov.items() if k!='exact_owner_sources'}
+          ap.write_text(json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf-8')
+          rp=Path('.audit-output/final_report.md'); text=rp.read_text()
+          needle='## 2–4. Commits and exact source provenance\n'
+          exact=prov['exact_owner_sources']
+          ins='## 2–4. Commits, exact owner-source provenance, and replay carriers\n'
+          ins+='- **Exact original owner bytes remain authoritative provenance.** CI replay carriers below are transport derivatives only; they are not relabeled as original screenshots.\n'
+          for k in ('east_cross_map','east_cross_hud','general_shrine_map','general_shrine_hud'):
+              m=exact[k]; ins+=f"- **{k} ORIGINAL** — `{m['dimensions'][0]}×{m['dimensions'][1]}`, {m['bytes']} bytes, SHA-256 `{m['sha256']}`.\n"
+          ins+='- World-map carriers: deterministic map-only crops from the exact owner bytes, grayscale/lossless-downsampled for CI transport; original crop bounds and derived fixture SHA are recorded in `exact-owner-provenance.json`.\n'
+          ins+='- HUD carriers: reconstructed from the authoritative `192×192` work canvases in run `31666927302` / artifact `9168284675`; authoritative HUD matcher results are reused and are **not** rerun or redefined by these carriers.\n'
+          ins+='- This transport reconstruction exists because GitHub Actions cannot directly mount conversation attachments; it does not change GT, the production gate, production code, or source provenance.\n'
+          if needle not in text: raise SystemExit('report provenance heading not found')
+          rp.write_text(text.replace(needle,ins,1),encoding='utf-8')
+          PY
           cat .audit-output/final_report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assert production remains untouched
@@ -163,6 +229,7 @@ jobs:
             echo "production/wwsync changed" >&2
             exit 1
           fi
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
 
       - name: Freeze evidence bundle
         id: bundle
@@ -172,8 +239,7 @@ jobs:
           rm -rf .audit-stage
           mkdir -p .audit-stage
           find .audit-output -maxdepth 1 -type f -print0 | xargs -0 -I{} cp "{}" .audit-stage/
-          tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner \
-            -cf - -C .audit-stage . | gzip -n > .audit-evidence-bundle.tar.gz
+          tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -cf - -C .audit-stage . | gzip -n > .audit-evidence-bundle.tar.gz
           BUNDLE_SHA="$(sha256sum .audit-evidence-bundle.tar.gz | awk '{print $1}')"
           cp .audit-evidence-bundle.tar.gz .audit-stage/
           echo "sha256=${BUNDLE_SHA}" >> "$GITHUB_OUTPUT"
@@ -201,14 +267,7 @@ jobs:
           JOB_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" --jq '.jobs[] | select(.name == "Same-session GFN differential audit") | .id' | head -n1)"
           test -n "$JOB_ID"
           ARTIFACT_NAME="wwmsync-same-session-gfn-differential-${GITHUB_RUN_ID}"
-          python scripts/replay/wwmsync_same_session_gfn_diff_audit.py \
-            --append-ci .audit-output/final_report.md \
-            --run-id "$GITHUB_RUN_ID" \
-            --job-id "$JOB_ID" \
-            --artifact-id "$ARTIFACT_ID" \
-            --artifact-name "$ARTIFACT_NAME" \
-            --artifact-digest "$ARTIFACT_DIGEST" \
-            --bundle-sha256 "$BUNDLE_SHA"
+          python scripts/replay/wwmsync_same_session_gfn_diff_audit.py --append-ci .audit-output/final_report.md --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" --artifact-id "$ARTIFACT_ID" --artifact-name "$ARTIFACT_NAME" --artifact-digest "$ARTIFACT_DIGEST" --bundle-sha256 "$BUNDLE_SHA"
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
           echo "artifact_id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
           echo "artifact_digest=$ARTIFACT_DIGEST" >> "$GITHUB_OUTPUT"
