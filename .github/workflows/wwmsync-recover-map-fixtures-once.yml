@@ -5,72 +5,34 @@ on:
     branches: [feature/wwm-native-sync-v2]
     paths: [.github/workflows/wwmsync-recover-map-fixtures-once.yml]
 permissions:
-  contents: write
+  contents: read
 jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           ref: feature/wwm-native-sync-v2
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install --disable-pip-version-check --no-cache-dir pillow==11.3.0
-      - name: Recover and verify exact replay JPEGs
+      - name: Export decoded legacy text carriers
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p fixtures/same-session-gfn-diff /tmp/wwmsync-map-recovery
-          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/41bed99418a09856ed470d84468e176121879f22 > /tmp/wwmsync-map-recovery/east.json
-          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/66e7d42d24c2c4aede69a5ba21c281ce0347b099 > /tmp/wwmsync-map-recovery/general.json
+          mkdir -p legacy-map-carriers
+          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/41bed99418a09856ed470d84468e176121879f22 > /tmp/east.json
+          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/66e7d42d24c2c4aede69a5ba21c281ce0347b099 > /tmp/general.json
           python - <<'PY'
-          import base64, hashlib, json
+          import base64,json
           from pathlib import Path
-          from PIL import Image
-
-          specs = {
-            'east': ('east-cross-world-map-roi.jpg','48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6',(320,171),28416),
-            'general': ('general-shrine-world-map-roi.jpg','73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba',(320,140),19280),
-          }
-
-          for stem,(name,want,size,expected_text_len) in specs.items():
-              meta=json.loads(Path(f'/tmp/wwmsync-map-recovery/{stem}.json').read_text())
-              api_b64=''.join(meta['content'].split()).encode('ascii')
-              assert len(api_b64)%4==0, (stem,'API wrapper length',len(api_b64))
-              text_b64=base64.b64decode(api_b64,validate=True)
-              text_b64=b''.join(text_b64.split())
-              print(f'{stem}: legacy_text_len={len(text_b64)} expected_exact_text_len={expected_text_len} prefix={text_b64[:16]!r} exact_boundary_tail={text_b64[max(0,expected_text_len-16):expected_text_len]!r}')
-              assert text_b64.startswith(b'/9j/'), (stem,text_b64[:16])
-              assert len(text_b64)>=expected_text_len, (stem,len(text_b64),expected_text_len)
-
-              exact_text=text_b64[:expected_text_len]
-              assert len(exact_text)%4==0
-              raw=base64.b64decode(exact_text,validate=True)
-              got=hashlib.sha256(raw).hexdigest()
-              assert got==want,(stem,got,want,len(raw),raw[:8],raw[-8:])
-              assert raw[:2]==b'\xff\xd8' and raw[-2:]==b'\xff\xd9'
-              out=Path('fixtures/same-session-gfn-diff')/name
-              out.write_bytes(raw)
-              with Image.open(out) as im:
-                  im.verify()
-              with Image.open(out) as im:
-                  assert im.format=='JPEG' and im.size==size,(stem,im.format,im.size)
-              print(f'{stem}: VERIFIED sha256={got} dimensions={size[0]}x{size[1]} JPEG=OK')
+          for stem in ('east','general'):
+              meta=json.loads(Path(f'/tmp/{stem}.json').read_text())
+              api=''.join(meta['content'].split())
+              text=base64.b64decode(api,validate=True)
+              Path(f'legacy-map-carriers/{stem}.b64').write_bytes(text)
+              print(stem, len(text), text[:16], text[-16:])
           PY
-          echo '48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6  fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg' | sha256sum -c -
-          echo '73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba  fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg' | sha256sum -c -
-      - name: Commit exact tracked fixtures
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin feature/wwm-native-sync-v2
-          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg
-          git diff --cached --check
-          test "$(git diff --cached --name-only | wc -l)" -eq 2
-          git commit -m 'test(wwmsync): track same-session GFN map ROI fixtures'
-          git push origin HEAD:feature/wwm-native-sync-v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-legacy-map-carriers-${{ github.run_id }}
+          path: legacy-map-carriers/
+          if-no-files-found: error
+          retention-days: 1
