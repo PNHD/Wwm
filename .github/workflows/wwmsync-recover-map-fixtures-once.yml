@@ -1,38 +1,170 @@
-name: WWMSync Recover Map Fixtures Once
+name: WWMSync Materialize Exact Map Fixtures Once
+
 on:
   workflow_dispatch:
   push:
     branches: [feature/wwm-native-sync-v2]
     paths: [.github/workflows/wwmsync-recover-map-fixtures-once.yml]
+
 permissions:
-  contents: read
+  contents: write
+  actions: read
+
 jobs:
-  recover:
+  materialize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feature/wwm-native-sync-v2
-      - name: Export decoded legacy text carriers
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install image verification dependencies
+        run: python -m pip install --disable-pip-version-check pillow opencv-python-headless
+
+      - name: Verify recovery provenance and materialize exact fixtures
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p legacy-map-carriers
-          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/41bed99418a09856ed470d84468e176121879f22 > /tmp/east.json
-          curl -fsSL https://api.github.com/repos/PNHD/Wwm/git/blobs/66e7d42d24c2c4aede69a5ba21c281ce0347b099 > /tmp/general.json
+
+          # Artifact 9182823937 / run 31705096948 is retained as the one-time
+          # recovery provenance. Its text carriers prove why prefix-count
+          # recovery is invalid; exact target derivative bytes are materialized
+          # from the byte-identical staged recovery representation and accepted
+          # only after cryptographic + JPEG + decoder verification.
+          rm -rf /tmp/wwmsync-carriers
+          mkdir -p /tmp/wwmsync-carriers
+          gh run download 31705096948 \
+            --repo PNHD/Wwm \
+            --name wwmsync-legacy-map-carriers-31705096948 \
+            --dir /tmp/wwmsync-carriers
+
           python - <<'PY'
-          import base64,json
+          import base64, hashlib
           from pathlib import Path
-          for stem in ('east','general'):
-              meta=json.loads(Path(f'/tmp/{stem}.json').read_text())
-              api=''.join(meta['content'].split())
-              text=base64.b64decode(api,validate=True)
-              Path(f'legacy-map-carriers/{stem}.b64').write_bytes(text)
-              print(stem, len(text), text[:16], text[-16:])
+
+          root = Path('/tmp/wwmsync-carriers')
+          east = ''.join((root / 'east.b64').read_text().split())
+          general = ''.join((root / 'general.b64').read_text().split())
+          assert len((root / 'east.b64').read_bytes()) == 32735
+          assert len((root / 'general.b64').read_bytes()) == 22734
+          assert east.startswith('/9j/4AAQSkZJRgAB')
+          assert general.startswith('/9j/4AAQSkZJRgAB')
+
+          wrong = base64.b64decode(east[:28416], validate=True)
+          assert hashlib.sha256(wrong).hexdigest() == 'd96f1a28196845cbcc49c0b8f513076dd58c097de1dcc8491f52e4e55c9f8f86'
+          assert wrong[:2] == b'\xff\xd8'
+          assert not wrong.endswith(b'\xff\xd9')
+          print('PROVENANCE PASS: East guessed prefix 28416 is rejected; no EOI; wrong SHA is reproduced.')
+
+          # The carriers diverge from the exact persisted derivatives inside the
+          # entropy stream (East at Base64 char 3115, General at 3236), so they
+          # are provenance evidence, not a license to accept a merely decodable
+          # JPEG. Exact derivative SHA remains the acceptance oracle.
+          print('PROVENANCE NOTE: carrier entropy divergence requires exact-byte recovery; prefix slicing is forbidden.')
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wwmsync-legacy-map-carriers-${{ github.run_id }}
-          path: legacy-map-carriers/
-          if-no-files-found: error
-          retention-days: 1
+
+          mkdir -p fixtures/same-session-gfn-diff
+
+          # East: reconstruct a standard git --binary patch from tracked one-time
+          # text fragments, then cut before the General diff. This reproduces the
+          # exact pre-existing JPEG Git blob; it does not re-encode image pixels.
+          cat \
+            .github/wwmsync-recovery/fixtures.patch.part00 \
+            .github/wwmsync-recovery/fixtures.patch.part01 \
+            .github/wwmsync-recovery/fixtures.patch.part02 \
+            .github/wwmsync-recovery/fixtures.patch.part03a \
+            > /tmp/wwmsync-fixtures-prefix.patch
+          echo 'd22fb55c8af80bf33176f2b5103e0515cda7ff153571d2b010e43e629ba64913  /tmp/wwmsync-fixtures-prefix.patch' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          src = Path('/tmp/wwmsync-fixtures-prefix.patch').read_text()
+          marker = 'diff --git a/fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg'
+          assert marker in src
+          east = src.split(marker, 1)[0]
+          Path('/tmp/east-only.patch').write_text(east)
+          PY
+          echo '9332a4defbcfa15a5e69839d74e8d4354b00b51c5e0020134a72309b44ae26ff  /tmp/east-only.patch' | sha256sum -c -
+          git apply --binary /tmp/east-only.patch
+
+          # General: reversible XOR-AA hex staging is used only because the
+          # connector cannot write binary repository content directly. It is
+          # deleted in this same migration lineage after exact-byte verification.
+          cat \
+            .github/wwmsync-recovery/general.xor-aa.hex.part00 \
+            .github/wwmsync-recovery/general.xor-aa.hex.part01 \
+            .github/wwmsync-recovery/general.xor-aa.hex.part02 \
+            .github/wwmsync-recovery/general.xor-aa.hex.part03 \
+            > /tmp/general.xor-aa.hex
+          echo 'e811920446ad9368446e009a952882710bf8617ddffce719e3853c7db5457fc3  /tmp/general.xor-aa.hex' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          encoded = bytes.fromhex(Path('/tmp/general.xor-aa.hex').read_text().strip())
+          raw = bytes(b ^ 0xAA for b in encoded)
+          Path('fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg').write_bytes(raw)
+          PY
+
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from PIL import Image
+
+          expected = {
+              Path('fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg'):
+                  ('48c1335583d1bf55d0251d55295ffcee02929e0f8840dfa0e5559cdeb5ca5bd6', (320, 171), '08302a1a94d79d6fcd0125e4344eeeaacd829cd8'),
+              Path('fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg'):
+                  ('73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba', (320, 140), '552eaff452e911b15f31a6609eddf695d39fd766'),
+          }
+          for path, (sha, dims, git_blob) in expected.items():
+              raw = path.read_bytes()
+              got = hashlib.sha256(raw).hexdigest()
+              assert got == sha, (path, got, sha)
+              assert raw[:2] == b'\xff\xd8' and raw[-2:] == b'\xff\xd9', path
+              with Image.open(path) as im:
+                  assert im.size == dims, (path, im.size, dims)
+                  im.verify()
+              cv = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+              assert cv is not None, path
+              assert (cv.shape[1], cv.shape[0]) == dims, (path, cv.shape, dims)
+              print(f'FIXTURE PASS {path}: sha256={sha} dims={dims[0]}x{dims[1]}')
+          PY
+
+          test "$(git hash-object fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg)" = '08302a1a94d79d6fcd0125e4344eeeaacd829cd8'
+          test "$(git hash-object fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg)" = '552eaff452e911b15f31a6609eddf695d39fd766'
+
+          # Remove every transport/staging carrier before committing the tracked
+          # fixtures. The authoritative audit will never read these files.
+          rm -rf .github/wwmsync-recovery
+
+          git add -A -- \
+            .github/wwmsync-recovery \
+            fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg \
+            fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg
+
+          python - <<'PY'
+          import subprocess
+          paths = subprocess.check_output(['git','diff','--cached','--name-only'], text=True).splitlines()
+          allowed = {
+              'fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg',
+              'fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg',
+          }
+          for p in paths:
+              if p in allowed or p.startswith('.github/wwmsync-recovery/'):
+                  continue
+              raise SystemExit(f'Unexpected staged recovery path: {p}')
+          assert allowed.issubset(paths), paths
+          print('STAGED RECOVERY PATHS PASS')
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(wwmsync): track exact same-session map fixtures'
+          git push origin HEAD:feature/wwm-native-sync-v2
