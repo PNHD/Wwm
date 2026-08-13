@@ -5,6 +5,8 @@ on:
     branches: [feature/wwm-native-sync-v2]
     paths:
       - '.github/workflows/replay-owner-gfn-controls-owner-evidence-v2.yml'
+      - 'fixtures/owner-gfn-controls/**'
+      - 'tools/replay-owner-gfn-controls.mjs'
   workflow_dispatch:
 
 permissions:
@@ -33,50 +35,25 @@ jobs:
           echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
 
       - name: Recover immutable owner replay inputs
-        env:
-          GH_REPO: PNHD/Wwm
         run: |
           set -euo pipefail
-          mkdir -p fixtures/owner-gfn-controls tools
-          fetch_blob_text() {
-            local sha="$1" out="$2"
-            curl -fsSL -H 'Accept: application/vnd.github+json' \
-              "https://api.github.com/repos/${GH_REPO}/git/blobs/${sha}" \
-              | python -c 'import sys,json,base64; o=json.load(sys.stdin); sys.stdout.buffer.write(base64.b64decode(o["content"]))' \
-              > "$out"
-          }
-
-          # Replay metadata/tool are immutable replay-only blobs created for this audit.
-          fetch_blob_text 96b98cf5930c04b04b6decf49b9194104e31feb9 fixtures/owner-gfn-controls/metadata.json
-          fetch_blob_text f36efa4a1f59f6e76478602bceda69be7a09abf6 tools/replay-owner-gfn-controls.mjs
-
-          # If exact binary fixtures were already committed by an authenticated owner checkout, reuse them.
-          # Otherwise reconstruct the exact lossless 216x216 top-left source crops from immutable text blobs.
-          if ! echo '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792  fixtures/owner-gfn-controls/east-cross-top-left-216.webp' | sha256sum -c - >/dev/null 2>&1; then
-            : > /tmp/east.b64
-            for sha in \
-              8e02ab12952203d0d083fda317377b6be37b6412 \
-              9094ede50a7026b88a5f8e3945b9c2917cadf2b9 \
-              027a935b55c3a1ec13caa39d77a3e4b72ad68865 \
-              36488fc8ce1fd2f26a38bd06aa4f89aee1d03b59; do
-              fetch_blob_text "$sha" /tmp/part
-              cat /tmp/part >> /tmp/east.b64
-            done
-            base64 -d /tmp/east.b64 > fixtures/owner-gfn-controls/east-cross-top-left-216.webp
-          fi
-
-          if ! echo '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55  fixtures/owner-gfn-controls/general-shrine-top-left-216.webp' | sha256sum -c - >/dev/null 2>&1; then
-            : > /tmp/general.b64
-            for sha in \
-              0fe5215680f26fd3046213354095723c6307b0bb \
-              ee0a6615584a4b04bb9699e78d613043d25e19d6 \
-              0839c4af3ca71c82dd9c37a0f0d96c17b33f37cc; do
-              fetch_blob_text "$sha" /tmp/part
-              cat /tmp/part >> /tmp/general.b64
-            done
-            base64 -d /tmp/general.b64 > fixtures/owner-gfn-controls/general-shrine-top-left-216.webp
-          fi
-
+          test -s fixtures/owner-gfn-controls/metadata.json
+          test -s tools/replay-owner-gfn-controls.mjs
+          for f in \
+            fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.00 \
+            fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.01 \
+            fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.02 \
+            fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.03 \
+            fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.00 \
+            fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.01 \
+            fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.02; do
+            test -s "$f"
+            git ls-files --error-unmatch "$f" >/dev/null
+          done
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* \
+            | base64 -d > fixtures/owner-gfn-controls/east-cross-top-left-216.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* \
+            | base64 -d > fixtures/owner-gfn-controls/general-shrine-top-left-216.webp
           echo '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792  fixtures/owner-gfn-controls/east-cross-top-left-216.webp' | sha256sum -c -
           echo '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55  fixtures/owner-gfn-controls/general-shrine-top-left-216.webp' | sha256sum -c -
 
@@ -207,8 +184,8 @@ jobs:
               a(f'- World-map source SHA-256: `{mp.get("sha256","N/A")}`; dimensions: `{mp.get("dimensions","N/A")}`.')
               a(f'- Gameplay source SHA-256: `{gp.get("sha256","N/A")}`; dimensions: `{gp.get("dimensions","N/A")}`.')
               a(f'- Ground truth method: {gt.get("method","independent audited coordinate")}.')
-              a(f'- World coordinate: `{gt.get("world","N/A")}`; expected z5: `{gt.get("z5","N/A")}`.')
-              if gt.get('pointId') is not None: a(f'- pointId: `{gt.get("pointId")}`; authoritative name: `{gt.get("authoritativeName",gt.get("name",""))}`.')
+              a(f'- World coordinate: `{gt.get("world","N/A")}`; expected z5: `{gt.get("z5",gt.get("dashenZ5","N/A"))}`.')
+              if gt.get('pointId') is not None: a(f'- pointId: `{gt.get("pointId")}`; authoritative name: `{gt.get("authoritativeName",gt.get("pointName",gt.get("name","")))}`.')
               a('')
           a('## ROI provenance')
           a('')
@@ -225,19 +202,21 @@ jobs:
               a(f'### {c.get("name",cid)}')
               a('')
               eb=c.get('expectedBasin') or {}
+              cand=eb.get('candidate') or {}
               bl=c.get('bestLocal') or {}
               a(f'- Control classification: **{c.get("classification","N/A")}**.')
-              a(f'- Expected-basin rank: `{fmt(v(eb,"rank"))}`; distance: `{fmt(v(eb,"distance","distanceZ5Px"))}` z5 px.')
-              a(f'- Expected-basin coarse: `{fmt(v(eb,"coarse","coarseScore"))}`; raw structure: `{fmt(v(eb,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure: `{fmt(v(eb,"scaleAwareStructure","scaleScore"))}`.')
-              a(f'- Expected-basin intensity: `{fmt(v(eb,"intensity"))}`; NCC: `{fmt(v(eb,"ncc","NCC"))}`; combined: `{fmt(v(eb,"combined","score"))}`; angle: `{fmt(v(eb,"angle"))}`; scale: `{fmt(v(eb,"scale"))}`.')
-              a(f'- Expected-basin matchGate: **{fmt(v(eb,"matchGateAccepted","gateAccepted","accepted"))}**.')
-              false_out=v(eb,'falseBasinOutranks','falseBasinOutranked',default=None)
+              a(f'- Expected-basin rank: `{fmt(v(eb,"rank"))}`; distance: `{fmt(v(eb,"distanceFinePx","distance","distanceZ5Px"))}` z5 px.')
+              a(f'- Expected-basin coarse: `{fmt(v(cand,"coarse","coarseScore"))}`; raw structure: `{fmt(v(cand,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure: `{fmt(v(cand,"scaleAwareStructure","scaleScore"))}`.')
+              a(f'- Expected-basin intensity: `{fmt(v(cand,"intensity","intensityScore"))}`; NCC: `{fmt(v(cand,"ncc","NCC","intensityNcc"))}`; combined: `{fmt(v(cand,"combined","score","combinedScore"))}`; angle: `{fmt(v(cand,"angle"))}`; scale: `{fmt(v(cand,"scale"))}`.')
+              a(f'- Expected-basin matchGate: **{fmt(v(cand,"matchGateAccepted","gateAccepted","accepted"))}**.')
+              false_out=v(eb,'falseBasinOutranksExpected','falseBasinOutranks','falseBasinOutranked',default=None)
               if false_out is not None: a(f'- False basin outranks expected basin: **{fmt(bool(false_out))}**.')
               if not global_pass(c):
-                  a(f'- Fixed known-coordinate local best: radius `{fmt(v(bl,"radius"))}`, scale `{fmt(v(bl,"scale"))}`, angle `{fmt(v(bl,"angle"))}`; raw structure `{fmt(v(bl,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure `{fmt(v(bl,"scaleAwareStructure","scaleScore"))}`; intensity `{fmt(v(bl,"intensity"))}`; NCC `{fmt(v(bl,"ncc","NCC"))}`; combined `{fmt(v(bl,"combined","score"))}`; gate **{fmt(v(bl,"matchGateAccepted","gateAccepted","accepted"))}**.')
+                  a(f'- Fixed known-coordinate local best: radius `{fmt(v(bl,"radius"))}`, scale `{fmt(v(bl,"scale"))}`, angle `{fmt(v(bl,"angle"))}`; raw structure `{fmt(v(bl,"rawStructure","structure","rawStructuralScore"))}`; scale-aware structure `{fmt(v(bl,"scaleAwareStructure","scaleScore"))}`; intensity `{fmt(v(bl,"intensity","intensityScore"))}`; NCC `{fmt(v(bl,"ncc","NCC","intensityNcc"))}`; combined `{fmt(v(bl,"combined","score","combinedScore"))}`; gate **{fmt(v(bl,"matchGateAccepted","gateAccepted","accepted"))}**.')
               a('')
               data=matchers.get(cid,{})
-              top=v(c,'topK','candidates',default=None) or v(data,'topK','candidates','finalists',default=None) or []
+              glob=data.get('global') or {}
+              top=v(c,'topK','candidates',default=None) or v(glob,'topK','candidates','finalists',default=None) or v(data,'topK','candidates','finalists',default=None) or []
               if isinstance(top,dict): top=list(top.values())
               if top:
                   a('TOP-K production candidates:')
@@ -250,7 +229,7 @@ jobs:
                       gate=v(t,'matchGateAccepted','gateAccepted','accepted')
                       reason=v(t,'matchGateReason','gateReason','reason',default='')
                       gs=fmt(gate)+(f' ({reason})' if reason else '')
-                      a(f'| {fmt(v(t,"rank",default=i))} | {fmt(x)} | {fmt(y)} | {fmt(v(t,"region"))} | {fmt(v(t,"coarse","coarseScore"))} | {fmt(v(t,"rawStructure","structure","rawStructuralScore"))} | {fmt(v(t,"scaleAwareStructure","scaleScore"))} | {fmt(v(t,"intensity"))} | {fmt(v(t,"ncc","NCC"))} | {fmt(v(t,"combined","score"))} | {fmt(v(t,"angle"))} | {fmt(v(t,"scale"))} | {gs} |')
+                      a(f'| {fmt(v(t,"rank",default=i))} | {fmt(x)} | {fmt(y)} | {fmt(v(t,"region"))} | {fmt(v(t,"coarse","coarseScore"))} | {fmt(v(t,"rawStructure","structure","rawStructuralScore"))} | {fmt(v(t,"scaleAwareStructure","scaleScore"))} | {fmt(v(t,"intensity","intensityScore"))} | {fmt(v(t,"ncc","NCC","intensityNcc"))} | {fmt(v(t,"combined","score","combinedScore"))} | {fmt(v(t,"angle"))} | {fmt(v(t,"scale"))} | {gs} |')
                   a('')
           a('## Joint interpretation')
           a('')

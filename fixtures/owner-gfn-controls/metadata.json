@@ -1,0 +1,140 @@
+{
+  "schema": "wwmsync-owner-gfn-controls-v1",
+  "capturedBy": "owner",
+  "captureDomain": "GeForce NOW",
+  "productionBaselineHead": "ffbb1c51f80410d21685bf178647554f575ab582",
+  "structuralGate": 0.58,
+  "attachmentObservation": {
+    "note": "Owner described screenshots as 1920x1080 GFN. The actual mounted PNG attachment bytes used in this replay are 2048x863. Replay uses actual attachment dimensions and does not rescale/pretend they are 1920x1080 before applying production ROI semantics."
+  },
+  "controls": [
+    {
+      "id": "east-cross",
+      "name": "East Cross Street",
+      "mapId": 1,
+      "groundTruth": {
+        "method": "owner-paired world-map selection + previously audited Dashen exact named POI; matcher not used",
+        "pointId": "20212",
+        "pointName": "东十字街",
+        "world": [
+          -107.941,
+          -1227.2615
+        ],
+        "dashenZ5": [
+          5219.931321637427,
+          4648.817136173768
+        ],
+        "uncertaintyRadiusZ5Px": 60.0
+      },
+      "provenance": {
+        "worldMapAttachment": {
+          "sha256": "1dffb5a484be50d753e40472dc8ef9f84d22633fa6ef2a976a81aee6f1536e9e",
+          "dimensions": [
+            2048,
+            863
+          ],
+          "visibleSelection": "East Cross Street",
+          "visibleSubtitle": "Landmark · Teleport"
+        },
+        "gameplayAttachment": {
+          "sha256": "c20d317a745b897b2d9cfb6d622521b2327afd961b8adae4649eaed23de256ad",
+          "dimensions": [
+            2048,
+            863
+          ],
+          "normalGameplayHud": true,
+          "minimapVisible": true
+        },
+        "ownerAssertion": "Gameplay screenshot taken immediately after selecting/teleporting to the paired landmark; player did not significantly relocate.",
+        "acceptance": "accepted-known-location-gfn-control"
+      },
+      "roi": {
+        "semantic": "unchanged production default top-left ROI",
+        "unit": 863,
+        "roiFraction": 0.25,
+        "sourceCrop": [
+          0,
+          0,
+          215.75,
+          215.75
+        ],
+        "inspectionFixture": "fixtures/owner-gfn-controls/east-cross-top-left-216.webp",
+        "inspectionFixtureBounds": [
+          0,
+          0,
+          216,
+          216
+        ],
+        "workCanvas": [
+          192,
+          192
+        ],
+        "manualBeautification": false
+      }
+    },
+    {
+      "id": "general-shrine",
+      "name": "General's Shrine",
+      "mapId": 1,
+      "groundTruth": {
+        "method": "owner-paired world-map selection + previously audited General Shrine reference point; matcher not used",
+        "pointName": "General's Shrine / 将军祠",
+        "world": [
+          -1966.7646484375,
+          -3002.78784179687
+        ],
+        "dashenZ5": [
+          6015.017126148705,
+          3889.360588972433
+        ],
+        "uncertaintyRadiusZ5Px": 60.0
+      },
+      "provenance": {
+        "worldMapAttachment": {
+          "sha256": "99841c9b467a63299cded38d3598e5ef136e349f0896cc21d31275b9e7c88de7",
+          "dimensions": [
+            2048,
+            863
+          ],
+          "visibleSelection": "General's Shrine",
+          "visibleSubtitle": "Landmark · Teleport"
+        },
+        "gameplayAttachment": {
+          "sha256": "dd73ea17c9a269535b74eb7fd83bd491df2bdbba56dcd2f7d9be074068120378",
+          "dimensions": [
+            2048,
+            863
+          ],
+          "normalGameplayHud": true,
+          "minimapVisible": true,
+          "additionalVisibleContext": "General's Shrine stone marker / 将军祠 visible in world scene"
+        },
+        "ownerAssertion": "Gameplay screenshot taken immediately after selecting/teleporting to the paired landmark; player did not significantly relocate.",
+        "acceptance": "accepted-known-location-gfn-control"
+      },
+      "roi": {
+        "semantic": "unchanged production default top-left ROI",
+        "unit": 863,
+        "roiFraction": 0.25,
+        "sourceCrop": [
+          0,
+          0,
+          215.75,
+          215.75
+        ],
+        "inspectionFixture": "fixtures/owner-gfn-controls/general-shrine-top-left-216.webp",
+        "inspectionFixtureBounds": [
+          0,
+          0,
+          216,
+          216
+        ],
+        "workCanvas": [
+          192,
+          192
+        ],
+        "manualBeautification": false
+      }
+    }
+  ]
+}
