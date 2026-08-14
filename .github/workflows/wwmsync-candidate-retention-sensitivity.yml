@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [feature/wwm-native-sync-v2]
-    paths: ['.github/workflows/wwmsync-candidate-retention-sensitivity.yml']
+    paths:
+      - '.github/workflows/wwmsync-candidate-retention-sensitivity.yml'
+      - 'tools/run-candidate-retention-variants.mjs'
+      - 'tools/patch-candidate-retention-variant.mjs'
 
 permissions: {contents: read, actions: read}
 
