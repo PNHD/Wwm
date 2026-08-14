@@ -423,7 +423,7 @@ def write_overlay(src,ref,path):
 
 def verify_repo_base(repo,expected):
     def run(*args):return subprocess.check_output(args,cwd=repo,text=True).strip()
-    head=run("git","rev-parse","HEAD");revs=run("git","rev-list","--first-parent","--reverse",f"{expected}..{head}").splitlines();first=revs[0] if revs else None;parent=run("git","rev-parse",f"{first}^") if first else head;changed=run("git","diff","--name-only",f"{expected}..{head}").splitlines() if head!=expected else [];allowed={"scripts/replay/wwmsync_same_session_gfn_diff_audit.py",".github/workflows/wwmsync-same-session-gfn-diff-audit.yml"};unexpected=[p for p in changed if p not in allowed];return {"expected_start_head":expected,"workflow_head":head,"first_audit_commit":first,"first_audit_parent":parent,"changed_before_ci_report":changed,"unexpected_paths":unexpected,"verified":parent==expected and not unexpected}
+    head=run("git","rev-parse","HEAD");revs=run("git","rev-list","--first-parent","--reverse",f"{expected}..{head}").splitlines();first=revs[0] if revs else None;parent=run("git","rev-parse",f"{first}^") if first else head;changed=run("git","diff","--name-only",f"{expected}..{head}").splitlines() if head!=expected else [];allowed={"scripts/replay/wwmsync_same_session_gfn_diff_audit.py",".github/workflows/wwmsync-same-session-gfn-diff-audit.yml","fixtures/same-session-gfn-diff/east-cross-world-map-roi.jpg","fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg"};unexpected=[p for p in changed if p not in allowed];return {"expected_start_head":expected,"workflow_head":head,"first_audit_commit":first,"first_audit_parent":parent,"changed_before_ci_report":changed,"unexpected_paths":unexpected,"verified":parent==expected and not unexpected}
 
 
 def generate_report(data):
