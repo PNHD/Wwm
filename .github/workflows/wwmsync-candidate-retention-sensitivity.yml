@@ -1,0 +1,88 @@
+name: WWMSync Candidate Retention Sensitivity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/wwmsync-candidate-retention-sensitivity.yml']
+
+permissions: {contents: read, actions: read}
+
+env:
+  START_HEAD: '3251202f001755c7bda957a0b329b9f862c0cfcf'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sensitivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify production immutable
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_HEAD" "$GITHUB_SHA"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          grep -Fq "if(fine.scaleScore<.58)" vision-sync.js
+          grep -Fq "if(fine.intensityScore<.42)" vision-sync.js
+          grep -Fq "fine.beamMargin<.010" vision-sync.js
+      - name: Install runtime and recover controls
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"; test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          rm -rf variant-input variant-output variant-base variant-2 variant-4; mkdir -p variant-input variant-output variant-base/controls
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > variant-base/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > variant-base/controls/general-shrine.webp
+          cp fixtures/owner-gfn-controls/metadata.json variant-input/owner.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > variant-input/fang-meta.json
+          test "$(jq -r '.workflow_run.id' variant-input/fang-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' variant-input/fang-meta.json)" = "sha256:$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > variant-input/fang.zip
+          mkdir variant-input/fang; unzip -q variant-input/fang.zip -d variant-input/fang
+          cp variant-input/fang/steam-general-shrine-1-roi.png variant-base/controls/fang-xu.png
+      - name: Build base replay cache and variants
+        run: |
+          set -euo pipefail
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt variant-base/
+          python tools/build_dashen_reference_audit_cache.py variant-base/dashen-cache --workers 24
+          cp -a variant-base variant-2; cp -a variant-base variant-4
+          node tools/instrument-real-gfn-production-replay.mjs variant-2/vision-sync.js
+          node tools/patch-candidate-retention-variant.mjs variant-2/vision-sync.js 2
+          node tools/instrument-real-gfn-production-replay.mjs variant-4/vision-sync.js
+          node tools/patch-candidate-retention-variant.mjs variant-4/vision-sync.js 4
+          node --check variant-2/vision-sync.js; node --check variant-4/vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+      - name: Write known-GT manifest
+        run: |
+          python - <<'PY'
+          import json,os
+          owner=json.load(open('variant-input/owner.json')); by={c['id']:c for c in owner['controls']}; fang=json.load(open('variant-input/fang/steam-general-shrine-ground-truth.json'))
+          d={'productionGuards':{'visionBlob':os.environ['VISION_BLOB'],'cacheBlob':os.environ['CACHE_BLOB'],'structuralGate':.58,'intensityGate':.42,'ambiguityGate':.010,'scoresChanged':False,'preprocessingChanged':False},'controls':[{'id':'east-cross','name':'East Cross GFN','mapId':1,'localImage':'east-cross.webp','sourceCropSize':215.75,'expected':by['east-cross']['groundTruth']['dashenZ5'],'tolerance':60},{'id':'general-shrine','name':'General Shrine GFN','mapId':1,'localImage':'general-shrine.webp','sourceCropSize':215.75,'expected':by['general-shrine']['groundTruth']['dashenZ5'],'tolerance':60},{'id':'fang-xu','name':'Steam Fang Xu Global-PC HUD','mapId':1,'localImage':'fang-xu.png','sourceCropSize':None,'expected':fang['expected']['dashenZ5'],'tolerance':60}]}
+          json.dump(d,open('variant-input/controls.json','w'),indent=2)
+          PY
+      - name: Run preregistered x2 and x4 pose-retention variants
+        run: |
+          set -euo pipefail
+          node tools/run-candidate-retention-variants.mjs --sites variant-2,variant-4 --controls variant-input/controls.json --output variant-output | tee variant-output/runner.log
+          jq '[.reports[]|{control,variant,expectedBasinRecalled,expectedBasinFinalist,globalWinner:.fine,matchGateAccepted,matchGateReason}]' variant-output/variants.json
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+      - name: Upload sensitivity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-candidate-retention-sensitivity-${{ github.run_id }}
+          path: |
+            variant-input/controls.json
+            variant-output/
+          if-no-files-found: error
+          retention-days: 30
