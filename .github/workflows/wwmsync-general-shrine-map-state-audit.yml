@@ -140,7 +140,7 @@ jobs:
             --output .general-audit-output
           test -s .general-audit-output/audit.json
           test -s .general-audit-output/report.md
-          jq '.decision, .anchor_audit | {decision:.decision,anchor_audit:.anchor_audit}' .general-audit-output/audit.json || true
+          jq '{decision:.decision,anchor_audit:.anchor_audit}' .general-audit-output/audit.json
 
       - name: Verify bounded acceptance invariants
         shell: bash
@@ -163,6 +163,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
+          include-hidden-files: true
 
       - name: Append CI coordinates and commit report only
         id: final
