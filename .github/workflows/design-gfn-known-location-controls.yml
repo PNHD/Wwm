@@ -1,0 +1,137 @@
+name: Design GFN Known-Location Control Set
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/design_gfn_known_location_controls.py'
+      - '.github/workflows/design-gfn-known-location-controls.yml'
+      - 'docs/wwmsync/gfn-known-location-control-set.json'
+      - 'docs/wwmsync/GFN_KNOWN_LOCATION_CONTROL_SET_2026-08-14.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  STARTING_HEAD: 4b5faf35eafe8fc058e398609f961a9c31b75d87
+  VISION_BLOB: 58b5a1babf6a12b944f9b745b8bf7f7df573bf9b
+  TILE_CACHE_BLOB: 9388960a8bff53a9cfc7471372af144b7a28c34f
+  VISUAL_CACHE_BUILDER_BLOB: 1a227d06ae41660ea3e3b832e7f1921cc507c0d7
+  FROZEN_MANIFEST: docs/wwmsync/gfn-known-location-control-set.json
+
+jobs:
+  design-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard production files and scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "$STARTING_HEAD:vision-sync.js")" = "$VISION_BLOB"
+          test "$(git rev-parse "$STARTING_HEAD:dashen-tile-cache.js")" = "$TILE_CACHE_BLOB"
+          test "$(git rev-parse "$STARTING_HEAD:tools/build_dashen_visual_cache.py")" = "$VISUAL_CACHE_BUILDER_BLOB"
+          test "$(git hash-object vision-sync.js)" = "$VISION_BLOB"
+          test "$(git hash-object dashen-tile-cache.js)" = "$TILE_CACHE_BLOB"
+          test "$(git hash-object tools/build_dashen_visual_cache.py)" = "$VISUAL_CACHE_BUILDER_BLOB"
+          grep -Fq 'ANCHOR_FREE_STRUCTURAL_V11' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          python -m py_compile tools/design_gfn_known_location_controls.py
+          git diff "$STARTING_HEAD" --name-only -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py | tee /tmp/protected-diff.txt
+          test ! -s /tmp/protected-diff.txt
+
+      - name: Install reference-only analysis dependencies
+        run: python -m pip install --disable-pip-version-check --quiet numpy opencv-python-headless requests
+
+      - name: Build current catalog and reference-only control design
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf gfn-control-design
+          mkdir -p gfn-control-design
+          if [ -s "$FROZEN_MANIFEST" ]; then
+            python tools/design_gfn_known_location_controls.py --output-dir gfn-control-design --frozen-manifest "$FROZEN_MANIFEST" | tee gfn-control-design/console-summary.json
+          else
+            python tools/design_gfn_known_location_controls.py --output-dir gfn-control-design | tee gfn-control-design/console-summary.json
+          fi
+          test -s gfn-control-design/selection-manifest.json
+          test -s gfn-control-design/candidate-pool.json
+          test -s gfn-control-design/source-provenance.json
+          test -s gfn-control-design/selection-report.md
+
+      - name: Validate preregistration and six-control invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,math
+          from pathlib import Path
+          p=Path('gfn-control-design/selection-manifest.json')
+          m=json.loads(p.read_text('utf8'))
+          assert m['schema']=='wwmsync-gfn-known-location-control-set-v1'
+          assert m['status']=='FROZEN_PRE_ACQUISITION'
+          c=m['controls']; assert len(c)==6
+          assert len({x['pointId'] for x in c})==6
+          assert len({x['canonicalName'] for x in c})==6
+          assert {'20212','20102'}.isdisjoint({x['pointId'] for x in c})
+          assert all(x['mapSubType']=='1' and x['globalMapId'] in (1,2) for x in c)
+          assert all(x['expectedReferenceFamily']=='dashen-main-v15-z5' for x in c)
+          assert set(m['futureClassificationProtocol'])=={'RCL-1','RCL-2','RCL-3','RCL-4','RCL-5','RCL-MIXED'}
+          assert m['sampleSizePlan']['ownerGfnKnownLocationN']==8
+          assert m['sampleSizePlan']['fangXuIndependentNonOwnerControlCountedInN'] is False
+          assert set(m['architectureDecisionRules'])=={'A1','A2','A3','A4'}
+          assert m['guardrails']['structuralGate']==0.58 and m['guardrails']['matcherExperiments'] is False
+          assert len(m['frozenAcquisitionOrder'])==6 and set(m['frozenAcquisitionOrder'])=={x['controlId'] for x in c}
+          old={'East Cross Street':(2,5219.931321637427,4648.817136173768),'General Shrine':(1,6015.017126148705,3889.360588972433),'Fang Xu':(1,5983.1277673350005,3862.4348370927314)}
+          for x in c:
+            for name,(mid,xx,yy) in old.items():
+              if x['globalMapId']==mid:
+                assert math.hypot(x['z5']['x']-xx,x['z5']['y']-yy)>=320.0,(x['controlId'],name)
+          for i,a in enumerate(c):
+            for b in c[i+1:]:
+              if a['globalMapId']==b['globalMapId']:
+                assert math.hypot(a['z5']['x']-b['z5']['x'],a['z5']['y']-b['z5']['y'])>=360.0
+          dm=m['morphologyDiversityMatrix']
+          assert len(dm)==6
+          for row in dm:
+            for q in row['comparisons']:
+              if q['controlId']!=row['controlId']:
+                assert q['descriptorCosine']<=0.965001
+          x=json.loads(json.dumps(m)); stated=x.pop('manifestSha256')
+          raw=json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+          assert hashlib.sha256(raw).hexdigest()==stated
+          print(json.dumps({'status':'PASS','candidatePool':m['candidatePool'],'controls':[{'controlId':x['controlId'],'pointId':x['pointId'],'name':x['englishName'],'region':x['mapRegion'],'stratum':x['stratum']} for x in c],'order':m['frozenAcquisitionOrder'],'manifestSha256':m['manifestSha256']},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Final production guard and evidence digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object vision-sync.js)" = "$VISION_BLOB"
+          test "$(git hash-object dashen-tile-cache.js)" = "$TILE_CACHE_BLOB"
+          test "$(git hash-object tools/build_dashen_visual_cache.py)" = "$VISUAL_CACHE_BUILDER_BLOB"
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          {
+            echo "starting_head=$STARTING_HEAD"
+            echo "ci_head=$(git rev-parse HEAD)"
+            echo "vision_blob=$VISION_BLOB"
+            echo "tile_cache_blob=$TILE_CACHE_BLOB"
+            echo "visual_cache_builder_blob=$VISUAL_CACHE_BUILDER_BLOB"
+            echo "structural_gate=0.58"
+            echo "matcher_experiments=NONE"
+            echo "owner_future_hud_data=NONE"
+          } > gfn-control-design/production-guard.txt
+          find gfn-control-design -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > gfn-control-design/SHA256SUMS
+
+      - name: Upload acquisition-design evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-gfn-known-location-control-design-${{ github.run_id }}
+          path: gfn-control-design/
+          if-no-files-found: error
+          retention-days: 30
