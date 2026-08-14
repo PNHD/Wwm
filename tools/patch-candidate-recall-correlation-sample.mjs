@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+const target=process.argv[2];if(!target)throw new Error('usage: node tools/patch-candidate-recall-correlation-sample.mjs <instrumented vision-sync.js>');let src=fs.readFileSync(target,'utf8');const old='const sample=hypotheses.slice(0,Math.min(24,hypotheses.length))';const neu='const sample=hypotheses.slice(0,Math.min(36,hypotheses.length))';if(src.split(old).length!==2)throw new Error('correlation sample anchor missing/non-unique');src=src.replace(old,neu);fs.writeFileSync(target,src);console.log(JSON.stringify({target,diagnosticOnly:true,oldSample:24,newSample:36}));
