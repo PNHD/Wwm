@@ -1,0 +1,338 @@
+name: WWMSync Candidate Recall Forensic Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-candidate-recall-forensic-audit.yml'
+      - 'tools/instrument-candidate-recall-forensic.mjs'
+      - 'tools/run-candidate-recall-forensic.mjs'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: wwmsync-candidate-recall-forensic-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  START_HEAD: '3251202f001755c7bda957a0b329b9f862c0cfcf'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  EAST_FIXTURE_SHA: '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792'
+  GENERAL_FIXTURE_SHA: '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  FIXTURE_ASSET_ID: '511291145'
+  FIXTURE_NAME: 'wwmsync-gfn-motion-20260810-143835.zip'
+  FIXTURE_SHA256: 'aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216'
+  REPORT_PATH: 'docs/wwmsync/audits/candidate-recall-surfacing-forensic-2026-08-14.md'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/wwm-native-sync-v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Freeze branch lineage and production guards
+        run: |
+          set -euo pipefail
+          echo "CI source HEAD: $GITHUB_SHA"
+          git merge-base --is-ancestor "$START_HEAD" "$GITHUB_SHA"
+          test "$(git rev-parse "$START_HEAD:vision-sync.js")" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
+          grep -Fq "if(fine.scaleScore<.58)" vision-sync.js
+          grep -Fq "if(fine.intensityScore<.42)" vision-sync.js
+          grep -Fq "fine.beamMargin<.010" vision-sync.js
+          python - <<'PY'
+          import subprocess
+          allowed={
+            'tools/instrument-candidate-recall-forensic.mjs',
+            'tools/run-candidate-recall-forensic.mjs',
+            '.github/workflows/wwmsync-candidate-recall-forensic-audit.yml',
+          }
+          changed=set(subprocess.check_output(['git','diff','--name-only',f'{__import__("os").environ["START_HEAD"]}..HEAD'],text=True).splitlines())
+          bad=changed-allowed
+          assert not bad, f'unauthorized changes since frozen start: {sorted(bad)}'
+          print('authorized changes:', sorted(changed))
+          PY
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Install replay runtime
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          node --check tools/instrument-candidate-recall-forensic.mjs
+          node --check tools/run-candidate-recall-forensic.mjs
+
+      - name: Reconstruct frozen owner GFN controls
+        run: |
+          set -euo pipefail
+          rm -rf recall-input recall-output recall-site stress-site-* real-fixture
+          mkdir -p recall-input recall-output recall-site/controls
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > recall-site/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > recall-site/controls/general-shrine.webp
+          test "$(sha256sum recall-site/controls/east-cross.webp | awk '{print $1}')" = "$EAST_FIXTURE_SHA"
+          test "$(sha256sum recall-site/controls/general-shrine.webp | awk '{print $1}')" = "$GENERAL_FIXTURE_SHA"
+          cp fixtures/owner-gfn-controls/metadata.json recall-input/owner-metadata.json
+
+      - name: Recover frozen independent Fang Xu control artifact
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > recall-input/fang-artifact-meta.json
+          test "$(jq -r '.workflow_run.id' recall-input/fang-artifact-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' recall-input/fang-artifact-meta.json)" = "sha256:$FANG_DIGEST"
+          test "$(jq -r '.expired' recall-input/fang-artifact-meta.json)" = 'false'
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > recall-input/fang.zip
+          mkdir recall-input/fang
+          unzip -q recall-input/fang.zip -d recall-input/fang
+          test -s recall-input/fang/steam-general-shrine-1-roi.png
+          test -s recall-input/fang/steam-general-shrine-ground-truth.json
+          test -s recall-input/fang/steam-general-shrine-matcher.json
+          cp recall-input/fang/steam-general-shrine-1-roi.png recall-site/controls/fang-xu.png
+          jq -e '.classification=="HUD-FAIL"' recall-input/fang/steam-general-shrine-matcher.json >/dev/null
+          jq -e '.expected.dashenZ5[0] > 5983.12 and .expected.dashenZ5[0] < 5983.14' recall-input/fang/steam-general-shrine-ground-truth.json >/dev/null
+          jq -e '.localKnownCoordinateDiagnostic.best.scaleScore > 0.599 and .localKnownCoordinateDiagnostic.best.scaleScore < 0.600' recall-input/fang/steam-general-shrine-matcher.json >/dev/null
+
+      - name: Build replay-only reference site and forensic hooks
+        run: |
+          set -euo pipefail
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt recall-site/
+          python tools/build_dashen_reference_audit_cache.py recall-site/dashen-cache --workers 24
+          test -s recall-site/dashen-cache/main/5/31_31.png
+          node tools/instrument-real-gfn-production-replay.mjs recall-site/vision-sync.js
+          node tools/instrument-candidate-recall-forensic.mjs recall-site/vision-sync.js
+          node --check recall-site/vision-sync.js
+          cmp -s vision-sync.js recall-site/vision-sync.js && { echo 'forensic replay copy was not instrumented' >&2; exit 1; } || true
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Write independent known-GT control manifest
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          owner=json.load(open('recall-input/owner-metadata.json',encoding='utf8'))
+          by={c['id']:c for c in owner['controls']}
+          fang=json.load(open('recall-input/fang/steam-general-shrine-ground-truth.json',encoding='utf8'))
+          controls={
+            'schema':'wwmsync-candidate-recall-controls-v1',
+            'verifiedStartingHead':os.environ['START_HEAD'],
+            'productionGuards':{
+              'contract':'ANCHOR_FREE_STRUCTURAL_V11','visionBlob':os.environ['VISION_BLOB'],'cacheBlob':os.environ['CACHE_BLOB'],
+              'cacheBuilderBlob':os.environ['CACHE_BUILDER_BLOB'],'coarseGate':0.50,'structuralGate':0.58,'intensityGate':0.42,'ambiguityGate':0.010,
+              'productionMatcherChanged':False,'productionCacheChanged':False,'productionPreprocessingChanged':False,
+            },
+            'controls':[
+              {'id':'east-cross','name':'East Cross GFN','mapId':1,'image':'controls/east-cross.webp','sourceCropSize':215.75,'expected':by['east-cross']['groundTruth']['dashenZ5'],'tolerance':by['east-cross']['groundTruth']['uncertaintyRadiusZ5Px'],'provenance':by['east-cross']['provenance']},
+              {'id':'general-shrine','name':'General Shrine GFN','mapId':1,'image':'controls/general-shrine.webp','sourceCropSize':215.75,'expected':by['general-shrine']['groundTruth']['dashenZ5'],'tolerance':by['general-shrine']['groundTruth']['uncertaintyRadiusZ5Px'],'provenance':by['general-shrine']['provenance']},
+              {'id':'fang-xu','name':'Steam Fang Xu Global-PC HUD','mapId':1,'image':'controls/fang-xu.png','sourceCropSize':None,'expected':fang['expected']['dashenZ5'],'tolerance':fang['expected']['uncertaintyRadiusZ5Px'],'provenance':{'source':fang['source'],'lineage':fang['lineage'],'groundTruth':fang['groundTruth'],'artifact':{'run':int(os.environ['FANG_RUN']),'id':int(os.environ['FANG_ARTIFACT']),'digest':'sha256:'+os.environ['FANG_DIGEST']}}},
+            ]
+          }
+          json.dump(controls,open('recall-input/controls.json','w',encoding='utf8'),ensure_ascii=False,indent=2)
+          PY
+          jq . recall-input/controls.json >/dev/null
+
+      - name: Trace candidate recall and execute oracle/landscape/correlation diagnostics
+        run: |
+          set -euo pipefail
+          node tools/run-candidate-recall-forensic.mjs --site recall-site --controls recall-input/controls.json --output recall-output | tee recall-output/runner.log
+          test -s recall-output/east-cross.json
+          test -s recall-output/general-shrine.json
+          test -s recall-output/fang-xu.json
+          test -s recall-output/summary.json
+          jq '{verdict,independentRequirement,stressRequired,controls}' recall-output/summary.json
+
+      - name: Reproduce frozen known-GT qualitative baselines
+        run: |
+          set -euo pipefail
+          jq -e '.control.id=="east-cross" and .stageTrace[-1].expectedBasinPresent==false and .localLandscape.expectedCoordinate.scaleScore < 0.58' recall-output/east-cross.json >/dev/null
+          jq -e '.control.id=="general-shrine" and .stageTrace[-1].expectedBasinPresent==false and .localLandscape.expectedCoordinate.scaleScore >= 0.58' recall-output/general-shrine.json >/dev/null
+          jq -e '.control.id=="fang-xu" and .stageTrace[-1].expectedBasinPresent==false and .localLandscape.expectedCoordinate.scaleScore >= 0.58' recall-output/fang-xu.json >/dev/null
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Recover exact 40-frame stress fixture if required
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          required="$(jq -r '.stressRequired' recall-output/summary.json)"
+          if [ "$required" != true ]; then
+            echo '{"executed":false,"reason":"no known-GT recall variant survived independent control"}' > recall-output/stress-summary.json
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_ASSET_ID" > recall-input/stress-asset-meta.json
+          test "$(jq -r '.name' recall-input/stress-asset-meta.json)" = "$FIXTURE_NAME"
+          test "$(jq -r '.digest' recall-input/stress-asset-meta.json)" = "sha256:$FIXTURE_SHA256"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_ASSET_ID" > "recall-input/$FIXTURE_NAME"
+          test "$(sha256sum "recall-input/$FIXTURE_NAME" | awk '{print $1}')" = "$FIXTURE_SHA256"
+          unzip -q "recall-input/$FIXTURE_NAME" -d real-fixture
+          test -s real-fixture/capture.json
+
+      - name: Stress surviving recall-only variants on exact 40-frame fixture
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          required="$(jq -r '.stressRequired' recall-output/summary.json)"
+          if [ "$required" != true ]; then exit 0; fi
+          variants="$(jq -r '.stressVariants[]' recall-output/summary.json)"
+          : > recall-output/stress-runs.jsonl
+          for variant in $variants; do
+            k="${variant#coarse-beam-}"
+            site="stress-site-$k"
+            mkdir -p "$site"
+            cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt "$site/"
+            ln -s "$(pwd)/recall-site/dashen-cache" "$site/dashen-cache"
+            python - "$site/vision-sync.js" "$k" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); k=sys.argv[2]; s=p.read_text(encoding='utf8')
+          old='POSITIVE_SAMPLES=42,NEGATIVE_SAMPLES=24,COARSE_BEAM=8;'
+          new=f'POSITIVE_SAMPLES=42,NEGATIVE_SAMPLES=24,COARSE_BEAM={k};'
+          assert s.count(old)==1, 'COARSE_BEAM production constant anchor not unique'
+          p.write_text(s.replace(old,new),encoding='utf8')
+          PY
+            node tools/instrument-real-gfn-production-replay.mjs "$site/vision-sync.js"
+            node tools/instrument-real-gfn-candidate-diagnostics.mjs "$site/vision-sync.js"
+            node --check "$site/vision-sync.js"
+            set +e
+            node tools/replay-real-gfn-production.mjs --site "$site" --fixture real-fixture --archive "recall-input/$FIXTURE_NAME" --report "recall-output/stress-$variant.json" --visual-dir "recall-output/stress-$variant-visuals"
+            rc=$?
+            set -e
+            test -s "recall-output/stress-$variant.json"
+            jq -c --arg id "$variant" --argjson rc "$rc" '{variant:$id,runnerExit:$rc,acceptance:.acceptance.realGfnFixture,sequence:.sequence,frames:[.frames[]|select(.coarseScore!=null or .fineScore!=null)|{frame,coarseScore,structuralScore,ncc,separation,rotationDeg,candidatePlanarPosition,gateReason,alternatives}]}' "recall-output/stress-$variant.json" >> recall-output/stress-runs.jsonl
+          done
+          python - <<'PY'
+          import json,math,statistics
+          rows=[json.loads(x) for x in open('recall-output/stress-runs.jsonl',encoding='utf8') if x.strip()]
+          out={'executed':True,'fixtureSha256':__import__('os').environ['FIXTURE_SHA256'],'variants':[]}
+          for r in rows:
+              frames=r['frames']; positions=[f['candidatePlanarPosition'] for f in frames if f.get('candidatePlanarPosition')]; angles=[f['rotationDeg'] for f in frames if isinstance(f.get('rotationDeg'),(int,float))]
+              alts=[a for f in frames for a in (f.get('alternatives') or [])]
+              accepted=[f for f in frames if not f.get('gateReason') and f.get('candidatePlanarPosition')]
+              clusters=[]
+              for p in positions:
+                  for c in clusters:
+                      if math.hypot(p['x']-c['x'],p['y']-c['y'])<=150:
+                          c['n']+=1;c['x']+=(p['x']-c['x'])/c['n'];c['y']+=(p['y']-c['y'])/c['n'];break
+                  else: clusters.append({'x':p['x'],'y':p['y'],'n':1})
+              out['variants'].append({'id':r['variant'],'runnerExit':r['runnerExit'],'acceptance':r['acceptance'],'globalSearchFrames':len(frames),'totalFineFinalists':len(alts),'candidateDiversityClusters150px':len(clusters),'largestClusterFrames':max([c['n'] for c in clusters],default=0),'angleStdDeg':statistics.pstdev(angles) if len(angles)>1 else None,'acceptedGlobalCandidates':len(accepted),'falsePositiveSafety':'DANGEROUS_NEW_ACCEPT' if accepted else 'NO_NEW_ACCEPTED_CANDIDATE','sequence':r['sequence']})
+          json.dump(out,open('recall-output/stress-summary.json','w',encoding='utf8'),indent=2)
+          PY
+          jq . recall-output/stress-summary.json
+
+      - name: Finalize classification and render report
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          test -s recall-output/summary.json
+          test -s recall-output/stress-summary.json
+          python - <<'PY'
+          import json,os,pathlib,subprocess
+          out=pathlib.Path('recall-output')
+          summary=json.load(open(out/'summary.json',encoding='utf8')); stress=json.load(open(out/'stress-summary.json',encoding='utf8'))
+          summary['stressExecuted']=bool(stress.get('executed')); summary['stress']=stress
+          if stress.get('executed'):
+              dangerous=any(v.get('falsePositiveSafety')=='DANGEROUS_NEW_ACCEPT' for v in stress.get('variants',[]))
+              summary['stressSafety']='REJECT_RECALL_VARIANT' if dangerous else 'NO_NEW_ACCEPTED_FALSE_POSITIVE_OBSERVED'
+              if dangerous and summary['verdict']=='CR1': summary['verdict']='CR0'
+          json.dump(summary,open(out/'summary-final.json','w',encoding='utf8'),indent=2)
+          reports={cid:json.load(open(out/f'{cid}.json',encoding='utf8')) for cid in ['east-cross','general-shrine','fang-xu']}
+          def f(v,n=6): return '—' if v is None else f'{v:.{n}f}' if isinstance(v,float) else str(v)
+          def stage_table(r):
+              rows=['| Production stage | In | Out | Expected basin | Rank | GT dist | score / rankScore |','|---|---:|---:|---|---:|---:|---:|']
+              for s in r['stageTrace']:
+                  c=s.get('candidate') or {}; rows.append(f"| {s['name']} | {s['inputCount']} | {s['outputCount']} | {'PRESENT' if s['expectedBasinPresent'] else 'ABSENT'} | {s.get('bestExpectedRank') or '—'} | {f(c.get('gtDistance'),2)} | {f(c.get('rankScore',c.get('combinedScore',c.get('scaleScore',c.get('score')))))} |")
+              return '\n'.join(rows)
+          g=reports['general-shrine']; e=reports['east-cross']; x=reports['fang-xu']; graph=e['searchGraph']
+          lines=['# WWMSync Production Candidate Recall / Surfacing Forensic Audit','',f"Date: 2026-08-14",f"Verified starting HEAD: `{summary['verifiedStartingHead']}`",f"CI evidence HEAD: `{os.environ.get('GITHUB_SHA','')}`",'', '## 1. Frozen production guards', '',f"- `vision-sync.js` blob: `{summary['productionGuards']['visionBlob']}`",f"- `dashen-tile-cache.js` blob: `{summary['productionGuards']['cacheBlob']}`",f"- cache builder blob: `{summary['productionGuards']['cacheBuilderBlob']}`",'- structural gate: `0.58` (unchanged)','- intensity gate: `0.42`; coarse gate: `0.50`; ambiguity gate: `0.010`','- production matcher/cache/preprocessing changed: **NO**','', '## 2. Actual production search graph','',f"Qinghe coarse z{graph['coarseZoom']} → fine z{graph['fineZoom']}; atlas factor {graph['coarseAtlasFactor']}; stride {graph['coarseStride']}; radii `{graph['radii']}`; angles `{graph['angles']}`; COARSE_BEAM `{graph['coarseBeam']}`.",'','Production pruning path: full coarse intensity lattice → TOP-120 per radius → TOP-90 per radius structural rescore (`0.14 intensity + 0.86 structure`) → per-radius spatial NMS (`max(11, radius*0.50)`, max 8/radius) → global TOP-36 seeds → per-seed local intensity TOP-56 → structural TOP-42 (`0.10 intensity + 0.90 structure`) → one hypothesis/seed → global COARSE_BEAM TOP-8 → fine search → final combined (`0.92 structure + 0.08 intensity`) → unchanged matchGate.','']
+          for title,r in [('3. East Cross expected-basin trace',e),('4. General Shrine expected-basin trace',g),('5. Fang Xu expected-basin trace',x)]: lines += [f'## {title}','',stage_table(r),'',f"First loss: **{r['firstLossStage']}**",f"RCL classification: **{r['rclClassification']}**",'']
+          lines += ['## 6. Oracle-retention ladder','']
+          for r in [e,g,x]:
+              lines.append(f"### {r['control']['name']}")
+              lines.append('')
+              lines.append('| Retain after stage | source candidate | downstream unchanged fine/matchGate |')
+              lines.append('|---|---|---|')
+              for o in r['oracleRetention']:
+                  d=o.get('downstream'); result='not available' if not d else ('ACCEPT' if d.get('matchGateAccepted') else 'REJECT: '+str(d.get('matchGateReason')))
+                  lines.append(f"| {o['retainAfterStage']} | {'yes' if o['sourceCandidatePresent'] else 'no'} | {result} |")
+              lines.append('')
+          lines += ['## 7. Local score landscapes','']
+          for r in [e,g,x]:
+              l=r['localLandscape']; c=l.get('expectedCoordinate') or {}; w=l.get('strongestWrong') or {}
+              lines += [f"### {r['control']['name']}",f"Class: **{r['localLandscapeClass']}**; expected structure `{f(c.get('scaleScore'))}`, intensity `{f(c.get('intensityScore'))}`, NCC `{f(c.get('intensityNcc'))}`, combined `{f(c.get('combinedScore'))}`; strongest wrong combined `{f(w.get('combinedScore'))}`; basin width ≈ `{f(l.get('basinWidthApproxPx'),1)}` px; strongest-nearby offset `{f(l.get('maximaDistance'),1)}` px.",'']
+          lines += ['## 8. Coarse → fine correlation','', '| Control | coarse↔fine structure | coarse↔combined | strong fine discarded before TOP-8 |','|---|---:|---:|---:|']
+          for r in [e,g,x]:
+              c=r['coarseFineCorrelation']; lines.append(f"| {r['control']['name']} | {f(c.get('coarseVsFineScaleAware'),4)} | {f(c.get('coarseVsCombined'),4)} | {f(c.get('strongFineDiscardFraction'),4)} |")
+          lines += ['','## 9. Recall-only pruning sensitivity','', '| Control | variant | expected recall | unchanged gate accepts | fine evals |','|---|---|---|---|---:|']
+          for r in [e,g,x]:
+              for v in r['recallSensitivity']: lines.append(f"| {r['control']['name']} | {v['id']} | {v['expectedBasinRecalled']} | {bool((v.get('expectedBasin') or {}).get('matchGateAccepted'))} | {v['totalFineEvaluations']} |")
+          ind=summary['independentRequirement']; lines += ['','## 10. Independent Fang Xu generalization','',f"General + Fang recall-limited: **{ind['generalAndFangRecallLimited']}**; same mechanism: **{ind['sameMechanism']}**; pair-surviving variants: `{ind['pairSurvivingVariants']}`; East discrimination-limited: **{ind['eastDiscriminationLimited']}**.",'','## 11. Exact 40-frame stress','',f"Executed: **{stress.get('executed',False)}**. This fixture has no independent absolute GT, so no localization PASS is claimed.",'']
+          for v in stress.get('variants',[]): lines += [f"- `{v['id']}`: fine finalists `{v['totalFineFinalists']}`, diversity clusters `{v['candidateDiversityClusters150px']}`, largest cluster `{v['largestClusterFrames']}`, angle std `{f(v.get('angleStdDeg'),2)}`, accepted global candidates `{v['acceptedGlobalCandidates']}`, safety `{v['falsePositiveSafety']}`."]
+          lines += ['','## 12. Final decision','',f"**{summary['verdict']}**",'',f"Stress safety: `{summary.get('stressSafety','NOT_APPLICABLE')}`.",'', 'Production change verdict: **NO PRODUCTION CHANGE IN THIS TASK.** Candidate-generation architecture research is justified only to the extent supported by the control-specific classification above; no score/gate/preprocessing change is authorized.','', '## 13. CI provenance','',f"Run: `${{GITHUB_RUN_ID}}` (expanded after evidence upload)",f"Job: `${{JOB_ID}}` (expanded after evidence upload)",f"Artifact: `${{ARTIFACT_ID}}` (expanded after evidence upload)",f"Artifact digest: `${{ARTIFACT_DIGEST}}` (expanded after evidence upload)"]
+          path=pathlib.Path(os.environ['REPORT_PATH']);path.parent.mkdir(parents=True,exist_ok=True);path.write_text('\n'.join(lines)+'\n',encoding='utf8')
+          PY
+          test -s recall-output/summary-final.json
+          test -s "$REPORT_PATH"
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+
+      - name: Upload structured forensic evidence
+        id: upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-candidate-recall-forensic-${{ github.run_id }}
+          path: |
+            recall-input/controls.json
+            recall-input/fang-artifact-meta.json
+            recall-input/fang/steam-general-shrine-ground-truth.json
+            recall-input/fang/steam-general-shrine-matcher.json
+            recall-output/
+            ${{ env.REPORT_PATH }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record authoritative CI coordinates and commit report only
+        if: ${{ success() }}
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          JOB_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name=="forensic") | .id' | head -n1)"
+          test -n "$JOB_ID"
+          test -n "$ARTIFACT_ID"
+          test -n "$ARTIFACT_DIGEST"
+          python - <<'PY'
+          import os,pathlib
+          p=pathlib.Path(os.environ['REPORT_PATH']);s=p.read_text(encoding='utf8')
+          s=s.replace('${GITHUB_RUN_ID}',os.environ['GITHUB_RUN_ID']).replace('${JOB_ID}',os.environ['JOB_ID']).replace('${ARTIFACT_ID}',os.environ['ARTIFACT_ID']).replace('${ARTIFACT_DIGEST}',os.environ['ARTIFACT_DIGEST'])
+          p.write_text(s,encoding='utf8')
+          PY
+          git fetch origin feature/wwm-native-sync-v2
+          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH"
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = "$REPORT_PATH"
+          git commit -m 'docs(wwmsync): record candidate recall forensic audit [skip ci]'
+          git push origin HEAD:feature/wwm-native-sync-v2
