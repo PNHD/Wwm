@@ -1,0 +1,257 @@
+name: WWMSync Candidate Recall Forensic Final
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-candidate-recall-forensic-final.yml'
+      - 'tools/summarize-candidate-recall-forensic.py'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: wwmsync-candidate-recall-forensic-final-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  START_HEAD: '3251202f001755c7bda957a0b329b9f862c0cfcf'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  STRESS_SHA: 'aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216'
+  REPORT_PATH: 'docs/wwmsync/audits/candidate-recall-surfacing-forensic-2026-08-14.md'
+  STAGE_RUN: '31768033881'
+  STAGE_JOB: '94667864485'
+  STAGE_ARTIFACT: '9207047835'
+  STAGE_DIGEST: 'sha256:460caa92a0af8c457d65e3fafed40ba01009d5895a09359c1fd81c215dd960da'
+  STAGE_HEAD: '2e28bfeecf9a830df2850f8706182222e3113754'
+  FINE_RUN: '31768239431'
+  FINE_JOB: '94668491244'
+  FINE_ARTIFACT: '9207148249'
+  FINE_DIGEST: 'sha256:ce858250c81ee3adf6efa9704a9cd22f87e7ffa2dde0c5c2ae9d9b9f9ee1ac39'
+  FINE_HEAD: '2c17d8101e64cb1701dd7423bec114fcb8df9981'
+  ORACLE_RUN: '31768741916'
+  ORACLE_JOB: '94670010602'
+  ORACLE_ARTIFACT: '9207338781'
+  ORACLE_DIGEST: 'sha256:51576651e60f3d8d00564a34b33e4d3283f864acc233ef43ce02afe1e4ac78d9'
+  ORACLE_HEAD: '71ce6030da8713698bfe49b6a70695ef44aaf0e2'
+  LANDSCAPE_RUN: '31768871389'
+  LANDSCAPE_JOB: '94670389528'
+  LANDSCAPE_ARTIFACT: '9207360521'
+  LANDSCAPE_DIGEST: 'sha256:a5a4a131080174875862ee663989400b3ca741a0316e1677bf0c3a7e5a964181'
+  LANDSCAPE_HEAD: '5e468101db8f28ef4511d64bbc022422a89b7923'
+  CORR_RUN: '31768986105'
+  CORR_JOB: '94670727831'
+  CORR_ARTIFACT: '9207485537'
+  CORR_DIGEST: 'sha256:bbf9d3cd6df7c845eef1a70e35104ef03e1208e9aefd13d5003fe7e5377735ff'
+  CORR_HEAD: '13cf66d9d79215ad293a33d56633f1fa8785164e'
+  SENS_RUN: '31769121780'
+  SENS_JOB: '94671141315'
+  SENS_ARTIFACT: '9207561481'
+  SENS_DIGEST: 'sha256:efea908f914b80ce940691858379c1da996125f38119b09e9d0b6d512ab4bd95'
+  SENS_HEAD: 'd4c2bac0a8167b8368e3b3899c4763bd27b94050'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/wwm-native-sync-v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify current lineage and frozen production
+        run: |
+          set -euo pipefail
+          echo "Authoritative aggregation source HEAD: $GITHUB_SHA"
+          git merge-base --is-ancestor "$START_HEAD" "$GITHUB_SHA"
+          test "$(git rev-parse "$START_HEAD:vision-sync.js")" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
+          grep -Fq "if(fine.scaleScore<.58)" vision-sync.js
+          grep -Fq "if(fine.intensityScore<.42)" vision-sync.js
+          grep -Fq "fine.beamMargin<.010" vision-sync.js
+          git diff --exit-code "$START_HEAD..$GITHUB_SHA" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          python -m py_compile tools/summarize-candidate-recall-forensic.py
+
+      - name: Verify component run jobs succeeded
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess
+          for prefix in ['STAGE','FINE','ORACLE','LANDSCAPE','CORR','SENS']:
+              run=os.environ[prefix+'_RUN']; job=int(os.environ[prefix+'_JOB'])
+              data=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run}/jobs'],text=True))
+              hit=[x for x in data['jobs'] if x['id']==job]
+              assert len(hit)==1,(prefix,job)
+              assert hit[0]['conclusion']=='success',(prefix,hit[0]['conclusion'])
+              print(prefix,run,job,'success')
+          PY
+
+      - name: Verify and download immutable component artifacts
+        run: |
+          set -euo pipefail
+          rm -rf final-input final-output
+          mkdir -p final-input final-output
+          for prefix in STAGE FINE ORACLE LANDSCAPE CORR SENS; do
+            eval run="\$${prefix}_RUN"
+            eval artifact="\$${prefix}_ARTIFACT"
+            eval digest="\$${prefix}_DIGEST"
+            eval head="\$${prefix}_HEAD"
+            lower="$(echo "$prefix" | tr '[:upper:]' '[:lower:]')"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "final-input/$lower-meta.json"
+            test "$(jq -r '.workflow_run.id' "final-input/$lower-meta.json")" = "$run"
+            test "$(jq -r '.workflow_run.head_sha' "final-input/$lower-meta.json")" = "$head"
+            test "$(jq -r '.digest' "final-input/$lower-meta.json")" = "$digest"
+            test "$(jq -r '.expired' "final-input/$lower-meta.json")" = false
+            gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "final-input/$lower.zip"
+            mkdir "final-input/$lower"
+            unzip -q "final-input/$lower.zip" -d "final-input/$lower"
+          done
+          test -s final-input/stage/stage-output/summary.json
+          test -s final-input/stage/stage-output/east-cross.json
+          test -s final-input/fine/fine-output/summary.json
+          test -s final-input/oracle/oracle-output/summary.json
+          test -s final-input/landscape/landscape-output/summary.json
+          test -s final-input/corr/correlation-output/full-correlation.json
+          test -s final-input/sens/variant-output/variants.json
+
+      - name: Validate causal evidence before synthesis
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          load=lambda p:json.load(open(p,encoding='utf8'))
+          st=load('final-input/stage/stage-output/summary.json'); by={x['id']:x for x in st['controls']}
+          assert 'TOP-36' in by['east-cross']['firstLossStage']
+          assert 'NMS' in by['general-shrine']['firstLossStage']
+          assert by['fang-xu']['firstLossStage']=='NONE'
+          fi=load('final-input/fine/fine-output/summary.json'); byf={x['id']:x for x in fi['controls']}
+          assert 'single' in byf['fang-xu']['firstLossStage'].lower() or 'refine' in byf['fang-xu']['firstLossStage'].lower()
+          oc=load('final-input/oracle/oracle-output/summary.json')
+          assert all(not x['oracleAnyGlobalExpectedAccept'] for x in oc['controls'])
+          la=load('final-input/landscape/landscape-output/summary.json'); byl={x['id']:x['landscape']['expectedCoordinateBestPose'] for x in la['controls']}
+          assert byl['east-cross']['scaleAwareStructure'] < .58
+          assert byl['general-shrine']['scaleAwareStructure'] >= .58 and byl['general-shrine']['intensity'] < .42
+          assert byl['fang-xu']['scaleAwareStructure'] >= .58 and byl['fang-xu']['intensity'] >= .42
+          co=load('final-input/corr/correlation-output/full-correlation.json'); byc={x['id']:x['correlation'] for x in co['controls']}
+          assert all(byc[x]['sampleCount'] >= 30 for x in byc)
+          se=load('final-input/sens/variant-output/variants.json')
+          for n in [2,4]:
+              rows=[r for r in se['reports'] if r['variant']['perSeedHypotheses']==n]
+              assert len(rows)==3
+              assert all(not r['expectedBasinRecalled'] for r in rows)
+              assert all(r['candidateCountMultiplier']==n for r in rows)
+          print('all causal evidence gates validated')
+          PY
+
+      - name: Build provenance and commit inventory
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess
+          p={}
+          for x in ['STAGE','FINE','ORACLE','LANDSCAPE','CORR','SENS']:
+              p[x.lower()]={'run':int(os.environ[x+'_RUN']),'job':int(os.environ[x+'_JOB']),'artifact':int(os.environ[x+'_ARTIFACT']),'digest':os.environ[x+'_DIGEST'],'head':os.environ[x+'_HEAD']}
+          json.dump(p,open('final-input/component-provenance.json','w'),indent=2)
+          raw=subprocess.check_output(['git','log','--reverse','--format=%H%x09%s',os.environ['START_HEAD']+'..'+os.environ['GITHUB_SHA']],text=True)
+          commits=[]
+          for line in raw.splitlines():
+              sha,subject=line.split('\t',1); commits.append({'sha':sha,'subject':subject})
+          json.dump(commits,open('final-input/commits.json','w'),indent=2)
+          PY
+
+      - name: Synthesize final structured JSON and report
+        run: |
+          set -euo pipefail
+          GEN_AT_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)" python tools/summarize-candidate-recall-forensic.py \
+            --stage final-input/stage/stage-output/summary.json \
+            --fine final-input/fine/fine-output/summary.json \
+            --oracle final-input/oracle/oracle-output/summary.json \
+            --landscape final-input/landscape/landscape-output/summary.json \
+            --correlation final-input/corr/correlation-output/full-correlation.json \
+            --sensitivity final-input/sens/variant-output/variants.json \
+            --provenance final-input/component-provenance.json \
+            --commits final-input/commits.json \
+            --output-json final-output/evidence.json \
+            --output-report "$REPORT_PATH" \
+            --start-head "$START_HEAD" \
+            --evidence-head "$GITHUB_SHA" \
+            --stress-sha "$STRESS_SHA"
+          python - <<'PY'
+          import json
+          p='final-output/evidence.json'; d=json.load(open(p,encoding='utf8'))
+          stage=json.load(open('final-input/stage/stage-output/east-cross.json',encoding='utf8'))
+          d['actualProductionSearchGraph']=stage['searchGraph']
+          d['authoritativeAggregation']={'run':int(__import__('os').environ['GITHUB_RUN_ID']),'job':None,'sourceHead':__import__('os').environ['GITHUB_SHA']}
+          json.dump(d,open(p,'w',encoding='utf8'),ensure_ascii=False,indent=2)
+          assert d['verdict'].startswith('CR0')
+          assert d['productionChangeVerdict'].startswith('NO PRODUCTION CHANGE')
+          assert d['productionGuards']['structuralGate']==.58
+          assert d['stress']['executed'] is False
+          assert d['independentFangGeneralization']['pairSurvivingVariants']==[]
+          assert d['actualProductionSearchGraph']['coarseBeam']==8
+          PY
+          test -s final-output/evidence.json
+          test -s "$REPORT_PATH"
+          git diff --exit-code "$START_HEAD..$GITHUB_SHA" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+
+      - name: Resolve authoritative job ID
+        run: |
+          set -euo pipefail
+          JOB_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name=="aggregate") | .id' | head -n1)"
+          test -n "$JOB_ID"
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+          python - <<'PY'
+          import json,os
+          p='final-output/evidence.json'; d=json.load(open(p,encoding='utf8')); d['authoritativeAggregation']['job']=int(os.environ['JOB_ID']); json.dump(d,open(p,'w',encoding='utf8'),ensure_ascii=False,indent=2)
+          PY
+
+      - name: Upload authoritative structured evidence
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-candidate-recall-forensic-final-${{ github.run_id }}
+          path: |
+            final-output/evidence.json
+            final-input/component-provenance.json
+            final-input/commits.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record artifact coordinates in report and commit report only
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          test -n "$ARTIFACT_DIGEST"
+          python - <<'PY'
+          import os,pathlib
+          p=pathlib.Path(os.environ['REPORT_PATH']); s=p.read_text(encoding='utf8')
+          s=s.replace('@@RUN_ID@@',os.environ['GITHUB_RUN_ID']).replace('@@JOB_ID@@',os.environ['JOB_ID']).replace('@@ARTIFACT_ID@@',os.environ['ARTIFACT_ID']).replace('@@ARTIFACT_DIGEST@@',os.environ['ARTIFACT_DIGEST'])
+          assert '@@' not in s
+          p.write_text(s,encoding='utf8')
+          PY
+          git fetch origin feature/wwm-native-sync-v2
+          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
+          git diff --exit-code "$START_HEAD..$GITHUB_SHA" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH"
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = "$REPORT_PATH"
+          git commit -m 'docs(wwmsync): record candidate recall forensic audit [skip ci]'
+          git push origin HEAD:feature/wwm-native-sync-v2
