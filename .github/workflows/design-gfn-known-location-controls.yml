@@ -48,7 +48,7 @@ jobs:
       - name: Install reference-only analysis dependencies
         run: python -m pip install --disable-pip-version-check --quiet numpy opencv-python-headless requests
 
-      - name: Normalize OpenCV Hough output shape in replay copy
+      - name: Normalize analysis-only compatibility in replay copy
         shell: bash
         run: |
           set -euo pipefail
@@ -56,10 +56,16 @@ jobs:
           from pathlib import Path
           p=Path('tools/design_gfn_known_location_controls.py')
           s=p.read_text('utf8')
-          old='for l in lines[:,0,:]: line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))'
-          new='for l in lines.reshape(-1,4): line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))'
-          assert old in s
-          p.write_text(s.replace(old,new),'utf8')
+          replacements={
+            'for l in lines[:,0,:]: line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))':
+            'for l in lines.reshape(-1,4): line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))',
+            "json.dumps({'lineage':lineage,'eligible':pool_out,'rejected':rejected},ensure_ascii=False,indent=2)":
+            "json.dumps({'lineage':[{k:v for k,v in c.items() if not k.startswith('_')} for c in lineage],'eligible':pool_out,'rejected':rejected},ensure_ascii=False,indent=2)",
+          }
+          for old,new in replacements.items():
+            assert old in s, old
+            s=s.replace(old,new)
+          p.write_text(s,'utf8')
           PY
           python -m py_compile tools/design_gfn_known_location_controls.py
 
@@ -105,12 +111,10 @@ jobs:
           old={'East Cross Street':(2,5219.931321637427,4648.817136173768),'General Shrine':(1,6015.017126148705,3889.360588972433),'Fang Xu':(1,5983.1277673350005,3862.4348370927314)}
           for x in c:
             for name,(mid,xx,yy) in old.items():
-              if x['globalMapId']==mid:
-                assert math.hypot(x['z5']['x']-xx,x['z5']['y']-yy)>=320.0,(x['controlId'],name)
+              if x['globalMapId']==mid: assert math.hypot(x['z5']['x']-xx,x['z5']['y']-yy)>=320.0,(x['controlId'],name)
           for i,a in enumerate(c):
             for b in c[i+1:]:
-              if a['globalMapId']==b['globalMapId']:
-                assert math.hypot(a['z5']['x']-b['z5']['x'],a['z5']['y']-b['z5']['y'])>=360.0
+              if a['globalMapId']==b['globalMapId']: assert math.hypot(a['z5']['x']-b['z5']['x'],a['z5']['y']-b['z5']['y'])>=360.0
           dm=m['morphologyDiversityMatrix']; assert len(dm)==6
           for row in dm:
             for q in row['comparisons']:
