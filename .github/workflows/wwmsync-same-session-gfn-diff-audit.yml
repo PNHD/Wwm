@@ -269,6 +269,7 @@ jobs:
           if-no-files-found: error
           compression-level: 6
           retention-days: 30
+          include-hidden-files: true
 
       - name: Append authoritative CI coordinates
         id: ci_meta
