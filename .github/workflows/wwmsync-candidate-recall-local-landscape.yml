@@ -1,0 +1,93 @@
+name: WWMSync Candidate Recall Local Landscape
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-candidate-recall-local-landscape.yml'
+      - 'tools/instrument-candidate-recall-local-landscape.mjs'
+      - 'tools/run-candidate-recall-local-landscape.mjs'
+
+permissions: {contents: read, actions: read}
+
+env:
+  START_HEAD: '3251202f001755c7bda957a0b329b9f862c0cfcf'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  EAST_FIXTURE_SHA: '144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792'
+  GENERAL_FIXTURE_SHA: '261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  landscape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify frozen production
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_HEAD" "$GITHUB_SHA"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          grep -Fq "if(fine.scaleScore<.58)" vision-sync.js
+          grep -Fq "if(fine.intensityScore<.42)" vision-sync.js
+          grep -Fq "fine.beamMargin<.010" vision-sync.js
+      - name: Recover runtime and controls
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"; test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          rm -rf landscape-input landscape-output landscape-site; mkdir -p landscape-input landscape-output landscape-site/controls
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > landscape-site/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > landscape-site/controls/general-shrine.webp
+          test "$(sha256sum landscape-site/controls/east-cross.webp|awk '{print $1}')" = "$EAST_FIXTURE_SHA"
+          test "$(sha256sum landscape-site/controls/general-shrine.webp|awk '{print $1}')" = "$GENERAL_FIXTURE_SHA"
+          cp fixtures/owner-gfn-controls/metadata.json landscape-input/owner.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > landscape-input/fang-meta.json
+          test "$(jq -r '.workflow_run.id' landscape-input/fang-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' landscape-input/fang-meta.json)" = "sha256:$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > landscape-input/fang.zip
+          mkdir landscape-input/fang; unzip -q landscape-input/fang.zip -d landscape-input/fang
+          cp landscape-input/fang/steam-general-shrine-1-roi.png landscape-site/controls/fang-xu.png
+      - name: Build replay-only site
+        run: |
+          set -euo pipefail
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt landscape-site/
+          python tools/build_dashen_reference_audit_cache.py landscape-site/dashen-cache --workers 24
+          node tools/instrument-real-gfn-production-replay.mjs landscape-site/vision-sync.js
+          node tools/instrument-candidate-recall-local-landscape.mjs landscape-site/vision-sync.js
+          node --check landscape-site/vision-sync.js
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+      - name: Write control manifest
+        run: |
+          python - <<'PY'
+          import json,os
+          owner=json.load(open('landscape-input/owner.json')); by={c['id']:c for c in owner['controls']}; fang=json.load(open('landscape-input/fang/steam-general-shrine-ground-truth.json'))
+          d={'verifiedStartingHead':os.environ['START_HEAD'],'productionGuards':{'visionBlob':os.environ['VISION_BLOB'],'cacheBlob':os.environ['CACHE_BLOB'],'structuralGate':.58,'intensityGate':.42,'ambiguityGate':.010,'scoresChanged':False,'preprocessingChanged':False},'controls':[{'id':'east-cross','name':'East Cross GFN','mapId':1,'localImage':'east-cross.webp','sourceCropSize':215.75,'expected':by['east-cross']['groundTruth']['dashenZ5'],'tolerance':60},{'id':'general-shrine','name':'General Shrine GFN','mapId':1,'localImage':'general-shrine.webp','sourceCropSize':215.75,'expected':by['general-shrine']['groundTruth']['dashenZ5'],'tolerance':60},{'id':'fang-xu','name':'Steam Fang Xu Global-PC HUD','mapId':1,'localImage':'fang-xu.png','sourceCropSize':None,'expected':fang['expected']['dashenZ5'],'tolerance':60}]}
+          json.dump(d,open('landscape-input/controls.json','w'),indent=2)
+          PY
+      - name: Execute bounded production score landscapes
+        run: |
+          set -euo pipefail
+          node tools/run-candidate-recall-local-landscape.mjs --site landscape-site --controls landscape-input/controls.json --output landscape-output | tee landscape-output/runner.log
+          for f in east-cross general-shrine fang-xu summary; do test -s "landscape-output/$f.json"; done
+          jq '{controls:[.controls[]|{id,expected:.landscape.expectedCoordinateBestPose,strongestNearby:.landscape.strongestNearbyLocalMaximum,strongestWrong:.landscape.strongestWrongMaximum,basinWidth:.landscape.basinWidthApproxPx,gradient:.landscape.spatialGradientCombinedPerPixel}]}' landscape-output/summary.json
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+      - name: Upload landscape evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-candidate-recall-local-landscape-${{ github.run_id }}
+          path: |
+            landscape-input/controls.json
+            landscape-output/
+          if-no-files-found: error
+          retention-days: 30
