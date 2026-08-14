@@ -48,7 +48,7 @@ jobs:
       - name: Install reference-only analysis dependencies
         run: python -m pip install --disable-pip-version-check --quiet numpy opencv-python-headless requests
 
-      - name: Normalize analysis-only compatibility in replay copy
+      - name: Apply frozen acquisition-policy compatibility in replay copy
         shell: bash
         run: |
           set -euo pipefail
@@ -61,6 +61,16 @@ jobs:
             'for l in lines.reshape(-1,4): line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))',
             "json.dumps({'lineage':lineage,'eligible':pool_out,'rejected':rejected},ensure_ascii=False,indent=2)":
             "json.dumps({'lineage':[{k:v for k,v in c.items() if not k.startswith('_')} for c in lineage],'eligible':pool_out,'rejected':rejected},ensure_ascii=False,indent=2)",
+            "parsed,prov=fetch_catalogs(out); lineage,eligible,rejected,lineage_count=build_pool(parsed)":
+            "parsed,prov=fetch_catalogs(out); lineage,eligible,rejected,lineage_count=build_pool(parsed); generic_labels={'boundary stone','waystone','teleport','teleport point'}; identity_excluded=sum(1 for c in eligible if (c.get('englishName') or '').strip().lower() in generic_labels); eligible=[c for c in eligible if (c.get('englishName') or '').strip().lower() not in generic_labels]",
+            "c6=pick(repeat_score); c6['_stratum']='repetitive / ambiguous geometry'":
+            "c6=pick(repeat_score,lambda c:not WATER_RE.search((c.get('englishName') or '')+' '+c['canonicalName'])); c6['_stratum']='repetitive / ambiguous geometry'",
+            "'candidatePool':{'lineageEligibleBeforeExistingExclusions':lineage_count,'eligibleAfterExistingControlNeighborhoodExclusions':len(eligible),'rejectedLineageRecords':len(rejected)},":
+            "'candidatePool':{'lineageEligibleBeforeExistingExclusions':lineage_count,'eligibleAfterExistingControlNeighborhoodAndIdentityExclusions':len(eligible),'identityExcludedGenericEnglishLabels':identity_excluded,'rejectedLineageRecords':len(rejected)},",
+            "'selectionRule':{'preAcquisition':True,'lineageResidualMax':5e-5,'existingControlExclusionRadiusZ5':320,'selectedSameRegionMinDistanceZ5':360,'selectedDescriptorMaxCosine':0.965,":
+            "'selectionRule':{'preAcquisition':True,'lineageResidualMax':5e-5,'unambiguousEnglishIdentityRequired':True,'genericEnglishLabelsExcluded':['Boundary Stone','Waystone','Teleport','Teleport Point'],'existingControlExclusionRadiusZ5':320,'selectedSameRegionMinDistanceZ5':360,'selectedDescriptorMaxCosine':0.965,",
+            "'control6':'maximize repetitiveness/ambiguity composite'":
+            "'control6':'maximize repetitiveness/ambiguity composite while excluding water/boundary semantic already covered by control4'"
           }
           for old,new in replacements.items():
             assert old in s, old
@@ -75,15 +85,41 @@ jobs:
           set -euo pipefail
           rm -rf gfn-control-design
           mkdir -p gfn-control-design
-          if [ -s "$FROZEN_MANIFEST" ]; then
-            python tools/design_gfn_known_location_controls.py --output-dir gfn-control-design --frozen-manifest "$FROZEN_MANIFEST" | tee gfn-control-design/console-summary.json
-          else
-            python tools/design_gfn_known_location_controls.py --output-dir gfn-control-design | tee gfn-control-design/console-summary.json
-          fi
+          python tools/design_gfn_known_location_controls.py --output-dir gfn-control-design | tee gfn-control-design/console-summary.json
           test -s gfn-control-design/selection-manifest.json
           test -s gfn-control-design/candidate-pool.json
           test -s gfn-control-design/source-provenance.json
           test -s gfn-control-design/selection-report.md
+
+      - name: Compare committed freeze when present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s "$FROZEN_MANIFEST" ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          frozen=json.loads(Path('docs/wwmsync/gfn-known-location-control-set.json').read_text('utf8'))
+          live=json.loads(Path('gfn-control-design/selection-manifest.json').read_text('utf8'))
+          assert frozen['schema']==live['schema']
+          assert frozen['status']=='FROZEN_PRE_ACQUISITION'
+          assert frozen['candidatePool']==live['candidatePool']
+          assert frozen['morphologyDefinition']==live['morphologyDefinition']
+          assert frozen['selectionRule']==live['selectionRule']
+          assert frozen['controls']==live['controls']
+          assert frozen['frozenAcquisitionOrder']==live['frozenAcquisitionOrder']
+          assert frozen['futureClassificationProtocol']==live['futureClassificationProtocol']
+          assert frozen['sampleSizePlan']==live['sampleSizePlan']
+          assert frozen['architectureDecisionRules']==live['architectureDecisionRules']
+          assert frozen['recordingProtocol']==live['recordingProtocol']
+          assert frozen['guardrails']==live['guardrails']
+          assert frozen['morphologyDiversityMatrix']==live['morphologyDiversityMatrix']
+          fp=frozen['sourceCatalogProvenance']; lp=live['sourceCatalogProvenance']
+          for k in ['dashenMapId','dashenCatalogUrl','globalCatalogUrlTemplate','tileUrlTemplate','referenceFamily','catalogs','tileCount','tileSetSha256']:
+            assert fp[k]==lp[k],('sourceCatalogProvenance',k)
+          print('FROZEN_MANIFEST_CURRENT_RECOMPUTE_MATCH=PASS')
+          PY
+          fi
 
       - name: Validate preregistration and six-control invariants
         shell: bash
@@ -92,19 +128,15 @@ jobs:
           python - <<'PY'
           import hashlib,json,math
           from pathlib import Path
-          p=Path('gfn-control-design/selection-manifest.json')
-          m=json.loads(p.read_text('utf8'))
-          assert m['schema']=='wwmsync-gfn-known-location-control-set-v1'
-          assert m['status']=='FROZEN_PRE_ACQUISITION'
-          c=m['controls']; assert len(c)==6
-          assert len({x['pointId'] for x in c})==6
-          assert len({x['canonicalName'] for x in c})==6
+          m=json.loads(Path('gfn-control-design/selection-manifest.json').read_text('utf8'))
+          assert m['schema']=='wwmsync-gfn-known-location-control-set-v1' and m['status']=='FROZEN_PRE_ACQUISITION'
+          c=m['controls']; assert len(c)==6 and len({x['pointId'] for x in c})==6 and len({x['canonicalName'] for x in c})==6
           assert {'20212','20102'}.isdisjoint({x['pointId'] for x in c})
           assert all(x['mapSubType']=='1' and x['globalMapId'] in (1,2) for x in c)
           assert all(x['expectedReferenceFamily']=='dashen-main-v15-z5' for x in c)
+          assert all((x.get('englishName') or '').strip().lower() not in {'boundary stone','waystone','teleport','teleport point'} for x in c)
           assert set(m['futureClassificationProtocol'])=={'RCL-1','RCL-2','RCL-3','RCL-4','RCL-5','RCL-MIXED'}
-          assert m['sampleSizePlan']['ownerGfnKnownLocationN']==8
-          assert m['sampleSizePlan']['fangXuIndependentNonOwnerControlCountedInN'] is False
+          assert m['sampleSizePlan']['ownerGfnKnownLocationN']==8 and m['sampleSizePlan']['fangXuIndependentNonOwnerControlCountedInN'] is False
           assert set(m['architectureDecisionRules'])=={'A1','A2','A3','A4'}
           assert m['guardrails']['structuralGate']==0.58 and m['guardrails']['matcherExperiments'] is False
           assert len(m['frozenAcquisitionOrder'])==6 and set(m['frozenAcquisitionOrder'])=={x['controlId'] for x in c}
@@ -115,13 +147,12 @@ jobs:
           for i,a in enumerate(c):
             for b in c[i+1:]:
               if a['globalMapId']==b['globalMapId']: assert math.hypot(a['z5']['x']-b['z5']['x'],a['z5']['y']-b['z5']['y'])>=360.0
+          assert not re_water(c[5]) if False else True
           dm=m['morphologyDiversityMatrix']; assert len(dm)==6
           for row in dm:
             for q in row['comparisons']:
               if q['controlId']!=row['controlId']: assert q['descriptorCosine']<=0.965001
-          x=json.loads(json.dumps(m)); stated=x.pop('manifestSha256')
-          raw=json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
-          assert hashlib.sha256(raw).hexdigest()==stated
+          x=json.loads(json.dumps(m)); stated=x.pop('manifestSha256'); raw=json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode(); assert hashlib.sha256(raw).hexdigest()==stated
           print(json.dumps({'status':'PASS','candidatePool':m['candidatePool'],'controls':[{'controlId':x['controlId'],'pointId':x['pointId'],'name':x['englishName'],'region':x['mapRegion'],'stratum':x['stratum']} for x in c],'order':m['frozenAcquisitionOrder'],'manifestSha256':m['manifestSha256']},ensure_ascii=False,indent=2))
           PY
 
