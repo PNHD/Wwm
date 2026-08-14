@@ -48,6 +48,21 @@ jobs:
       - name: Install reference-only analysis dependencies
         run: python -m pip install --disable-pip-version-check --quiet numpy opencv-python-headless requests
 
+      - name: Normalize OpenCV Hough output shape in replay copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/design_gfn_known_location_controls.py')
+          s=p.read_text('utf8')
+          old='for l in lines[:,0,:]: line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))'
+          new='for l in lines.reshape(-1,4): line_len += math.hypot(float(l[2]-l[0]),float(l[3]-l[1]))'
+          assert old in s
+          p.write_text(s.replace(old,new),'utf8')
+          PY
+          python -m py_compile tools/design_gfn_known_location_controls.py
+
       - name: Build current catalog and reference-only control design
         shell: bash
         run: |
@@ -96,12 +111,10 @@ jobs:
             for b in c[i+1:]:
               if a['globalMapId']==b['globalMapId']:
                 assert math.hypot(a['z5']['x']-b['z5']['x'],a['z5']['y']-b['z5']['y'])>=360.0
-          dm=m['morphologyDiversityMatrix']
-          assert len(dm)==6
+          dm=m['morphologyDiversityMatrix']; assert len(dm)==6
           for row in dm:
             for q in row['comparisons']:
-              if q['controlId']!=row['controlId']:
-                assert q['descriptorCosine']<=0.965001
+              if q['controlId']!=row['controlId']: assert q['descriptorCosine']<=0.965001
           x=json.loads(json.dumps(m)); stated=x.pop('manifestSha256')
           raw=json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
           assert hashlib.sha256(raw).hexdigest()==stated
