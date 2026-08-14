@@ -1,0 +1,218 @@
+name: Replay General Shrine Map-State Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - scripts/replay/wwmsync_general_shrine_map_state_audit.py
+      - .github/workflows/wwmsync-general-shrine-map-state-audit.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: wwmsync-general-shrine-map-state-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: General Shrine map-state audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_PARENT: ca904a9417b03e0d7f8c0d07da87e8f2de3fcfd6
+      PRIOR_RUN: "31759922863"
+      PRIOR_ARTIFACT: "9204236942"
+      PRIOR_DIGEST: ddafa809bee15cbe7da2c0f7e8d3354ca9a4e834022e6fb7d13cb643d4762793
+      REFERENCE_SITE_ARTIFACT: "9127953239"
+      REFERENCE_SITE_DIGEST: 1542e60310197707f892e7ee9ebbbdb65c3f58926fcedb4ec80454d4b9eaf8d3
+      FULLMAP_RUN: "31598370762"
+      FULLMAP_ARTIFACT: "9142179590"
+      FULLMAP_DIGEST: 10d9c47254d25fc9158e7cb72e04876562220a5f3f45f33f24de540d1b6eec90
+      REVISION_RUN: "31593244283"
+      REVISION_ARTIFACT: "9140048276"
+      REVISION_DIGEST: c32347318fa7a6cb7d1a9b48846fe4c675f75b74d93985627b9fb3d2e73a5ecc
+      OWNER_FIXTURE_SHA: 73e275661e94a843807c5cae3c526e4fe23e5d4b7800104364bd36cc1d05bbba
+      FULLMAP_SOURCE_SHA: 7a4e3c0443a6d56df62dc2a709af9d41396ab76b22d3e9e8d7cc466cd8bb2404
+      REPORT_PATH: docs/wwmsync/audits/general-shrine-map-state-reference-discrepancy-2026-08-14.md
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/wwm-native-sync-v2
+
+      - name: Verify parent and replay-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIRST="$(git rev-list --first-parent --reverse "${EXPECTED_PARENT}..HEAD" | sed -n '1p')"
+          test -n "$FIRST"
+          test "$(git rev-parse "${FIRST}^")" = "$EXPECTED_PARENT"
+          mapfile -t CHANGED < <(git diff --name-only "${EXPECTED_PARENT}..HEAD")
+          printf '%s\n' "${CHANGED[@]}"
+          for p in "${CHANGED[@]}"; do
+            case "$p" in
+              scripts/replay/wwmsync_general_shrine_map_state_audit.py|.github/workflows/wwmsync-general-shrine-map-state-audit.yml) ;;
+              *) echo "Unexpected audit-slice path: $p" >&2; exit 1 ;;
+            esac
+          done
+          python -m py_compile scripts/replay/wwmsync_general_shrine_map_state_audit.py
+          echo "${OWNER_FIXTURE_SHA}  fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg" | sha256sum -c -
+          git diff --exit-code "${EXPECTED_PARENT}..HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          echo 'Production guard: matcher/cache/preprocessing untouched; structural gate 0.58 unchanged.'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded diagnostic dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            numpy==2.1.3 opencv-python-headless==4.10.0.84 pillow==11.3.0 scikit-image==0.25.2
+
+      - name: Recover pinned authoritative inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .general-audit-inputs .general-audit-output
+          mkdir -p .general-audit-inputs .general-audit-output
+          fetch_artifact() {
+            local aid="$1" expected="$2" dest="$3" run="$4"
+            mkdir -p "$dest"
+            local meta url
+            meta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}")"
+            test "$(jq -r '.expired' <<<"$meta")" = false
+            test "$(jq -r '.workflow_run.id' <<<"$meta")" = "$run"
+            test "$(jq -r '.digest' <<<"$meta")" = "sha256:${expected}"
+            url="$(jq -r '.archive_download_url' <<<"$meta")"
+            curl --fail --location --silent --show-error -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$url" -o "$dest/artifact.zip"
+            unzip -q "$dest/artifact.zip" -d "$dest/content"
+          }
+          fetch_artifact "$PRIOR_ARTIFACT" "$PRIOR_DIGEST" .general-audit-inputs/prior "$PRIOR_RUN"
+          fetch_artifact "$REFERENCE_SITE_ARTIFACT" "$REFERENCE_SITE_DIGEST" .general-audit-inputs/reference-site "31561669741"
+          fetch_artifact "$FULLMAP_ARTIFACT" "$FULLMAP_DIGEST" .general-audit-inputs/fullmap "$FULLMAP_RUN"
+          fetch_artifact "$REVISION_ARTIFACT" "$REVISION_DIGEST" .general-audit-inputs/revision "$REVISION_RUN"
+          test -s .general-audit-inputs/prior/content/audit.json
+          test -s .general-audit-inputs/prior/content/exact-owner-provenance.json
+          test -s .general-audit-inputs/fullmap/content/positive-control-source.json
+          test -s .general-audit-inputs/fullmap/content/reference-domain-truth.json
+          REV_JSON="$(find .general-audit-inputs/revision/content -name 'wwmsync-dashen-tile-revision-probe.json' -print -quit)"
+          test -s "$REV_JSON"
+          cp "$REV_JSON" .general-audit-inputs/revision-probe.json
+          test -d .general-audit-inputs/reference-site/content/dashen-cache/main/3
+          test -d .general-audit-inputs/reference-site/content/dashen-cache/main/5
+
+      - name: Recover exact prior FULL-MAP positive-control source
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(jq -r '.source.image' .general-audit-inputs/fullmap/content/positive-control-source.json)"
+          test "$URL" = 'https://static.icy-veins.com/wp/wp-content/uploads/2025/11/wwm-general-shrine.webp'
+          curl --fail --location --retry 3 --silent --show-error "$URL" -o .general-audit-inputs/fullmap-general-shrine.webp
+          echo "${FULLMAP_SOURCE_SHA}  .general-audit-inputs/fullmap-general-shrine.webp" | sha256sum -c -
+          python - <<'PY'
+          from PIL import Image
+          p='.general-audit-inputs/fullmap-general-shrine.webp'
+          with Image.open(p) as im:
+              assert im.size == (1917,1077), im.size
+          PY
+
+      - name: Execute bounded General Shrine discrepancy audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/replay/wwmsync_general_shrine_map_state_audit.py \
+            --owner-map fixtures/same-session-gfn-diff/general-shrine-world-map-roi.jpg \
+            --reference-cache .general-audit-inputs/reference-site/content/dashen-cache \
+            --prior-audit .general-audit-inputs/prior/content/audit.json \
+            --owner-provenance .general-audit-inputs/prior/content/exact-owner-provenance.json \
+            --fullmap-source .general-audit-inputs/fullmap-general-shrine.webp \
+            --fullmap-meta .general-audit-inputs/fullmap/content/positive-control-source.json \
+            --reference-truth .general-audit-inputs/fullmap/content/reference-domain-truth.json \
+            --revision-probe .general-audit-inputs/revision-probe.json \
+            --output .general-audit-output
+          test -s .general-audit-output/audit.json
+          test -s .general-audit-output/report.md
+          jq '.decision, .anchor_audit | {decision:.decision,anchor_audit:.anchor_audit}' .general-audit-output/audit.json || true
+
+      - name: Verify bounded acceptance invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(jq -r '.production.structural_gate' .general-audit-output/audit.json)" = "0.58"
+          test "$(jq -r '.production.modified' .general-audit-output/audit.json)" = "false"
+          test "$(jq -r '.gt.frozen' .general-audit-output/audit.json)" = "true"
+          test "$(jq -r '.decision.production_change_justified' .general-audit-output/audit.json)" = "false"
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          git diff --check
+
+      - name: Upload authoritative audit artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-general-shrine-map-state-audit-${{ github.run_id }}
+          path: .general-audit-output/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+
+      - name: Append CI coordinates and commit report only
+        id: final
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          JOB_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" --jq '.jobs[] | select(.name == "General Shrine map-state audit") | .id' | head -n1)"
+          test -n "$JOB_ID"
+          {
+            echo
+            echo '## Authoritative CI'
+            echo "- run: ${GITHUB_RUN_ID}"
+            echo "- job: ${JOB_ID}"
+            echo "- artifact: ${ARTIFACT_ID}"
+            echo "- artifact digest: ${ARTIFACT_DIGEST}"
+            echo '- acceptance: CI ACCEPTED — bounded replay/CI-only discrepancy audit; production untouched.'
+          } >> .general-audit-output/report.md
+          git fetch origin feature/wwm-native-sync-v2
+          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
+          mkdir -p "$(dirname "$REPORT_PATH")"
+          cp .general-audit-output/report.md "$REPORT_PATH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH"
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = "$REPORT_PATH"
+          git commit -m 'docs(wwmsync): record General Shrine map-state audit [skip ci]'
+          git push origin HEAD:feature/wwm-native-sync-v2
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$ARTIFACT_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "final_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          cat .general-audit-output/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Final acceptance marker
+        shell: bash
+        env:
+          JOB_ID: ${{ steps.final.outputs.job_id }}
+          ARTIFACT_ID: ${{ steps.final.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ steps.final.outputs.artifact_digest }}
+          FINAL_HEAD: ${{ steps.final.outputs.final_head }}
+        run: |
+          set -euo pipefail
+          echo "Authoritative run: ${GITHUB_RUN_ID}"
+          echo "Authoritative job: ${JOB_ID}"
+          echo "Authoritative artifact: ${ARTIFACT_ID}"
+          echo "Artifact digest: ${ARTIFACT_DIGEST}"
+          echo "Final branch HEAD: ${FINAL_HEAD}"
+          echo 'Acceptance: CI ACCEPTED — General Shrine discrepancy audit exhausted within bounded replay-only scope; production unchanged.'
