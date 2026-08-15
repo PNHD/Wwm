@@ -1,0 +1,108 @@
+{
+  "schema": "wwmsync-temporal-representation-stability-preregistration-v1",
+  "status": "FROZEN_BEFORE_TEMPORAL_OUTCOME_COMPARISON",
+  "startingHead": "f55110772baeccb18d3b40c3e7fa381244d03ae7",
+  "productionGuards": {
+    "visionSyncBlob": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashenTileCacheBlob": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "visualCacheBuilderBlob": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structuralGate": 0.58,
+    "intensityGate": 0.42,
+    "coarseBeam": 8,
+    "productionChangeAuthorized": false
+  },
+  "bundle": {
+    "sha256": "8773a3ac685482c2ba3cee57634512dcbfc332e705339ea53ac1e46aee285271",
+    "manifestSha256": "024972956d7dbf71d8ceb476365eb3b6ca1442256dd27350ee974d3e4749ca18",
+    "sourceVideoFile": "record_2026-08-15_13-53-52.mp4",
+    "sourceVideoSha256": "a6417900887a6dddff09a09f2d254dfecd3a3943044e7116dd743783932061b7",
+    "sourceVideoVerification": "provenance declaration from deterministic derivative bundle; original MP4 is not required as new acquisition evidence",
+    "frameGeneratedFromMatcherOutcome": false
+  },
+  "validityFreeze": {
+    "criteria": [
+      "world map closed",
+      "minimap visible",
+      "no teleport/loading transition",
+      "no obvious modal UI covering ROI",
+      "no gross frame corruption"
+    ],
+    "default": "KEEP",
+    "decidedWithoutMatcherScore": true,
+    "sequences": {
+      "path-of-void": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"},
+      "buddha-fort": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"},
+      "general-shrine-repeat": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"},
+      "prosperity-haven": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"},
+      "ethereal-chamber": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"},
+      "dreamfall-cliff": {"valid": [true,true,true,true,true,true,true,true,true], "offsetsSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0], "exclusions": [], "reason": "KEEP: world map closed; minimap visible; no loading/teleport/modal coverage or gross corruption in ROI"}
+    }
+  },
+  "knownGt": {
+    "path-of-void": {"pointId": 20121, "mapId": 1, "region": "Qinghe", "z5": [5662.35270309106,3599.42210726817]},
+    "buddha-fort": {"pointId": 20119, "mapId": 1, "region": "Qinghe", "z5": [6150.319157894736,3719.750105931495]},
+    "general-shrine-repeat": {"pointId": 20102, "mapId": 1, "region": "Qinghe", "z5": [6015.017126148705,3889.360588972433]},
+    "prosperity-haven": {"pointId": 20264, "mapId": 2, "region": "Kaifeng", "z5": [4959.193804824561,4487.057644110276]},
+    "dreamfall-cliff": {"pointId": 20240, "mapId": 2, "region": "Kaifeng", "z5": [5054.117319966583,5032.292689055973]}
+  },
+  "ethereal": {"slug": "ethereal-chamber", "status": "NOT_EVALUABLE_REFERENCE_FAMILY", "floor": 2, "gtEvaluationForbidden": true},
+  "temporalFamily": {
+    "TEMP-A": {
+      "name": "PIXEL MEDOID",
+      "pixelDistance": "L1 sum of absolute RGB differences on 270x270 source ROI",
+      "tieBreak": "earliest temporal offset",
+      "syntheticPixels": false
+    },
+    "TEMP-B": {
+      "name": "PIXELWISE TEMPORAL MEDIAN",
+      "operation": "per-pixel per-RGB-channel median across all valid 270x270 frames; exact uint8 median for odd frame count"
+    },
+    "TEMP-C": {
+      "name": "MAJORITY SPATIAL CANDIDATE CONSENSUS",
+      "clusterRadiusZ5": 96.0,
+      "clustering": "undirected connected components over unchanged-production finalist locations with an edge for Euclidean z5 distance <= 96",
+      "primaryRank": "distinct-frame persistence descending",
+      "secondaryRank": ["median original combined descending", "median original scale-aware structure descending", "cluster medoid x ascending", "cluster medoid y ascending"],
+      "scoreMultiplication": false
+    },
+    "TEMP-D": {
+      "name": "GT-BLIND TEMPORAL EVIDENCE MEDIAN",
+      "clusterRadiusZ5": 96.0,
+      "clusterSource": "same fixed spatial clusters as TEMP-C",
+      "perFrameDedup": "within a cluster retain the candidate with highest original combined; ties by scale-aware then x then y",
+      "aggregates": ["median scale-aware structure", "median intensity", "median NCC", "median combined"],
+      "primaryRank": "median original combined descending",
+      "secondaryRank": ["distinct-frame persistence descending", "median original scale-aware structure descending", "cluster medoid x ascending", "cluster medoid y ascending"],
+      "gtUsedForConstruction": false
+    }
+  },
+  "evaluationFreeze": {
+    "correctBasinToleranceZ5": 60.0,
+    "structuralPositiveDefinition": "scale-aware structure >= 0.58",
+    "wrongBasinDefinition": "candidate center farther than 60 z5 px from known GT",
+    "materialDiscriminationDelta": 0.01,
+    "survivorRule": {
+      "minimumKnownGtControlsImproved": 3,
+      "requiresBothRegions": true,
+      "requiresGeneralCorrectPreferred": true,
+      "forbidAcceptedWrongIncrease": true,
+      "improvement": "correct-vs-wrong combined margin delta >= 0.01 against raw center frame",
+      "noMaterialRegression": "no known-GT control margin worsens by more than 0.02"
+    },
+    "stressRule": "run exact 40-frame GFN stress only for one method satisfying survivorRule; if multiple survive, choose highest improved-control count, then median margin delta, then fixed order TEMP-A,TEMP-B,TEMP-C,TEMP-D",
+    "generalClassification": {
+      "G-STABLE-LOW": "all valid nearby raw frames remain below 0.58 and no common temporal method satisfies survivorRule",
+      "G-MIXED": "valid nearby raw frames cross 0.58 or materially oscillate in matcher state without a shared survivor",
+      "G-TEMPORAL-RECOVERABLE": "a shared temporal method satisfies survivorRule and stabilizes General with correct-preferred evidence"
+    }
+  },
+  "antiOverfit": [
+    "no per-location temporal window",
+    "no per-location cluster radius",
+    "no frame selected by GT score",
+    "no passing-frame subset",
+    "no threshold or weight changes",
+    "no common-bridge retuning",
+    "no learned model"
+  ]
+}
