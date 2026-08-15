@@ -34,7 +34,7 @@ jobs:
           rm -rf owner-gfn-source
           mkdir -p owner-gfn-source/site owner-gfn-source/tools
           cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt owner-gfn-source/site/
-          cp tools/instrument-candidate-recall-forensic.mjs tools/run-candidate-recall-forensic.mjs tools/build_dashen_visual_cache.py owner-gfn-source/tools/
+          cp tools/instrument-candidate-recall-forensic.mjs tools/run-candidate-recall-forensic.mjs tools/instrument-candidate-recall-fine-stage-trace.mjs tools/run-candidate-recall-fine-stage-trace.mjs tools/build_dashen_visual_cache.py owner-gfn-source/tools/
           python tools/build_dashen_visual_cache.py owner-gfn-source/site/dashen-cache
           test -s owner-gfn-source/site/dashen-cache/manifest.json
           git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
