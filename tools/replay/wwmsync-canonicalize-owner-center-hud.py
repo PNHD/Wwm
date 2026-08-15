@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import base64, hashlib, json, os, re, subprocess
+import base64, hashlib, json, os, subprocess
 from pathlib import Path
 from PIL import Image
 
@@ -26,12 +26,12 @@ def verify_guards():
   if got!=want: raise SystemExit(f'protected blob mismatch {path}: {got}')
  text=Path('vision-sync.js').read_text(errors='replace')
  checks={
-  'structuralGate0.58':r'(?is)structur[a-zA-Z0-9_]*.{0,120}?0\.58',
-  'intensityGate0.42':r'(?is)intens[a-zA-Z0-9_]*.{0,120}?0\.42',
-  'coarseBeam8':r'(?is)(?:coarse.{0,40}?beam|beam.{0,40}?coarse).{0,120}?\b8\b',
+  'structuralGate0.58':'if(fine.scaleScore<.58)',
+  'intensityGate0.42':'if(fine.intensityScore<.42)',
+  'coarseBeam8':'COARSE_BEAM=8',
  }
- for name,pat in checks.items():
-  if not re.search(pat,text): raise SystemExit(f'production guard value not found: {name}')
+ for name,literal in checks.items():
+  if literal not in text: raise SystemExit(f'production guard literal not found: {name}: {literal}')
  return {'startingHead':START,'setupHead':sh('git','rev-parse','HEAD'),'protectedBlobSha1':PROTECTED,'structuralGate':0.58,'intensityGate':0.42,'coarseBeam':8}
 
 def fetch_git_blob(repo,oid):
