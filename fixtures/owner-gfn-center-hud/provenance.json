@@ -1,0 +1,30 @@
+{
+  "schema": "wwmsync-owner-center-hud-fixture-provenance-v1",
+  "createdFor": "DOMAIN-INVARIANT STRUCTURAL DESCRIPTOR AUDIT",
+  "evidenceClass": "replay-ci-only-existing-owner-recording-derived",
+  "sourcePackage": {
+    "uploadedName": "wwmsync_owner_center_hud_fixtures.zip",
+    "receivedName": "wwmsync_owner_center_hud_fixtures(1).zip",
+    "zipSha256": "b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad",
+    "embeddedManifestSha256": "4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0",
+    "sourceExtractionZipSha256": "42239cf136a5938757e281862116fdf48b1452e2e89a3e1d0383a19ef3f154a8",
+    "note": "Six deterministic 270x270 center-HUD crops from already acquired owner recording; no new acquisition evidence. Full recording and temporal ZIP are not transported."
+  },
+  "pixelTruth": {
+    "dimensions": [270,270],
+    "decodedMode": "RGB",
+    "decodedRgbBytes": 218700,
+    "encodedFormat": "lossless WebP",
+    "rgb8HashDefinition": "SHA-256 over exactly width*height*3 decoded bytes in RGB channel order",
+    "taskPromptHashCompatibility": "The six values labelled raw RGB in the task equal SHA-256 over identical decoded pixels expanded deterministically to RGBA with alpha=255. CI verifies true RGB8 and this RGBA255 compatibility hash; nomenclature mismatch is not treated as a pixel mismatch.",
+    "failureRule": "Any WebP SHA, 270x270 size, RGB mode, true RGB8 SHA, RGBA255 compatibility SHA, or canonical Git blob SHA mismatch is a hard failure."
+  },
+  "fixtures": [
+    {"id":"path-of-void","file":"path-of-void.webp","region":"Qinghe","evaluation":"OWNER_UNIQUE","webpSha256":"7e1e3624c35faf6b6bd1985b01305ddddae8908ab39015789849a26f1b4b3312","rgb8Sha256":"4eab113c1b4957aadbacd9e9322b4bca6a5e64a42506254b2a86bd16a3283e8b","taskPromptRgba255CompatibilitySha256":"26ea06c21b17398483d6bbc2802ce55fb94e05e1f334ebc771bea1aa14551a1d","expectedCanonicalGitBlobSha1":"e8ae97298373b656ae108c29a86ffa08d2ae5311"},
+    {"id":"buddha-fort","file":"buddha-fort.webp","region":"Qinghe","evaluation":"OWNER_UNIQUE","webpSha256":"3287e05bee1ad49a4428f99566efad1d4ef9c417c893445478d44a274900eb3d","rgb8Sha256":"6e2354e0fbbdb0e8909ab068e5e81ebc8e9177429730348ea5fc0648eb2030ab","taskPromptRgba255CompatibilitySha256":"7b40f9a6dc1bf9f0b1140f70b90908840e8dc1978d2325c3ea1164db3d568829","expectedCanonicalGitBlobSha1":"e59b7bc796911c27e6381131dafebf698b267d57"},
+    {"id":"general-shrine-repeat","file":"general-shrine-repeat.webp","region":"Qinghe","evaluation":"SAME_LOCATION_DRIFT","webpSha256":"981c3f7f003afed7220fba642c13638ae7f2b693bd7c64729a2f2418db528aae","rgb8Sha256":"316c82b048c7648bb4bdbc7cc947841ba9377d9d3a8475a5864c5425f12c6c0c","taskPromptRgba255CompatibilitySha256":"17c9610576fc8a717e713197a7d056aaf5d89b4917fb86e9e9fefe25f8f554d0","expectedCanonicalGitBlobSha1":"e16ed2937ae6b451be3ee6733a176c22e3db510b"},
+    {"id":"prosperity-haven","file":"prosperity-haven.webp","region":"Kaifeng","evaluation":"OWNER_UNIQUE","webpSha256":"27a60aaeecb8cd23f5e6b2606cada4870c0188b982a5ab6a4e630d6b829ede04","rgb8Sha256":"fa3c14eccb87a699437d5cff4bf5ad2bdb5452380de7fb197fc74ea0a268359f","taskPromptRgba255CompatibilitySha256":"54a0b99f54bb338c7620a6935e5adbee5873523631a544116d080662b043da98","expectedCanonicalGitBlobSha1":"c26fdda27147a3963c4ef94898ca2236dd8c123d"},
+    {"id":"ethereal-chamber","file":"ethereal-chamber.webp","region":"Kaifeng","evaluation":"NOT_EVALUABLE_REFERENCE_FAMILY","webpSha256":"cc32115cf9e07210073fbed0d3ea55a81bac443394a5f1ff9cbb062355c91588","rgb8Sha256":"a4632d84b1fc33859496df6e7486e108eb48be692229efaa3a789508fc93e6e1","taskPromptRgba255CompatibilitySha256":"f8e937c8b95217d02c4f26353d2b2bd763807ef60be59c4d5322cdda68cca3c2","expectedCanonicalGitBlobSha1":"a2ee11e46f10902ff8b19d83d1fa9fa640427394"},
+    {"id":"dreamfall-cliff","file":"dreamfall-cliff.webp","region":"Kaifeng","evaluation":"OWNER_UNIQUE","webpSha256":"8e3b6ac88496b69460fc67c2906e57fcaf83290746c3efa76d8464efc7c38ec0","rgb8Sha256":"570fe95bab0a55eb907e2703549daac2a04a536b217caf301f793c8f3561c335","taskPromptRgba255CompatibilitySha256":"27d7a56fabff0623a96b4a29cf8833e03f68a17d09e9a73c88f85b5fa5d43ccc","expectedCanonicalGitBlobSha1":"93182a8715ed3679500b2379425e16b3ece9ffd6"}
+  ]
+}
