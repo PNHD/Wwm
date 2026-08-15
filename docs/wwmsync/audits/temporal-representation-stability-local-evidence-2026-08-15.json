@@ -1,0 +1,225 @@
+{
+  "schema": "wwmsync-temporal-representation-stability-local-evidence-v1",
+  "status": "LOCAL_REPLAY_DECISION_EVIDENCE_COMPLETE__AUTHORITATIVE_CI_BLOCKED_BY_ATTACHMENT_TRANSPORT",
+  "startingHeadVerified": "f55110772baeccb18d3b40c3e7fa381244d03ae7",
+  "preregistrationCommit": "7a976e38e9503c81ce0d08216ee47e493c08b947",
+  "scope": {
+    "replayCiOnly": true,
+    "productionChange": false,
+    "productionImplementationAuthorized": false,
+    "localNumbersAreAuthoritativeCi": false,
+    "browserRasterBitIdentityClaim": false,
+    "decisionUse": "within-run temporal stability, fixed-family rescue/unsafe behavior, and whether a method qualifies for phase-9 stress"
+  },
+  "productionGuards": {
+    "visionSyncBlob": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashenTileCacheBlob": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "visualCacheBuilderBlob": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structuralGate": 0.58,
+    "intensityGate": 0.42,
+    "coarseBeam": 8,
+    "modified": false
+  },
+  "bundle": {
+    "file": "wwmsync_temporal_hud_bundle.zip",
+    "sha256VerifiedLocally": "8773a3ac685482c2ba3cee57634512dcbfc332e705339ea53ac1e46aee285271",
+    "manifestSha256VerifiedLocally": "024972956d7dbf71d8ceb476365eb3b6ca1442256dd27350ee974d3e4749ca18",
+    "sourceVideo": "record_2026-08-15_13-53-52.mp4",
+    "sourceVideoSha256": "a6417900887a6dddff09a09f2d254dfecd3a3943044e7116dd743783932061b7",
+    "roiHashesVerified": "54/54",
+    "dimensionsVerified": "54/54 = 270x270",
+    "captureGroupingVerified": "6 x 9",
+    "offsetsVerifiedSec": [-1.0,-0.75,-0.5,-0.25,0.0,0.25,0.5,0.75,1.0],
+    "matcherOutcomeUsedToGenerateFrame": false,
+    "newAcquisitionEvidence": false
+  },
+  "validityFreeze": {
+    "matcherIndependent": true,
+    "keptFrames": 54,
+    "excludedFrames": 0,
+    "masks": {
+      "path-of-void": [true,true,true,true,true,true,true,true,true],
+      "buddha-fort": [true,true,true,true,true,true,true,true,true],
+      "general-shrine-repeat": [true,true,true,true,true,true,true,true,true],
+      "prosperity-haven": [true,true,true,true,true,true,true,true,true],
+      "ethereal-chamber": [true,true,true,true,true,true,true,true,true],
+      "dreamfall-cliff": [true,true,true,true,true,true,true,true,true]
+    },
+    "exclusions": []
+  },
+  "authoritativeCenterReference": {
+    "source": "owner-gfn-post-acquisition-evidence-2026-08-15.json",
+    "generalRepeatScaleAware": 0.5086483271335666,
+    "historicalGeneralScaleAwareApprox": 0.5999,
+    "note": "local browser/raw-canvas replay is not asserted bit-identical to the authoritative center run; center mechanism/failure class was reproduced but local absolute score values are used only for same-run temporal comparisons"
+  },
+  "knownGtTemporalLocalLandscape": {
+    "method": "unchanged production structural/intensity semantics at frozen GT; same local replay path for every valid frame",
+    "structuralPositiveThreshold": 0.58,
+    "allKnownGtFrames": 45,
+    "structuralPositiveFrames": 0,
+    "sequences": {
+      "path-of-void": {
+        "region": "Qinghe",
+        "gtZ5": [5662.35270309106,3599.42210726817],
+        "validFrames": 9,
+        "medoidOffsetSec": -0.75,
+        "scaleAware": {"mean":0.5394,"median":0.5395,"min":0.5384,"max":0.5401,"aboveGate":0},
+        "intensity": {"mean":0.4385,"median":0.4388,"min":0.4377,"max":0.4391},
+        "nccVariance": 3.2964567081302834e-7,
+        "combinedVariance": 2.3934462957109347e-7,
+        "discrimination": {"mean":0.0267,"median":0.0265,"min":0.0256,"max":0.0285},
+        "poseAnglesDeg": [0],
+        "radii": [112]
+      },
+      "buddha-fort": {
+        "region": "Qinghe",
+        "gtZ5": [6150.319157894736,3719.750105931495],
+        "validFrames": 9,
+        "medoidOffsetSec": 0.5,
+        "scaleAware": {"mean":0.5334,"median":0.5336,"min":0.5324,"max":0.5345,"aboveGate":0},
+        "intensity": {"mean":0.3708,"median":0.3702,"min":0.3688,"max":0.3742},
+        "nccVariance": 4.555743492408348e-6,
+        "combinedVariance": 3.426033674030133e-7,
+        "discrimination": {"mean":0.0134,"median":0.0136,"min":0.0111,"max":0.0157},
+        "poseAnglesDeg": [180],
+        "radii": [48]
+      },
+      "general-shrine-repeat": {
+        "region": "Qinghe",
+        "gtZ5": [6015.017126148705,3889.360588972433],
+        "validFrames": 9,
+        "medoidOffsetSec": 0.25,
+        "scaleAware": {"mean":0.5032,"median":0.5031,"min":0.5017,"max":0.5046,"aboveGate":0},
+        "intensity": {"mean":0.4731,"median":0.4732,"min":0.4729,"max":0.4733},
+        "nccVariance": 2.2127071552424336e-8,
+        "combinedVariance": 9.864646351861295e-7,
+        "discrimination": {"mean":0.0026,"median":0.0023,"min":0.0016,"max":0.0036},
+        "poseAnglesDeg": [180],
+        "radii": [32],
+        "interpretation": "center is not a nearby-frame outlier; this repeat window is stably structurally weak"
+      },
+      "prosperity-haven": {
+        "region": "Kaifeng",
+        "gtZ5": [4959.193804824561,4487.057644110276],
+        "validFrames": 9,
+        "medoidOffsetSec": 0.25,
+        "scaleAware": {"mean":0.5547,"median":0.5545,"min":0.5540,"max":0.5559,"aboveGate":0},
+        "intensity": {"mean":0.4406,"median":0.4407,"min":0.4403,"max":0.4408},
+        "nccVariance": 3.5251892161549415e-8,
+        "combinedVariance": 2.933518324356263e-7,
+        "discrimination": {"mean":0.0560,"median":0.0553,"min":0.0550,"max":0.0580},
+        "poseAnglesDeg": [180],
+        "radii": [32]
+      },
+      "dreamfall-cliff": {
+        "region": "Kaifeng",
+        "gtZ5": [5054.117319966583,5032.292689055973],
+        "validFrames": 9,
+        "medoidOffsetSec": -0.75,
+        "scaleAware": {"mean":0.4984,"median":0.4935,"min":0.4901,"max":0.5172,"aboveGate":0},
+        "intensity": {"mean":0.1944,"median":0.2000,"min":0.1030,"max":0.2269},
+        "nccVariance": 0.0020721574663143216,
+        "combinedVariance": 0.00006966007943187078,
+        "discrimination": {"mean":-0.0381,"median":-0.0386,"min":-0.0669,"max":0.0001},
+        "poseAnglesDegByFrame": [270,300,300,300,180,300,330,270,270],
+        "radiiByFrame": [64,32,32,32,32,32,112,64,64],
+        "interpretation": "render/pose state is volatile, but it never crosses the structural gate and wrong local evidence often remains stronger"
+      }
+    }
+  },
+  "TEMP_A": {
+    "name": "PIXEL MEDOID",
+    "result": "NO_COMMON_RESCUE",
+    "knownGt": {
+      "path-of-void": {"scaleAware":0.5383566661,"combined":0.5303392091,"discrimination":0.0255624329,"strongestWrong":0.5047767762},
+      "buddha-fort": {"scaleAware":0.5345365125,"combined":0.5214134693,"discrimination":0.0150713975,"strongestWrong":0.5063420719},
+      "general-shrine-repeat": {"scaleAware":0.5027383217,"combined":0.5003745048,"discrimination":0.0020047380,"strongestWrong":0.4983697667},
+      "prosperity-haven": {"scaleAware":0.5552596441,"combined":0.5460759355,"discrimination":0.0566993218,"strongestWrong":0.4893766136},
+      "dreamfall-cliff": {"scaleAware":0.4904558400,"combined":0.4693636380,"discrimination":-0.0662076220,"strongestWrong":0.5355712590}
+    },
+    "structuralGateReached": "0/5"
+  },
+  "TEMP_B": {
+    "name": "PIXELWISE TEMPORAL MEDIAN",
+    "result": "NO_COMMON_RESCUE",
+    "knownGt": {
+      "path-of-void": {"scaleAware":0.5391011552,"combined":0.5310468742,"discrimination":0.0260897307,"strongestWrong":0.5049571435},
+      "buddha-fort": {"scaleAware":0.5338081618,"combined":0.5207904521,"discrimination":0.0138869744,"strongestWrong":0.5069034777},
+      "general-shrine-repeat": {"scaleAware":0.5033614553,"combined":0.5009448759,"discrimination":0.0026467362,"strongestWrong":0.4982981397},
+      "prosperity-haven": {"scaleAware":0.5551829262,"combined":0.5460249095,"discrimination":0.0568235481,"strongestWrong":0.4892013615},
+      "dreamfall-cliff": {"scaleAware":0.4898788740,"combined":0.4687576790,"discrimination":-0.0665798430,"strongestWrong":0.5353375220}
+    },
+    "structuralGateReached": "0/5"
+  },
+  "TEMP_C": {
+    "name": "MAJORITY SPATIAL CANDIDATE CONSENSUS",
+    "clusterRadiusZ5": 96.0,
+    "result": "UNSAFE_PERSISTENT_WRONG_BASINS",
+    "candidateLevel": "unchanged-production coarse candidate hypotheses; persistence primary exactly as preregistered",
+    "knownGt": {
+      "path-of-void": {"topClusterPersistence":"9/9","topClusterZ5":[5340.8,3740.8],"gtDistanceApprox":351.3,"medianRankScore":0.6345,"medianScaleScore":0.6335,"correctWithin60":false},
+      "buddha-fort": {"topClusterPersistence":"9/9","topClusterZ5":[5340.8,3740.8],"gtDistanceApprox":809.8,"medianRankScore":0.6631,"medianScaleScore":0.6549,"nearestClusterGtDistanceApprox":168.2,"nearestClusterPersistence":"9/9","correctWithin60":false},
+      "general-shrine-repeat": {"topClusterPersistence":"9/9","topClusterZ5":[5516.8,3324.8],"gtDistanceApprox":753.0,"medianRankScore":0.6837,"medianScaleScore":0.6692,"nearestClusterGtDistanceApprox":293.9,"nearestClusterPersistence":"9/9","correctWithin60":false},
+      "prosperity-haven": {"topClusterPersistence":"9/9","topClusterZ5":[4908.8,5132.8],"gtDistanceApprox":647.7,"correctWithin60":false},
+      "dreamfall-cliff": {"topClusterPersistence":"9/9","topClusterZ5":[4956.8,5132.8],"gtDistanceApprox":139.9,"medianRankScore":0.6865,"medianScaleScore":0.6721,"correctWithin60":false}
+    },
+    "interpretation": "temporal persistence hardens wrong spatial basins rather than rescuing known GT; this is sufficient to reject TEMP-C"
+  },
+  "TEMP_D": {
+    "name": "GT-BLIND TEMPORAL EVIDENCE MEDIAN",
+    "result": "NOT_COMPLETED_AT_FULL_FINE_CANDIDATE_LEVEL",
+    "why": "the conversation attachment bytes are available to local replay but cannot be transferred as a binary/file parameter through the available GitHub write connector into the authoritative Actions runner; local full-fine 54-frame rerun was not completed before publication",
+    "decisionEffect": "does not create a survivor; TEMP-A/B already fail common rescue and TEMP-C is unsafe. No phase-9 method qualifies under the frozen survivor rule.",
+    "notClaimed": ["no exact TEMP-D fine-cluster winner", "no CI-accepted per-frame finalist median", "no production acceptance"]
+  },
+  "etherealRobustness": {
+    "gtEvaluation": false,
+    "rclAssignment": null,
+    "absoluteLocalizationClaim": false,
+    "coarseClusters": 3,
+    "topClusterPersistence": "9/9",
+    "topClusterZ5ForRobustnessOnly": [4956.8,5132.8],
+    "medianRankScore": 0.6751,
+    "medianScaleScore": 0.6659,
+    "observation": "persistent candidate identity exists even without evaluable GT; its alias with Dreamfall's dominant coarse basin is a safety warning, not an Ethereal localization claim"
+  },
+  "generalStabilityClassification": "G-STABLE-LOW",
+  "generalStabilityBasis": {
+    "nearbyFramesCross058": false,
+    "nearbyScaleRange": [0.5017,0.5046],
+    "TEMP_A_scale": 0.5027383217,
+    "TEMP_B_scale": 0.5033614553,
+    "sharedTemporalSurvivor": false
+  },
+  "decision": {
+    "verdict": "TS3 — TEMPORAL UNSAFE",
+    "basis": [
+      "45/45 known-GT nearby frames remain structural-negative under the same local replay path",
+      "General repeat is stably low inside the continuous capture, so the new center is not a nearby-frame outlier",
+      "TEMP-A and TEMP-B do not recover the structural gate on any known-GT control",
+      "TEMP-C produces 9/9-persistent wrong dominant basins on all five known-GT sequences",
+      "there is no frozen temporal method satisfying the preregistered cross-location survivor rule"
+    ],
+    "phase9Stress": "SKIPPED_BY_PREREGISTERED_RULE_NO_SURVIVOR",
+    "productionChangeJustified": "NO",
+    "productionCandidateTaskJustified": "NO",
+    "architectureImplication": "single-frame temporal instability is not a sufficient explanation; simple deterministic temporal persistence/aggregation is not a safe rescue. A different representation/scoring architecture is required if research continues."
+  },
+  "ciAcceptance": {
+    "authoritativeRun": null,
+    "authoritativeJob": null,
+    "artifact": null,
+    "artifactDigest": null,
+    "status": "NOT_CI_ACCEPTED",
+    "blocker": "the exact 2.5 MB conversation-attached temporal ZIP has no connector-supported binary upload/file parameter into the GitHub repository or Actions artifact store; inventing a URL, weakening bundle-SHA verification, or replacing the exact bytes would violate phase 0",
+    "ownerActionRequested": false,
+    "newRecordingRequested": false
+  },
+  "acceptanceGaps": [
+    "authoritative Actions runner did not receive and re-hash the exact attached ZIP",
+    "all full per-frame fine-stage metrics were not republished in CI artifact form",
+    "TEMP-D was not completed at full fine-candidate cluster level",
+    "there are therefore no truthful authoritative CI coordinates to report"
+  ]
+}
