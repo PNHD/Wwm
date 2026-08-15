@@ -1,0 +1,231 @@
+name: WWMSync Existing Signal Separability Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-existing-signal-separability-audit.yml'
+      - 'tools/audit_wwmsync_signal_separability.py'
+      - 'docs/wwmsync/audits/existing-signal-separability-preregistration-2026-08-15.json'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  START_HEAD: 'f8df34ba99321e97cf55e3981556807a62c6434f'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  PREREG_PATH: 'docs/wwmsync/audits/existing-signal-separability-preregistration-2026-08-15.json'
+  REPORT_PATH: 'docs/wwmsync/audits/existing-signal-separability-score-architecture-forensic-2026-08-15.md'
+  CANDIDATE_SPEC: '31769654943,94672779698,9207636803,sha256:415cef6cafe43a2509b1b541c8f2f2e3d72cbb835cca5505f124f65955062ed0,2a29cb9d2cd5ba871dd4bde7107640d12c8a24d6'
+  FINE_SPEC: '31768239431,94668491244,9207148249,sha256:ce858250c81ee3adf6efa9704a9cd22f87e7ffa2dde0c5c2ae9d9b9f9ee1ac39,2c17d8101e64cb1701dd7423bec114fcb8df9981'
+  GENERAL_SPEC: '31761799973,94649553868,9204882854,sha256:6233d52dbd710380a5650793817130536544e6dffeb9c5a32a6ef8e807d80026,f3bb0f624c2c1a0f20557ca32bd12e01ffaa8f09'
+  BRIDGE_SPEC: '31764340615,94657000684,9205755503,sha256:cb0b0f2a3eac0ee8b8993c1aed8bf17799e52433f58f145146688deb1667f7c4,1d59cdb4665145ef203ba95ccecba7eaec5199dc'
+  OWNER_SPEC: '31872599823,94983436586,9243841549,sha256:e7786742e2e355c0d16d42d94b383db2f2a489e818a61dd955420f1aa0072b7a,f55110772baeccb18d3b40c3e7fa381244d03ae7'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/wwm-native-sync-v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify starting HEAD, preregistration order, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_HEAD" "$GITHUB_SHA"
+          FIRST_AUDIT_COMMIT="$(git rev-list --reverse "$START_HEAD..$GITHUB_SHA" | head -n1)"
+          test -n "$FIRST_AUDIT_COMMIT"
+          test "$(git diff-tree --no-commit-id --name-only -r "$FIRST_AUDIT_COMMIT" | wc -l)" -eq 1
+          test "$(git diff-tree --no-commit-id --name-only -r "$FIRST_AUDIT_COMMIT")" = "$PREREG_PATH"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
+          grep -Fq 'COARSE_BEAM=8' vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'fine.beamMargin<.010' vision-sync.js
+          git diff --exit-code "$START_HEAD..$GITHUB_SHA" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          python -m py_compile tools/audit_wwmsync_signal_separability.py
+          python - <<'PY'
+          import json, os
+          p=json.load(open(os.environ['PREREG_PATH'],encoding='utf8'))
+          assert p['status']=='FROZEN_BEFORE_SCORE_FAMILY_COMPARATIVE_EVALUATION'
+          assert p['taskStartingHead']==os.environ['START_HEAD']
+          assert p['productionGuards']['structuralGate']==.58
+          assert p['productionGuards']['intensityGate']==.42
+          assert p['productionGuards']['coarseBeam']==8
+          assert p['safety']['weightFitting'] is False
+          assert p['safety']['thresholdOptimization'] is False
+          assert p['safety']['productionImplementation'] is False
+          print('starting head / preregistration / production guards PASS')
+          PY
+
+      - name: Download and verify authoritative historical artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ss-input ss-output
+          mkdir -p ss-input ss-output
+          python - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,zipfile
+          specs={k:os.environ[k+'_SPEC'] for k in ['CANDIDATE','FINE','GENERAL','BRIDGE','OWNER']}
+          provenance={}
+          for key,spec in specs.items():
+              run,job,artifact,digest,head=spec.split(','); job=int(job); artifact=int(artifact); lower=key.lower()
+              jobs=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run}/jobs'],text=True))['jobs']
+              hit=[j for j in jobs if j['id']==job]
+              assert len(hit)==1 and hit[0]['conclusion']=='success',(key,hit)
+              meta=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/artifacts/{artifact}'],text=True))
+              assert str(meta['workflow_run']['id'])==run
+              assert meta['workflow_run']['head_sha']==head
+              assert meta['digest']==digest and meta['expired'] is False
+              z=pathlib.Path('ss-input')/(lower+'.zip')
+              with z.open('wb') as f:
+                  subprocess.run(['gh','api','-H','Accept: application/vnd.github+json',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/artifacts/{artifact}/zip'],stdout=f,check=True)
+              actual='sha256:'+hashlib.sha256(z.read_bytes()).hexdigest()
+              assert actual==digest,(key,actual,digest)
+              dest=pathlib.Path('ss-input')/lower; dest.mkdir(); zipfile.ZipFile(z).extractall(dest)
+              provenance[lower]={'run':int(run),'job':job,'artifact':artifact,'digest':digest,'head':head,'downloadSha256':actual}
+          pathlib.Path('ss-input/provenance.json').write_text(json.dumps(provenance,indent=2)+'\n')
+          PY
+          test -s ss-input/candidate/final-output/evidence.json
+          test -s ss-input/fine/fine-output/summary.json
+          test -s ss-input/fine/fine-output/east-cross.json
+          test -s ss-input/fine/fine-output/general-shrine.json
+          test -s ss-input/fine/fine-output/fang-xu.json
+          test -s ss-input/general/audit.json
+          test -s ss-input/bridge/final-evidence.json
+          test -s ss-input/owner/docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
+          cmp -s docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json ss-input/owner/docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
+
+      - name: Revalidate evidence compatibility and exclusions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          C=json.load(open('ss-input/candidate/final-output/evidence.json'))
+          O=json.load(open('docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json'))
+          G=json.load(open('ss-input/general/audit.json'))
+          B=json.load(open('ss-input/bridge/final-evidence.json'))
+          F=json.load(open('ss-input/fine/fine-output/summary.json'))
+          assert C['productionGuards']['structuralGate']==.58 and C['productionGuards']['coarseBeam']==8
+          assert set(C['controls'])=={'east-cross','general-shrine','fang-xu'}
+          assert O['frequency']['evaluableUniqueN']==6
+          assert O['controls']['ethereal-chamber']['status']=='NOT_EVALUABLE_REFERENCE_FAMILY'
+          assert O['repeatability']['classification']=='REPEAT-UNSTABLE'
+          assert G['decision']['verdict']=='R1 — REGISTRATION FALSE CONSENSUS'
+          assert G['decision']['production_change_justified'] is False
+          assert B['rawBaselineReproduction']['verdict']=='PASS'
+          assert B['finalDecision']['case']=='CASE B0'
+          assert {x['id'] for x in F['controls']}=={'east-cross','general-shrine','fang-xu'}
+          print('evidence compatibility PASS')
+          PY
+
+      - name: Resolve current job ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name=="audit") | .id' | head -n1)"
+          test -n "$JOB_ID"
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+
+      - name: Execute Pareto, overlap, drift, frozen S0-S5, LOCO, and safety audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/audit_wwmsync_signal_separability.py \
+            --candidate ss-input/candidate/final-output/evidence.json \
+            --fine ss-input/fine/fine-output/summary.json \
+            --owner docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json \
+            --general ss-input/general/audit.json \
+            --bridge ss-input/bridge/final-evidence.json \
+            --prereg "$PREREG_PATH" \
+            --output-dir ss-output \
+            --source-head "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --job-id "$JOB_ID"
+          test -s ss-output/evidence.json
+          test -s ss-output/candidate-table.json
+          test -s ss-output/candidate-table.csv
+          test -s ss-output/report.md
+          cp ss-input/provenance.json ss-output/input-provenance.json
+          sha256sum "$PREREG_PATH" > ss-output/preregistration.sha256
+          python - <<'PY'
+          import json
+          E=json.load(open('ss-output/evidence.json'))
+          assert E['classification']['verdict']=='SS0 — PRIMITIVE SIGNALS NON-SEPARABLE'
+          assert E['classification']['independentControlN']==7
+          assert len(E['classification']['dominatedIndependentControls'])==6
+          assert E['pareto']['general-shrine']['paretoDominatingWrongN']==0
+          assert E['pareto']['fang-xu']['paretoDominatingWrongN']>0
+          assert E['generalDrift']['classification']=='SD-DOMINANCE-FLIP'
+          assert E['productionChange']=='NO'
+          assert E['ruleSummary']['S2']['ownerCorrectRank1Count']==1
+          assert E['scoreResults']['general-shrine']['S2']['topLabel']=='CORRECT'
+          assert E['scoreResults']['fang-xu']['S2']['topLabel']=='WRONG'
+          assert E['excludedControls']['ethereal-chamber'].startswith('NOT_EVALUABLE_REFERENCE_FAMILY')
+          print('forensic acceptance invariants PASS')
+          PY
+
+      - name: Upload authoritative structured audit artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-existing-signal-separability-${{ github.run_id }}
+          path: |
+            ss-output/evidence.json
+            ss-output/candidate-table.json
+            ss-output/candidate-table.csv
+            ss-output/report.md
+            ss-output/input-provenance.json
+            ss-output/preregistration.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record authoritative coordinates and commit report only
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,pathlib
+          src=pathlib.Path('ss-output/report.md').read_text(encoding='utf8')
+          for a,b in {'@@RUN_ID@@':os.environ['GITHUB_RUN_ID'],'@@JOB_ID@@':os.environ['JOB_ID'],'@@ARTIFACT_ID@@':os.environ['ARTIFACT_ID'],'@@ARTIFACT_DIGEST@@':os.environ['ARTIFACT_DIGEST']}.items(): src=src.replace(a,b)
+          assert '@@' not in src
+          pathlib.Path(os.environ['REPORT_PATH']).write_text(src,encoding='utf8')
+          PY
+          git fetch origin feature/wwm-native-sync-v2
+          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
+          git diff --exit-code "$START_HEAD..$GITHUB_SHA" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH"
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = "$REPORT_PATH"
+          git commit -m 'docs(wwmsync): record signal separability forensic audit [skip ci]'
+          git push origin HEAD:feature/wwm-native-sync-v2
+
+      - name: Final acceptance marker
+        shell: bash
+        run: |
+          echo 'AUTHORITATIVE_CI_ACCEPTED=YES'
+          echo 'PRODUCTION_CHANGE=NO'
