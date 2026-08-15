@@ -1,0 +1,74 @@
+name: WWMSync Canonicalize Owner Center HUD Fixtures
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-owner-center-hud-canonicalize.yml'
+
+permissions:
+  contents: write
+
+env:
+  START_HEAD: '15a001b4227aea6f266f666528c009ef88c87183'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify lineage and protected production files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_HEAD" HEAD
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_HEAD..HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+      - name: Reconstruct and verify exact pixel fixtures
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          python tools/replay/wwmsync-canonicalize-owner-center-hud.py
+          python - <<'PY'
+          import json
+          p=json.load(open('owner-center-hud-canonicalization.json',encoding='utf8'))
+          assert p['status']=='PASS'
+          assert len(p['fixtures'])==6
+          assert all(x['size']==[270,270] and x['mode']=='RGB' for x in p['fixtures'])
+          print('pixel canonicalization PASS')
+          PY
+      - name: Commit exact normal tracked WebP fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin feature/wwm-native-sync-v2
+          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fixtures/owner-gfn-center-hud/*.webp
+          test "$(git diff --cached --name-only | wc -l)" -eq 6
+          git diff --cached --check
+          git commit -m 'fixtures(wwmsync): canonicalize owner center HUD pixels [skip ci]'
+          git push origin HEAD:feature/wwm-native-sync-v2
+          echo "FINAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Acceptance marker
+        run: |
+          echo 'CANONICAL_PIXEL_FIXTURES=PASS'
+          echo "FINAL_HEAD=${FINAL_HEAD}"
+          echo 'PRODUCTION_CHANGE=NO'
