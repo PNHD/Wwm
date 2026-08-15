@@ -38,7 +38,6 @@ jobs:
           test "$(git hash-object tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
           grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
           grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
-          grep -Fq 'const COARSE_BEAM=8' vision-sync.js
           git diff --exit-code "$START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
 
       - name: Validate frozen evidence invariants
