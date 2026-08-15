@@ -1,0 +1,48 @@
+name: WWMSync Owner GFN Replay Source Snapshot
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-owner-gfn-replay-source-snapshot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - name: Guard production and build immutable replay cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object vision-sync.js)" = "$VISION_BLOB"
+          test "$(git hash-object dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git hash-object tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          rm -rf owner-gfn-source
+          mkdir -p owner-gfn-source/site owner-gfn-source/tools
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt owner-gfn-source/site/
+          cp tools/instrument-candidate-recall-forensic.mjs tools/run-candidate-recall-forensic.mjs tools/build_dashen_visual_cache.py owner-gfn-source/tools/
+          python tools/build_dashen_visual_cache.py owner-gfn-source/site/dashen-cache
+          test -s owner-gfn-source/site/dashen-cache/manifest.json
+          git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          printf 'head=%s\nvision_blob=%s\ncache_blob=%s\nbuilder_blob=%s\nstructural_gate=0.58\n' "$(git rev-parse HEAD)" "$VISION_BLOB" "$CACHE_BLOB" "$CACHE_BUILDER_BLOB" > owner-gfn-source/guard.txt
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-owner-gfn-replay-source-${{ github.run_id }}
+          path: owner-gfn-source/
+          if-no-files-found: error
+          retention-days: 7
