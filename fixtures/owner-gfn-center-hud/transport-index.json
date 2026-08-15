@@ -1,0 +1,12 @@
+{
+  "schema":"wwmsync-owner-center-hud-git-blob-transport-v1",
+  "note":"Temporary transport provenance only. Canonical CI fetches these immutable Git blobs, verifies each blob SHA, concatenates ASCII base64 carriers, decodes exact WebP bytes, then commits normal tracked binary fixtures. No old temporal ZIP or full recording is transported.",
+  "fixtures":{
+    "path-of-void":["df0ba5a0bcab15585c68259ea19eba140f3f9059","275101991a7e869b5b120e1dd18be367cc025dcc"],
+    "buddha-fort":["9a650d6794fcd8bf29b8c1753ee53512c58865f8","2a6a8b23abe229f9119780bda98c0622a7a59df3"],
+    "general-shrine-repeat":["c89af0c7af583dd3f316a99d324457567c2075ab","6bad8cf4e1d46643b1241510a15c8d48a8e9eaf0"],
+    "prosperity-haven":["854c56fce59ec1ac1977ab0152c4a0d47bb070af","c0366568d25cea06af3d32c93b3ee2975a7a1f6d","45b57ac20331ba3ab0e0e0b415c2f6f89de2232a","0b1850c73cd4bc3a7879ed5f160999131f003fa5"],
+    "ethereal-chamber":["42cc3dca2aa707716212f9a458de3dc01a495383","493a026f6ce28b068ddb731aa5790445246877a9","9386e35daa0b64258ee4ca993ada50c823ee4f14","d1509e94ae6db50d24713388b7068038bb619b23","2866bb951c431527321476871ded1402f07c9532"],
+    "dreamfall-cliff":["f61022151efade573f1ffbe7d24a7258784afec6","ee060393898aad6ca4e869af7c26c61a8a42357e","07fe480b97e0c992c1cc002e9c467d3dc3ffd723","55ef6fe2b8b0addad274783b2fb7fc5b919f1f78","d68961261afef035d3a22005032b85742e2e65be"]
+  }
+}
