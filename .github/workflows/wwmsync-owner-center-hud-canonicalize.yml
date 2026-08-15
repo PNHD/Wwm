@@ -6,6 +6,7 @@ on:
     branches: [feature/wwm-native-sync-v2]
     paths:
       - '.github/workflows/wwmsync-owner-center-hud-canonicalize.yml'
+      - 'tools/replay/wwmsync-canonicalize-owner-center-hud.py'
 
 permissions:
   contents: write
