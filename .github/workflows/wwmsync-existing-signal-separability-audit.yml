@@ -125,7 +125,7 @@ jobs:
           G=json.load(open('ss-input/general/audit.json'))
           B=json.load(open('ss-input/bridge/final-evidence.json'))
           F=json.load(open('ss-input/fine/fine-output/summary.json'))
-          assert C['productionGuards']['structuralGate']==.58 and C['productionGuards']['coarseBeam']==8
+          assert C['productionGuards']['structuralGate']==.58 and C['actualProductionSearchGraph']['coarseBeam']==8
           assert set(C['controls'])=={'east-cross','general-shrine','fang-xu'}
           assert O['frequency']['evaluableUniqueN']==6
           assert O['controls']['ethereal-chamber']['status']=='NOT_EVALUABLE_REFERENCE_FAMILY'
