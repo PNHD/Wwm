@@ -1,0 +1,133 @@
+name: WWMSync Owner GFN Post-Acquisition Audit
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-owner-gfn-post-acquisition-audit.yml'
+      - 'docs/wwmsync/audits/owner-gfn-post-acquisition-forensic-2026-08-15.md'
+      - 'docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json'
+      - 'docs/wwmsync/audits/owner-gfn-post-acquisition-identity-gt-freeze-2026-08-15.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  START_HEAD: '9d2839909adb1739851acb7eb1e9c4fd97d43647'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/wwm-native-sync-v2
+
+      - name: Verify production guardrails unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object vision-sync.js)" = "$VISION_BLOB"
+          test "$(git hash-object dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git hash-object tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq "const CONTRACT='ANCHOR_FREE_STRUCTURAL_V11'" vision-sync.js
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'const COARSE_BEAM=8' vision-sync.js
+          git diff --exit-code "$START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+
+      - name: Validate frozen evidence invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+
+          root = pathlib.Path('.')
+          freeze_path = root / 'docs/wwmsync/audits/owner-gfn-post-acquisition-identity-gt-freeze-2026-08-15.json'
+          evidence_path = root / 'docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json'
+          report_path = root / 'docs/wwmsync/audits/owner-gfn-post-acquisition-forensic-2026-08-15.md'
+          freeze = json.loads(freeze_path.read_text(encoding='utf-8'))
+          evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
+          report = report_path.read_text(encoding='utf-8')
+
+          assert freeze['status'] == 'FROZEN_BEFORE_HUD_MATCHER_OUTCOME'
+          assert freeze['hudMatcherOutcomeInspectedBeforeFreeze'] is False
+          assert freeze['freezeParentHead'] == os.environ['START_HEAD']
+          assert freeze['denominatorFreeze']['plannedUniqueOwnerGfnN'] == 7
+          assert freeze['denominatorFreeze']['generalRepeatCountedInUniqueFrequency'] is False
+          assert freeze['denominatorFreeze']['evaluableUniqueOwnerGfnNIfFloor2ReferenceRemainsUnresolved'] == 6
+
+          assert evidence['start'] == os.environ['START_HEAD']
+          assert evidence['freeze'] == '8635dc4e9a65977e68ed884a01cd160acd852bf5'
+          assert evidence['sourceVideoShaDeclared'] == 'a6417900887a6dddff09a09f2d254dfecd3a3943044e7116dd743783932061b7'
+          assert evidence['sourceVideoVerification'].startswith('manifest-only')
+          assert evidence['extractionZipSha'] == '42239cf136a5938757e281862116fdf48b1452e2e89a3e1d0383a19ef3f154a8'
+          assert evidence['extractionVerified'] == {'frames': 12, 'sha': True, 'size1920x1080': True, 'pairingTimestamps': True}
+          assert evidence['guards']['structuralGate'] == 0.58
+          assert evidence['guards']['intensityGate'] == 0.42
+          assert evidence['guards']['coarseBeam'] == 8
+          assert evidence['guards']['productionFilesModified'] is False
+
+          controls = evidence['controls']
+          for key in ('path-of-void', 'buddha-fort', 'prosperity-haven', 'dreamfall-cliff'):
+              assert controls[key]['status'] == 'EVALUABLE'
+              assert controls[key]['class'] == 'RCL-5'
+          assert controls['general-shrine-repeat']['class'] == 'RCL-5'
+          assert controls['ethereal-chamber']['status'] == 'NOT_EVALUABLE_REFERENCE_FAMILY'
+          assert controls['ethereal-chamber']['class'] is None
+          assert controls['ethereal-chamber']['floor'] == 'Floor 2'
+
+          freq = evidence['frequency']
+          assert freq['plannedAcquisitionUniqueN'] == 7
+          assert freq['evaluableUniqueN'] == 6
+          assert freq['notEvaluableUniqueN'] == 1
+          assert freq['classes']['RCL-5']['count'] == 5
+          assert freq['classes']['RCL-5']['denominator'] == 6
+          assert evidence['repeatability']['classification'] == 'REPEAT-UNSTABLE'
+          assert evidence['architecture']['verdict'] == 'A2 — DOMINANT LOCAL DISCRIMINATION CLASS'
+          assert evidence['architecture']['populationPrevalenceClaim'] is False
+          assert evidence['nextResearch']['productionImplementationAuthorized'] is False
+          assert evidence['productionChange'] == 'NO'
+          assert 'Production change justified: NO' in report
+          assert 'A2 — DOMINANT LOCAL DISCRIMINATION CLASS' in report
+
+          def sha256(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          acceptance = {
+              'schema': 'wwmsync-owner-gfn-post-acquisition-ci-acceptance-v1',
+              'status': 'CI_ACCEPTED_GUARD_AND_EVIDENCE_INVARIANTS',
+              'head': os.environ.get('GITHUB_SHA'),
+              'verifiedStartingHead': os.environ['START_HEAD'],
+              'freezeSha256': sha256(freeze_path),
+              'evidenceSha256': sha256(evidence_path),
+              'reportSha256': sha256(report_path),
+              'plannedUniqueN': 7,
+              'evaluableRclN': 6,
+              'repeatCountedAsUnique': False,
+              'architectureVerdict': evidence['architecture']['verdict'],
+              'repeatability': evidence['repeatability']['classification'],
+              'productionChangeJustified': 'NO',
+              'replayExecution': 'exact production JS/search/gate under raw Canvas emulation; CI acceptance does not assert browser-raster bit identity',
+          }
+          pathlib.Path('owner-gfn-ci-acceptance.json').write_text(json.dumps(acceptance, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(acceptance, indent=2))
+          PY
+
+      - name: Upload authoritative audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-owner-gfn-post-acquisition-${{ github.run_id }}
+          path: |
+            docs/wwmsync/audits/owner-gfn-post-acquisition-identity-gt-freeze-2026-08-15.json
+            docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
+            docs/wwmsync/audits/owner-gfn-post-acquisition-forensic-2026-08-15.md
+            owner-gfn-ci-acceptance.json
+          if-no-files-found: error
+          retention-days: 30
