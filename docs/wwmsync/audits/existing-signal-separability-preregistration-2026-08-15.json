@@ -1,0 +1,72 @@
+{
+  "schema": "wwmsync-existing-signal-separability-preregistration-v1",
+  "status": "FROZEN_BEFORE_SCORE_FAMILY_COMPARATIVE_EVALUATION",
+  "taskStartingHead": "f8df34ba99321e97cf55e3981556807a62c6434f",
+  "gtToleranceZ5Px": 60,
+  "productionGuards": {
+    "visionSyncBlob": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashenTileCacheBlob": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "visualCacheBuilderBlob": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structuralGate": 0.58,
+    "intensityGate": 0.42,
+    "ambiguityGate": 0.01,
+    "coarseBeam": 8
+  },
+  "featureSpaces": {
+    "commonFine": {
+      "purpose": "Cross-control Pareto and fixed-rule comparison where full structural constituents are not uniformly exposed by authoritative evidence.",
+      "dimensions": [
+        {"name": "scaleAwareStructure", "direction": "higher", "dependency": "Production structural composite. Used as the common structural signal only where its constituent vector is not uniformly exposed across controls."},
+        {"name": "intensityNcc", "direction": "higher", "dependency": "Raw photometric ZNCC. intensityScore is excluded because intensityScore=clamp((intensityNcc+0.15)/1.15,0,1)."}
+      ],
+      "excludedDerived": ["intensityScore as an independent dimension", "combinedScore", "rankScore", "production acceptance/rejection"]
+    },
+    "extendedLocal": {
+      "purpose": "Atomized local-landscape audit only for controls whose authoritative artifact exposes the scale-aware structural constituents.",
+      "dimensions": ["structureNcc", "gradient", "topology", "magnitude", "edgeF1", "negativeAgreement", "signAgreement", "intensityNcc"],
+      "allDirections": "higher",
+      "excludedDerived": ["raw structure score derived from structureNcc", "scaleAwareStructure composite", "intensityScore", "combinedScore"]
+    }
+  },
+  "dependencies": {
+    "rawStructure": "structuralPhaseScore = clamp((structureNcc+0.12)/1.12,0,1)",
+    "intensityScore": "clamp((intensityNcc+0.15)/1.15,0,1)",
+    "scaleAwareStructure": "0.30*gradient + 0.30*topology + 0.12*magnitude + 0.16*edgeF1 + 0.07*negativeAgreement + 0.05*signAgreement",
+    "productionFinalCombined": "0.92*scaleAwareStructure + 0.08*intensityScore",
+    "coarseRank": "0.86*scaleAwareStructure + 0.14*intensityScore",
+    "fineInitialRank": "0.90*scaleAwareStructure + 0.10*intensityScore",
+    "fineRefineRank": "0.92*scaleAwareStructure + 0.08*intensityScore"
+  },
+  "scoreFamily": {
+    "S0": "production final score = 0.92*scaleAwareStructure + 0.08*intensityScore",
+    "S1": "Pareto-front priority in commonFine; lower Pareto depth first; S0 descending only as tie-break",
+    "S2": "lexicographic: scaleAwareStructure descending, then intensityNcc descending, then S0 descending",
+    "S3": "balanced-min = min(scaleAwareStructure, intensityScore); S0 descending tie-break",
+    "S4": "equal harmonic agreement = 2*scaleAwareStructure*intensityScore/(scaleAwareStructure+intensityScore), zero when denominator is zero; S0 descending tie-break",
+    "S5": "fixed veto: candidates below existing 0.58 structural or 0.42 intensity gate are ineligible; eligible candidates rank by scaleAwareStructure descending, then intensityNcc descending, then S0; ambiguity gate is never lowered and acceptance is reported only when authoritative evidence exposes it"
+  },
+  "normalization": {
+    "S3_S4": "Production intensityScore transform is the only normalization; it is globally frozen and location-independent. No per-location normalization."
+  },
+  "candidateCompatibility": {
+    "fine": "Only fine/local candidates carrying equivalent scale-aware structure and photometric NCC are compared in commonFine.",
+    "coarse": "Coarse candidates are retained in the machine-readable inventory but analyzed as a separate stage family, never mixed into fine Pareto depth.",
+    "combinedOnly": "Rows lacking primitive-compatible vectors are inventory-only and excluded from Pareto/scoring evaluation."
+  },
+  "classificationRule": {
+    "SS0": "At least half of independently known controls are Pareto-dominated in commonFine, spanning at least two owner-unique controls; no monotonic score-only rescue is claimed.",
+    "SS1": "At least two-thirds of independent controls are non-dominated and one fixed rule improves multiple owner controls plus Fang Xu without increasing known/static-gate wrong burden.",
+    "SS2": "Neither SS0 nor SS1; at least one independent control is dominated and at least one is non-dominated.",
+    "SS3": "Neither SS0/SS1/SS2; alternative rules selectively improve inspected GT while strengthening known false basins or materially regressing Fang Xu."
+  },
+  "safety": {
+    "gateLowering": false,
+    "beamExpansion": false,
+    "weightFitting": false,
+    "thresholdOptimization": false,
+    "locationSpecificLogic": false,
+    "learnedFeatures": false,
+    "productionImplementation": false,
+    "temporalAttachmentTransport": false
+  }
+}
