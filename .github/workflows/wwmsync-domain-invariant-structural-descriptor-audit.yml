@@ -23,6 +23,34 @@ jobs:
         with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - name: Recover historical Phase-0 package manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p descriptor-input
+          git show d2322ac8f56b420422319c7a2352f04b8b1e64ad:fixtures/owner-gfn-center-hud/package.b64.00 > /tmp/phase0-package.b64.00
+          git show d2322ac8f56b420422319c7a2352f04b8b1e64ad:fixtures/owner-gfn-center-hud/package.b64.01 > /tmp/phase0-package.b64.01
+          python - <<'PY'
+          import base64, hashlib, json, pathlib, zipfile, io
+          parts=[pathlib.Path('/tmp/phase0-package.b64.00').read_bytes(),pathlib.Path('/tmp/phase0-package.b64.01').read_bytes()]
+          compact=b''.join(parts).translate(None,b' \t\r\n\v\f')
+          compact += b'='*((4-len(compact)%4)%4)
+          raw=base64.b64decode(compact,validate=True)
+          got=hashlib.sha256(raw).hexdigest()
+          want='b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad'
+          if got != want: raise SystemExit(f'phase0 package sha mismatch {got}')
+          with zipfile.ZipFile(io.BytesIO(raw)) as z:
+              manifest=z.read('manifest.json')
+              pathlib.Path('descriptor-input/phase0-package-manifest.json').write_bytes(manifest)
+              readmes=[n for n in z.namelist() if n.lower().endswith('readme.txt')]
+              if readmes: pathlib.Path('descriptor-input/phase0-package-readme.txt').write_bytes(z.read(readmes[0]))
+              inventory=[]
+              for n in z.namelist():
+                  b=z.read(n)
+                  inventory.append({'member':n,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()})
+              pathlib.Path('descriptor-input/phase0-package-inventory.json').write_text(json.dumps(inventory,indent=2)+'\n')
+          print(manifest.decode())
+          PY
       - name: Decode authoritative driver
         shell: bash
         run: |
@@ -43,6 +71,7 @@ jobs:
             descriptor-input/ss0/input-provenance.json
             descriptor-input/*-meta.json
             descriptor-input/release.json
+            descriptor-input/phase0-package-*
             descriptor-output/
           if-no-files-found: warn
           retention-days: 30
