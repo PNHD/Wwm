@@ -1,0 +1,48 @@
+name: WWMSync Domain-Invariant Structural Descriptor Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-domain-invariant-structural-descriptor-audit.yml'
+      - 'tools/research/domain-invariant-descriptor/**'
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  DRIVER_SHA256: 'fb71655e38e3e956df3c10f7f89a1cbec711a8438a84715880d30a08d87adfbe'
+
+jobs:
+  descriptor-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Decode authoritative driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d tools/research/domain-invariant-descriptor/driver.sh.gz.b64 | gzip -d > /tmp/descriptor-driver.sh
+          test "$(sha256sum /tmp/descriptor-driver.sh|awk '{print $1}')" = "$DRIVER_SHA256"
+          bash -n /tmp/descriptor-driver.sh
+      - name: Execute complete descriptor audit
+        shell: bash
+        run: bash /tmp/descriptor-driver.sh
+      - name: Upload authoritative descriptor audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-domain-invariant-structural-descriptor-${{ github.run_id }}
+          path: |
+            descriptor-input/controls.json
+            descriptor-input/ss0/input-provenance.json
+            descriptor-input/*-meta.json
+            descriptor-input/release.json
+            descriptor-output/
+          if-no-files-found: warn
+          retention-days: 30
