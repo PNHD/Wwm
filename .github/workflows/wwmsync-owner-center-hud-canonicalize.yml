@@ -1,4 +1,4 @@
-name: WWMSync Canonicalize Owner Center HUD Fixtures
+name: WWMSync Recover Owner Center HUD Canonical Fixtures
 
 on:
   workflow_dispatch:
@@ -7,18 +7,21 @@ on:
     paths:
       - '.github/workflows/wwmsync-owner-center-hud-canonicalize.yml'
       - 'tools/replay/wwmsync-canonicalize-owner-center-hud.py'
+      - 'fixtures/owner-gfn-center-hud/package.b64.*'
+      - 'fixtures/owner-gfn-center-hud/provenance.json'
 
 permissions:
   contents: write
 
 env:
-  START_HEAD: '15a001b4227aea6f266f666528c009ef88c87183'
+  RECOVERY_START_HEAD: 'ae834394cb8fe733ec32e96245a9f34ee07f9089'
+  AUDIT_ROOT_HEAD: '15a001b4227aea6f266f666528c009ef88c87183'
   VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
   CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
   CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
 
 jobs:
-  canonicalize:
+  recover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,35 +29,114 @@ jobs:
         with:
           ref: feature/wwm-native-sync-v2
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify lineage and protected production files
+
+      - name: Verify recovery lineage, hygiene, and production guards
         shell: bash
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor "$START_HEAD" HEAD
+          git merge-base --is-ancestor "$RECOVERY_START_HEAD" HEAD
+          git merge-base --is-ancestor "$AUDIT_ROOT_HEAD" HEAD
           test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
           test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
           test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
-          git diff --exit-code "$START_HEAD..HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
-      - name: Reconstruct and verify exact pixel fixtures
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          git diff --exit-code "$RECOVERY_START_HEAD..HEAD" -- \
+            vision-sync.js \
+            dashen-tile-cache.js \
+            tools/build_dashen_visual_cache.py \
+            production/wwsync
+          test ! -e _tmp_should_not_create
+          test ! -e fixtures/owner-gfn-center-hud/transport-index.json
+          test -f fixtures/owner-gfn-center-hud/package.b64.00
+          test -f fixtures/owner-gfn-center-hud/package.b64.01
+          ! grep -nE 'fetch_git_blob|GH_TOKEN|GITHUB_TOKEN|git/blobs|gh api|transport-index' \
+            tools/replay/wwmsync-canonicalize-owner-center-hud.py
+          echo 'HYGIENE_AND_PRODUCTION_GUARDS=PASS'
+
+      - name: Apply and verify prereg arithmetic-only correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          path=Path('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json')
+          text=path.read_text(encoding='utf-8')
+
+          old=json.loads(subprocess.check_output(
+              ['git','show',f'{os.environ["RECOVERY_START_HEAD"]}:{path.as_posix()}'],
+              text=True,
+          ))
+
+          if '"combinationsPerCandidate":243' in text:
+              assert text.count('"combinationsPerCandidate":243')==1
+              assert text.count('243-pose')==3
+              text=text.replace('"combinationsPerCandidate":243','"combinationsPerCandidate":81')
+              text=text.replace('243-pose','81-pose')
+              marker='  "phase2CandidateLocked":'
+              assert marker in text
+              correction=(
+                  '  "arithmeticCorrectionBeforeDescriptorOutcomes":'
+                  '{"from":243,"to":81,"reason":"3×3×3×3 = 81; no descriptor outcomes had run"},\n'
+              )
+              text=text.replace(marker,correction+marker,1)
+              path.write_text(text,encoding='utf-8')
+
+          new=json.loads(path.read_text(encoding='utf-8'))
+          expected=copy.deepcopy(old)
+          expected['poseGrid']['combinationsPerCandidate']=81
+          expected['phase3SymmetricPose']['selection']=expected['phase3SymmetricPose']['selection'].replace('243-pose','81-pose')
+          expected['retrievalProxy']['pose']=expected['retrievalProxy']['pose'].replace('243-pose','81-pose')
+          expected['stress40Frame']['populationAndPose']=expected['stress40Frame']['populationAndPose'].replace('243-pose','81-pose')
+          expected['arithmeticCorrectionBeforeDescriptorOutcomes']={
+              'from':243,
+              'to':81,
+              'reason':'3×3×3×3 = 81; no descriptor outcomes had run',
+          }
+          assert new==expected, 'prereg changed beyond the registered arithmetic-only correction'
+          assert new['poseGrid']['angleDeltaDeg']==[-15,0,15]
+          assert new['poseGrid']['radiusFactor']==[0.9,1.0,1.1]
+          assert new['poseGrid']['xOffsetPx']==[-8,0,8]
+          assert new['poseGrid']['yOffsetPx']==[-8,0,8]
+          print('PREREG_ARITHMETIC_ONLY_CORRECTION=PASS')
+          print('POSE_GRID=3x3x3x3=81')
+          print('DESCRIPTOR_FORMULAS_OTHERWISE_UNCHANGED=PASS')
+          PY
+
+      - name: Reconstruct exact package and verify six embedded WebPs
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
-          python tools/replay/wwmsync-canonicalize-owner-center-hud.py
+          python tools/replay/wwmsync-canonicalize-owner-center-hud.py --mode recovery --write
+          cp owner-center-hud-canonicalization.json owner-center-hud-recovery-report.json
           python - <<'PY'
           import json
-          p=json.load(open('owner-center-hud-canonicalization.json',encoding='utf8'))
+          p=json.load(open('owner-center-hud-recovery-report.json',encoding='utf-8'))
           assert p['status']=='PASS'
-          assert len(p['fixtures'])==6
-          assert all(x['size']==[270,270] and x['mode']=='RGB' for x in p['fixtures'])
-          print('pixel canonicalization PASS')
+          r=p['result']
+          assert r['mode']=='RECOVERY'
+          assert r['reconstructedPackageSha256']=='b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad'
+          assert r['embeddedManifestSha256']=='4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0'
+          assert len(r['fixtures'])==6
+          assert all(x['size']==[270,270] and x['mode']=='RGB' and x['rgbByteLength']==218700 for x in r['fixtures'])
+          print('PACKAGE_SHA=PASS')
+          print('EMBEDDED_MANIFEST_SHA=PASS')
+          print('WEBP_BYTES=6/6 PASS')
+          print('RGB8=6/6 PASS')
+          print('RGBA255_COMPATIBILITY=6/6 PASS')
+          print('CANONICAL_GIT_BLOB_SHA=6/6 PASS')
+          print('CARRIER_SEMANTICS='+r['carrier']['semantics'])
           PY
-      - name: Commit exact normal tracked WebP fixtures
+
+      - name: Commit recovery fixtures and arithmetic correction
         shell: bash
         run: |
           set -euo pipefail
@@ -62,15 +144,73 @@ jobs:
           test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add fixtures/owner-gfn-center-hud/*.webp
-          test "$(git diff --cached --name-only | wc -l)" -eq 6
-          git diff --cached --check
-          git commit -m 'fixtures(wwmsync): canonicalize owner center HUD pixels [skip ci]'
-          git push origin HEAD:feature/wwm-native-sync-v2
-          echo "FINAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Acceptance marker
+          git add \
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json \
+            fixtures/owner-gfn-center-hud/path-of-void.webp \
+            fixtures/owner-gfn-center-hud/buddha-fort.webp \
+            fixtures/owner-gfn-center-hud/general-shrine-repeat.webp \
+            fixtures/owner-gfn-center-hud/prosperity-haven.webp \
+            fixtures/owner-gfn-center-hud/ethereal-chamber.webp \
+            fixtures/owner-gfn-center-hud/dreamfall-cliff.webp
+          if git diff --cached --quiet; then
+            echo 'RECOVERY_COMMIT=ALREADY_CANONICAL'
+            echo "FINAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          else
+            test "$(git diff --cached --name-only | grep -c '^fixtures/owner-gfn-center-hud/.*\.webp$')" -eq 6
+            test "$(git diff --cached --name-only | grep -c '^docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json$')" -eq 1
+            test "$(git diff --cached --name-only | wc -l)" -eq 7
+            git diff --cached --check
+            git commit -m 'fixtures(wwmsync): recover Phase-0 canonical HUD fixtures [skip ci]'
+            git push origin HEAD:feature/wwm-native-sync-v2
+            echo "FINAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify final steady-state fixture path
+        shell: bash
         run: |
+          set -euo pipefail
+          python tools/replay/wwmsync-canonicalize-owner-center-hud.py --mode steady
+          cp owner-center-hud-canonicalization.json owner-center-hud-steady-report.json
+          python - <<'PY'
+          import json
+          p=json.load(open('owner-center-hud-steady-report.json',encoding='utf-8'))
+          assert p['status']=='PASS'
+          r=p['result']
+          assert r['mode']=='STEADY_STATE'
+          assert r['descriptorInput']=='six normal tracked WebPs only'
+          assert r['recoveryCarriersConsumed'] is False
+          assert r['transportIndexConsumed'] is False
+          assert r['gitBlobApiConsumed'] is False
+          assert len(r['fixtures'])==6
+          print('STEADY_STATE_TRACKED_WEBPS=PASS')
+          print('STALE_GIT_BLOB_DEPENDENCY=ABSENT')
+          PY
+          test ! -e _tmp_should_not_create
+          test ! -e fixtures/owner-gfn-center-hud/transport-index.json
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+
+      - name: Upload Phase-0 recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-owner-center-hud-phase0-recovery-${{ github.run_id }}
+          path: |
+            owner-center-hud-recovery-report.json
+            owner-center-hud-steady-report.json
+            wwmsync_owner_center_hud_fixtures.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Acceptance marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'PHASE_0_CANONICAL_FIXTURE_RECOVERY=COMPLETE'
           echo 'CANONICAL_PIXEL_FIXTURES=PASS'
+          echo 'PREREG_POSE_GRID=81'
+          echo 'DESCRIPTOR_OUTCOMES=NOT_RUN'
+          echo 'DOMAIN_INVARIANT_STRUCTURAL_DESCRIPTOR_AUDIT=STILL_PENDING_OUTCOMES'
+          echo 'RD_VERDICT=STILL_PENDING'
           echo "FINAL_HEAD=${FINAL_HEAD}"
           echo 'PRODUCTION_CHANGE=NO'
-# trigger: corrected literal verifier
