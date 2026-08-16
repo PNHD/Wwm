@@ -44,10 +44,7 @@ jobs:
           test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
           test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
           git diff --exit-code "$RECOVERY_START_HEAD..HEAD" -- \
-            vision-sync.js \
-            dashen-tile-cache.js \
-            tools/build_dashen_visual_cache.py \
-            production/wwsync
+            vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
           test ! -e _tmp_should_not_create
           test ! -e fixtures/owner-gfn-center-hud/transport-index.json
           test -f fixtures/owner-gfn-center-hud/package.b64.00
@@ -56,25 +53,34 @@ jobs:
             tools/replay/wwmsync-canonicalize-owner-center-hud.py
           echo 'HYGIENE_AND_PRODUCTION_GUARDS=PASS'
 
+      - name: Inspect frozen carrier syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          allowed=set(b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+          whitespace=set(b' \t\r\n\v\f')
+          for name in ('package.b64.00','package.b64.01'):
+              p=Path('fixtures/owner-gfn-center-hud')/name
+              raw=p.read_bytes()
+              compact=bytes(b for b in raw if b not in whitespace)
+              illegal=[(i,b,chr(b) if 32<=b<=126 else '.') for i,b in enumerate(compact) if b not in allowed]
+              print(f'CARRIER {name} raw={len(raw)} compact={len(compact)} mod4={len(compact)%4} illegal_count={len(illegal)}')
+              print(f'CARRIER {name} illegal_first={illegal[:16]}')
+              print(f'CARRIER {name} head16={raw[:16]!r} tail32={raw[-32:]!r}')
+          PY
+
       - name: Apply and verify prereg arithmetic-only correction
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import copy
-          import json
-          import os
-          import subprocess
+          import copy, json, os, subprocess
           from pathlib import Path
-
           path=Path('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json')
           text=path.read_text(encoding='utf-8')
-
-          old=json.loads(subprocess.check_output(
-              ['git','show',f'{os.environ["RECOVERY_START_HEAD"]}:{path.as_posix()}'],
-              text=True,
-          ))
-
+          old=json.loads(subprocess.check_output(['git','show',f'{os.environ["RECOVERY_START_HEAD"]}:{path.as_posix()}'],text=True))
           if '"combinationsPerCandidate":243' in text:
               assert text.count('"combinationsPerCandidate":243')==1
               assert text.count('243-pose')==3
@@ -82,24 +88,16 @@ jobs:
               text=text.replace('243-pose','81-pose')
               marker='  "phase2CandidateLocked":'
               assert marker in text
-              correction=(
-                  '  "arithmeticCorrectionBeforeDescriptorOutcomes":'
-                  '{"from":243,"to":81,"reason":"3×3×3×3 = 81; no descriptor outcomes had run"},\n'
-              )
+              correction='  "arithmeticCorrectionBeforeDescriptorOutcomes":{"from":243,"to":81,"reason":"3×3×3×3 = 81; no descriptor outcomes had run"},\n'
               text=text.replace(marker,correction+marker,1)
               path.write_text(text,encoding='utf-8')
-
           new=json.loads(path.read_text(encoding='utf-8'))
           expected=copy.deepcopy(old)
           expected['poseGrid']['combinationsPerCandidate']=81
           expected['phase3SymmetricPose']['selection']=expected['phase3SymmetricPose']['selection'].replace('243-pose','81-pose')
           expected['retrievalProxy']['pose']=expected['retrievalProxy']['pose'].replace('243-pose','81-pose')
           expected['stress40Frame']['populationAndPose']=expected['stress40Frame']['populationAndPose'].replace('243-pose','81-pose')
-          expected['arithmeticCorrectionBeforeDescriptorOutcomes']={
-              'from':243,
-              'to':81,
-              'reason':'3×3×3×3 = 81; no descriptor outcomes had run',
-          }
+          expected['arithmeticCorrectionBeforeDescriptorOutcomes']={'from':243,'to':81,'reason':'3×3×3×3 = 81; no descriptor outcomes had run'}
           assert new==expected, 'prereg changed beyond the registered arithmetic-only correction'
           assert new['poseGrid']['angleDeltaDeg']==[-15,0,15]
           assert new['poseGrid']['radiusFactor']==[0.9,1.0,1.1]
