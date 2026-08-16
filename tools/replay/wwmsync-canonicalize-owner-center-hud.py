@@ -70,18 +70,56 @@ def verify_guards():
     }
 
 
-def compact_base64(raw, label):
+def decode_base64_carrier(raw, label):
     try:
         raw.decode("ascii")
     except UnicodeDecodeError as exc:
-        raise SystemExit(f"{label}: carrier is not ASCII") from exc
+        raise ValueError(f"{label}: carrier is not ASCII") from exc
     compact = raw.translate(None, ASCII_WS)
     removed = len(raw) - len(compact)
+    if not compact:
+        raise ValueError(f"{label}: empty carrier")
+    if b"=" in compact[:-2]:
+        raise ValueError(f"{label}: non-terminal base64 padding")
+    remainder = len(compact) % 4
+    if remainder == 1:
+        raise ValueError(f"{label}: impossible base64 length {len(compact)} mod 4 = 1")
+    implicit_padding = (4 - remainder) % 4
+    if implicit_padding and b"=" in compact:
+        raise ValueError(f"{label}: malformed explicit base64 padding")
+    padded = compact + (b"=" * implicit_padding)
     try:
-        decoded = base64.b64decode(compact, validate=True)
+        decoded = base64.b64decode(padded, validate=True)
     except Exception as exc:
-        raise SystemExit(f"{label}: invalid base64 carrier") from exc
-    return decoded, removed, compact
+        raise ValueError(f"{label}: invalid base64 carrier") from exc
+    return decoded, {
+        "rawBytes": len(raw),
+        "compactChars": len(compact),
+        "structuralWhitespaceBytesRemoved": removed,
+        "implicitTerminalPaddingCharsAdded": implicit_padding,
+    }
+
+
+def attempt_case_a(raw_chunks):
+    try:
+        decoded, details = decode_base64_carrier(b"".join(raw_chunks), "case A joined carrier")
+        return {"valid": True, "decoded": decoded, "sha256": sha256(decoded), "details": details}
+    except ValueError as exc:
+        return {"valid": False, "decoded": None, "sha256": None, "error": str(exc)}
+
+
+def attempt_case_b(raw_chunks):
+    decoded_parts = []
+    details = []
+    try:
+        for index, raw in enumerate(raw_chunks):
+            decoded, detail = decode_base64_carrier(raw, f"case B chunk {index}")
+            decoded_parts.append(decoded)
+            details.append(detail)
+        joined = b"".join(decoded_parts)
+        return {"valid": True, "decoded": joined, "sha256": sha256(joined), "details": details}
+    except ValueError as exc:
+        return {"valid": False, "decoded": None, "sha256": None, "error": str(exc), "details": details}
 
 
 def reconstruct_package(prov):
@@ -91,49 +129,44 @@ def reconstruct_package(prov):
     raw_chunks = [p.read_bytes() for p in chunks]
     expected = prov["sourcePackage"]["zipSha256"]
 
-    joined = b"".join(raw_chunks)
-    decoded_a, removed_a, compact_a = compact_base64(joined, "case A joined carrier")
-    sha_a = sha256(decoded_a)
+    case_a = attempt_case_a(raw_chunks)
+    case_b = attempt_case_b(raw_chunks)
+    a_match = case_a["valid"] and case_a["sha256"] == expected
+    b_match = case_b["valid"] and case_b["sha256"] == expected
 
-    decoded_b_parts = []
-    removed_b = 0
-    case_b_valid = True
-    try:
-        for i, raw in enumerate(raw_chunks):
-            part, removed, _ = compact_base64(raw, f"case B chunk {i}")
-            decoded_b_parts.append(part)
-            removed_b += removed
-        decoded_b = b"".join(decoded_b_parts)
-        sha_b = sha256(decoded_b)
-    except SystemExit:
-        case_b_valid = False
-        decoded_b = b""
-        sha_b = None
-
-    if sha_a == expected:
-        package = decoded_a
+    if a_match:
+        package = case_a["decoded"]
         semantics = "A_ORDERED_CHUNKS_OF_ONE_BASE64_TEXT_STREAM"
-    elif case_b_valid and sha_b == expected:
-        package = decoded_b
+        if b_match:
+            basis = (
+                "Case A and case B decode to identical expected package bytes because the frozen split is "
+                "base64-quantum aligned. Classify as A: package.b64.00 is a fixed-size textual prefix and "
+                "package.b64.01 is its continuation; only the full joined stream needs terminal completion."
+            )
+        else:
+            basis = "Only joined-text decode matches the immutable package SHA-256."
+    elif b_match:
+        package = case_b["decoded"]
         semantics = "B_INDEPENDENTLY_BASE64_ENCODED_BINARY_CHUNKS"
+        basis = "Only decode-each-then-concatenate matches the immutable package SHA-256."
     else:
         raise SystemExit(
-            f"package SHA mismatch: expected {expected}, caseA={sha_a}, caseB={sha_b}"
+            "package SHA mismatch under both frozen carrier interpretations: "
+            f"expected={expected}, caseA={case_a.get('sha256')} valid={case_a['valid']} "
+            f"error={case_a.get('error')}, caseB={case_b.get('sha256')} valid={case_b['valid']} "
+            f"error={case_b.get('error')}"
         )
 
-    case_b_same = bool(case_b_valid and sha_b == expected and decoded_b == package)
     return package, {
         "semantics": semantics,
+        "classificationBasis": basis,
         "chunks": [
-            {"path": str(p), "bytes": len(raw)}
-            for p, raw in zip(chunks, raw_chunks)
+            {"path": str(path), "rawBytes": len(raw)}
+            for path, raw in zip(chunks, raw_chunks)
         ],
-        "structuralWhitespaceBytesRemovedCaseA": removed_a,
-        "caseACompactChars": len(compact_a),
-        "caseASha256": sha_a,
-        "caseBValid": case_b_valid,
-        "caseBSha256": sha_b,
-        "caseBProducesSameExpectedBytes": case_b_same,
+        "caseA": {k: v for k, v in case_a.items() if k != "decoded"},
+        "caseB": {k: v for k, v in case_b.items() if k != "decoded"},
+        "caseAAndBByteEquivalent": bool(a_match and b_match and case_a["decoded"] == case_b["decoded"]),
     }
 
 
@@ -165,9 +198,7 @@ def verify_webp(raw, item, source_name, write):
     rgba[3::4] = b"\xff" * (len(rgb) // 3)
     rgba_sha = sha256(rgba)
     if rgba_sha != item["taskPromptRgba255CompatibilitySha256"]:
-        raise SystemExit(
-            f"{item['id']}: RGBA255 compatibility SHA mismatch {rgba_sha}"
-        )
+        raise SystemExit(f"{item['id']}: RGBA255 compatibility SHA mismatch {rgba_sha}")
 
     dst = ROOT / item["file"]
     if write:
@@ -200,7 +231,7 @@ def recover(prov, write):
         names = zf.namelist()
         if len(names) != len(set(names)):
             raise SystemExit("ZIP contains duplicate member names")
-        manifest_names = [n for n in names if n.replace("\\", "/") == "manifest.json"]
+        manifest_names = [name for name in names if name.replace("\\", "/") == "manifest.json"]
         if manifest_names != ["manifest.json"]:
             raise SystemExit(f"ZIP manifest inventory mismatch: {manifest_names}")
         manifest_raw = zf.read("manifest.json")
@@ -210,10 +241,10 @@ def recover(prov, write):
             raise SystemExit(f"embedded manifest SHA mismatch {manifest_sha}")
         json.loads(manifest_raw.decode("utf-8"))
 
-        webp_names = [n for n in names if n.lower().endswith(".webp")]
+        webp_names = [name for name in names if name.lower().endswith(".webp")]
         if len(webp_names) != 6:
             raise SystemExit(f"ZIP must contain exactly six WebPs, got {webp_names}")
-        normalized_zip_webps = {n.replace("\\", "/") for n in webp_names}
+        normalized_zip_webps = {name.replace("\\", "/") for name in webp_names}
         if len(normalized_zip_webps) != 6:
             raise SystemExit("ZIP WebP member names are not unique")
 
@@ -239,12 +270,10 @@ def recover(prov, write):
         raise SystemExit(f"fixture inventory mismatch: seen={sorted(seen)}")
 
     if write:
-        written = sorted(p.name for p in ROOT.glob("*.webp"))
+        written = sorted(path.name for path in ROOT.glob("*.webp"))
         expected_files = sorted(item["file"] for item in prov["fixtures"])
         if written != expected_files:
-            raise SystemExit(
-                f"tracked fixture target inventory mismatch: {written} != {expected_files}"
-            )
+            raise SystemExit(f"tracked fixture target inventory mismatch: {written} != {expected_files}")
 
     return {
         "mode": "RECOVERY",
@@ -253,17 +282,15 @@ def recover(prov, write):
         "reconstructedPackageSha256": package_sha,
         "embeddedManifestSha256": manifest_sha,
         "zipWebpInventory": sorted(normalized_zip_webps),
-        "fixtures": sorted(rows, key=lambda r: r["id"]),
+        "fixtures": sorted(rows, key=lambda row: row["id"]),
     }
 
 
 def steady(prov):
     expected_files = sorted(item["file"] for item in prov["fixtures"])
-    actual = sorted(p.name for p in ROOT.glob("*.webp"))
+    actual = sorted(path.name for path in ROOT.glob("*.webp"))
     if actual != expected_files:
-        raise SystemExit(
-            f"steady-state WebP inventory mismatch: {actual} != {expected_files}"
-        )
+        raise SystemExit(f"steady-state WebP inventory mismatch: {actual} != {expected_files}")
     rows = []
     for item in prov["fixtures"]:
         path = ROOT / item["file"]
@@ -274,7 +301,7 @@ def steady(prov):
         "recoveryCarriersConsumed": False,
         "transportIndexConsumed": False,
         "gitBlobApiConsumed": False,
-        "fixtures": sorted(rows, key=lambda r: r["id"]),
+        "fixtures": sorted(rows, key=lambda row: row["id"]),
     }
 
 
