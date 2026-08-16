@@ -32,13 +32,25 @@ jobs:
           git show d2322ac8f56b420422319c7a2352f04b8b1e64ad:fixtures/owner-gfn-center-hud/package.b64.01 > /tmp/phase0-package.b64.01
           python - <<'PY'
           import base64, hashlib, json, pathlib, zipfile, io
-          parts=[pathlib.Path('/tmp/phase0-package.b64.00').read_bytes(),pathlib.Path('/tmp/phase0-package.b64.01').read_bytes()]
-          compact=b''.join(parts).translate(None,b' \t\r\n\v\f')
-          compact += b'='*((4-len(compact)%4)%4)
-          raw=base64.b64decode(compact,validate=True)
-          got=hashlib.sha256(raw).hexdigest()
+          WS=b' \t\r\n\v\f'
           want='b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad'
-          if got != want: raise SystemExit(f'phase0 package sha mismatch {got}')
+          parts=[pathlib.Path('/tmp/phase0-package.b64.00').read_bytes(),pathlib.Path('/tmp/phase0-package.b64.01').read_bytes()]
+          def dec(x):
+              x=x.translate(None,WS); x += b'='*((4-len(x)%4)%4); return base64.b64decode(x,validate=True)
+          candidates=[]
+          try: candidates.append(('A_JOINED_TEXT',dec(b''.join(parts))))
+          except Exception as e: print('caseA',repr(e))
+          try: candidates.append(('B_DECODE_EACH',b''.join(dec(p) for p in parts)))
+          except Exception as e: print('caseB',repr(e))
+          matches=[(name,raw) for name,raw in candidates if hashlib.sha256(raw).hexdigest()==want]
+          if len(matches)!=1:
+              # A/B may be byte-equivalent; accept equivalent expected bytes as frozen canonicalizer does.
+              expected=[(n,r) for n,r in candidates if hashlib.sha256(r).hexdigest()==want]
+              unique={r for _,r in expected}
+              if len(unique)!=1: raise SystemExit(f'phase0 package reconstruction mismatch: {[(n,hashlib.sha256(r).hexdigest()) for n,r in candidates]}')
+              raw=next(iter(unique)); semantics='+'.join(n for n,r in expected)
+          else: semantics,raw=matches[0]
+          print('carrierSemantics',semantics,'sha256',hashlib.sha256(raw).hexdigest())
           with zipfile.ZipFile(io.BytesIO(raw)) as z:
               manifest=z.read('manifest.json')
               pathlib.Path('descriptor-input/phase0-package-manifest.json').write_bytes(manifest)
