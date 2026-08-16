@@ -23,67 +23,29 @@ jobs:
         with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Recover historical Phase-0 package manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p descriptor-input
-          git show d2322ac8f56b420422319c7a2352f04b8b1e64ad:fixtures/owner-gfn-center-hud/package.b64.00 > /tmp/phase0-package.b64.00
-          git show d2322ac8f56b420422319c7a2352f04b8b1e64ad:fixtures/owner-gfn-center-hud/package.b64.01 > /tmp/phase0-package.b64.01
-          python - <<'PY'
-          import base64, hashlib, json, pathlib, zipfile, io
-          WS=b' \t\r\n\v\f'
-          want='b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad'
-          parts=[pathlib.Path('/tmp/phase0-package.b64.00').read_bytes(),pathlib.Path('/tmp/phase0-package.b64.01').read_bytes()]
-          def dec(x):
-              x=x.translate(None,WS); x += b'='*((4-len(x)%4)%4); return base64.b64decode(x,validate=True)
-          candidates=[]
-          try: candidates.append(('A_JOINED_TEXT',dec(b''.join(parts))))
-          except Exception as e: print('caseA',repr(e))
-          try: candidates.append(('B_DECODE_EACH',b''.join(dec(p) for p in parts)))
-          except Exception as e: print('caseB',repr(e))
-          matches=[(name,raw) for name,raw in candidates if hashlib.sha256(raw).hexdigest()==want]
-          if len(matches)!=1:
-              # A/B may be byte-equivalent; accept equivalent expected bytes as frozen canonicalizer does.
-              expected=[(n,r) for n,r in candidates if hashlib.sha256(r).hexdigest()==want]
-              unique={r for _,r in expected}
-              if len(unique)!=1: raise SystemExit(f'phase0 package reconstruction mismatch: {[(n,hashlib.sha256(r).hexdigest()) for n,r in candidates]}')
-              raw=next(iter(unique)); semantics='+'.join(n for n,r in expected)
-          else: semantics,raw=matches[0]
-          print('carrierSemantics',semantics,'sha256',hashlib.sha256(raw).hexdigest())
-          with zipfile.ZipFile(io.BytesIO(raw)) as z:
-              manifest=z.read('manifest.json')
-              pathlib.Path('descriptor-input/phase0-package-manifest.json').write_bytes(manifest)
-              readmes=[n for n in z.namelist() if n.lower().endswith('readme.txt')]
-              if readmes: pathlib.Path('descriptor-input/phase0-package-readme.txt').write_bytes(z.read(readmes[0]))
-              inventory=[]
-              for n in z.namelist():
-                  b=z.read(n)
-                  inventory.append({'member':n,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()})
-              pathlib.Path('descriptor-input/phase0-package-inventory.json').write_text(json.dumps(inventory,indent=2)+'\n')
-          print(manifest.decode())
-          PY
-      - name: Decode authoritative driver
+      - name: Decode frozen harness for D0 input-plumbing diagnostic
         shell: bash
         run: |
           set -euo pipefail
           base64 -d tools/research/domain-invariant-descriptor/driver.sh.gz.b64 | gzip -d > /tmp/descriptor-driver.sh
           test "$(sha256sum /tmp/descriptor-driver.sh|awk '{print $1}')" = "$DRIVER_SHA256"
           bash -n /tmp/descriptor-driver.sh
-      - name: Execute complete descriptor audit
-        shell: bash
-        run: bash /tmp/descriptor-driver.sh
-      - name: Upload authoritative descriptor audit artifact
-        if: always()
+          base64 -d tools/research/domain-invariant-descriptor/run-local.mjs.gz.b64 | gzip -d > /tmp/descriptor-run-local.mjs
+          base64 -d tools/research/domain-invariant-descriptor/instrument.mjs.gz.b64 | gzip -d > /tmp/descriptor-instrument.mjs
+          printf 'DESCRIPTORS_EXECUTED=NO\nD0_DIAGNOSTIC_ONLY=YES\n' > /tmp/input-plumbing-status.txt
+          sha256sum /tmp/descriptor-driver.sh /tmp/descriptor-run-local.mjs /tmp/descriptor-instrument.mjs
+      - name: Upload frozen input-plumbing diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-domain-invariant-structural-descriptor-${{ github.run_id }}
+          name: wwmsync-domain-invariant-input-plumbing-${{ github.run_id }}
           path: |
-            descriptor-input/controls.json
-            descriptor-input/ss0/input-provenance.json
-            descriptor-input/*-meta.json
-            descriptor-input/release.json
-            descriptor-input/phase0-package-*
-            descriptor-output/
-          if-no-files-found: warn
-          retention-days: 30
+            /tmp/descriptor-driver.sh
+            /tmp/descriptor-run-local.mjs
+            /tmp/descriptor-instrument.mjs
+            /tmp/input-plumbing-status.txt
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json
+            docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
+            docs/wwmsync/audits/owner-gfn-post-acquisition-identity-gt-freeze-2026-08-15.json
+            fixtures/owner-gfn-center-hud/provenance.json
+          if-no-files-found: error
+          retention-days: 7
