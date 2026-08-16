@@ -12,7 +12,7 @@ permissions: {contents: read, actions: read}
 
 env:
   GH_TOKEN: ${{ github.token }}
-  DRIVER_SHA256: '42867c6fbb7b0bef5a9864661745c4d992b250ff08910e3e54c91b088449ff9e'
+  DRIVER_SHA256: '576208a24909c49d9a2e9178185ee9ea3af98a09dae27b300a3c7784f0023350'
 
 jobs:
   descriptor-audit:
