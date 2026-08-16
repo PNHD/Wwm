@@ -39,58 +39,40 @@ jobs:
           grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
           grep -Fq 'COARSE_BEAM=8;' vision-sync.js
           printf 'DESCRIPTORS_EXECUTED=NO\nD0_DIAGNOSTIC_ONLY=YES\n' > /tmp/d0-status.txt
-      - name: Prepare bounded 270-to-192 interpolation semantics
+      - name: Prepare D0 canonical-canvas semantics diagnostic
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --quiet pillow opencv-python-headless
           npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
           CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
           test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
           rm -rf descriptor-site descriptor-input descriptor-output descriptor-tools
-          mkdir -p descriptor-site/controls/variants descriptor-input descriptor-output descriptor-tools
+          mkdir -p descriptor-site/controls descriptor-input descriptor-output descriptor-tools
           cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt descriptor-site/
           cp fixtures/owner-gfn-center-hud/{path-of-void,buddha-fort,general-shrine-repeat,prosperity-haven,dreamfall-cliff}.webp descriptor-site/controls/
           cp /tmp/descriptor-instrument.mjs descriptor-tools/instrument.mjs
           python tools/build_dashen_reference_audit_cache.py descriptor-site/dashen-cache --workers 24
           node tools/instrument-real-gfn-production-replay.mjs descriptor-site/vision-sync.js
           node descriptor-tools/instrument.mjs descriptor-site/vision-sync.js
-          node --check descriptor-site/vision-sync.js
           python - <<'PY'
-          from PIL import Image
-          import cv2, numpy as np, pathlib
-          root=pathlib.Path('descriptor-site/controls')
-          out=root/'variants'; out.mkdir(parents=True,exist_ok=True)
-          ids=['path-of-void','buddha-fort','general-shrine-repeat','prosperity-haven','dreamfall-cliff']
-          pil_modes={
-            'pillow-nearest':Image.Resampling.NEAREST,
-            'pillow-bilinear':Image.Resampling.BILINEAR,
-            'pillow-bicubic':Image.Resampling.BICUBIC,
-            'pillow-lanczos':Image.Resampling.LANCZOS,
-            'pillow-box':Image.Resampling.BOX,
-            'pillow-hamming':Image.Resampling.HAMMING,
-          }
-          cv_modes={
-            'opencv-nearest':cv2.INTER_NEAREST,
-            'opencv-linear':cv2.INTER_LINEAR,
-            'opencv-cubic':cv2.INTER_CUBIC,
-            'opencv-area':cv2.INTER_AREA,
-            'opencv-lanczos4':cv2.INTER_LANCZOS4,
-          }
-          for cid in ids:
-            im=Image.open(root/f'{cid}.webp').convert('RGB')
-            assert im.size==(270,270), (cid,im.size)
-            for name,mode in pil_modes.items(): im.resize((192,192),mode).save(out/f'{cid}--{name}.png')
-            arr=np.asarray(im)
-            for name,mode in cv_modes.items():
-              r=cv2.resize(arr,(192,192),interpolation=mode)
-              Image.fromarray(r.astype(np.uint8),'RGB').save(out/f'{cid}--{name}.png')
+          from pathlib import Path
+          p=Path('descriptor-site/vision-sync.js')
+          s=p.read_text()
+          old="function canonicalRoi(canvas){const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;const x=c.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(canvas,0,0,ROI_N,ROI_N);return c}"
+          new="function canonicalRoi(canvas){const c=document.createElement('canvas');c.width=ROI_N;c.height=ROI_N;const x=c.getContext('2d',{alpha:false}),m=window.__WWMSYNC_D0_CANONICAL_MODE__||'production-high';if(m==='production-high'){x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high'}else if(m==='nearest'){x.imageSmoothingEnabled=false}else if(m==='low'||m==='medium'){x.imageSmoothingEnabled=true;x.imageSmoothingQuality=m}else if(m!=='default')throw new Error('unknown D0 canonical mode '+m);x.drawImage(canvas,0,0,ROI_N,ROI_N);return c}"
+          assert s.count(old)==1, s.count(old)
+          p.write_text(s.replace(old,new))
           PY
+          node --check descriptor-site/vision-sync.js
           cat > descriptor-input/d0-controls.json <<'JSON'
           {
-            "precomputedModes":["pillow-nearest","pillow-bilinear","pillow-bicubic","pillow-lanczos","pillow-box","pillow-hamming","opencv-nearest","opencv-linear","opencv-cubic","opencv-area","opencv-lanczos4"],
+            "canonicalModes":["production-high","default","low","medium","nearest"],
             "knownRoiSha":{
-              "path-of-void":["133f20e51fac255e6e60b235df2dd75269837ff64c39da8cc957df2c7a7ee1c8","1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f","afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256"]
+              "path-of-void":["133f20e51fac255e6e60b235df2dd75269837ff64c39da8cc957df2c7a7ee1c8","1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f","afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256"],
+              "buddha-fort":["1aa94ade8e51ef49cf4ccd8b26014ed24e023988d4fd4522f37112c70d217891","8063ccf7e9087571ac6dc0dd53df493a8c5fbc65f9178d7c733dd818d659fe60","0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec"],
+              "general-shrine-repeat":["4b608cb536b91e4bf020cd285d105ead9143be8c9f527cf3888b639f829abe75","3dae8af15b2f500d30a9f0206dcba78e975861966e21b7deaa5ac816b8aab7b9","773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063"],
+              "prosperity-haven":["4132108d3970003a215836df37121ce1b3f1576517294c6997620ed09c50b094","e93054fd8f825f21e1433917ab68876b8fe9a0c9d3f4e3a0723fc8b79729f2f8","f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73"],
+              "dreamfall-cliff":["2da53a322d84313afecc038a78cfb09fd42468a2a87418ba7c9e2cb7f6ea424b","efb32328fadd2ad3396fbab6a468e701e7f22f892c1d1a35dd924b316b0be74a","623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e"]
             },
             "controls":[
               {"id":"path-of-void","mapId":1,"image":"controls/path-of-void.webp","expected":[5662.35270309106,3599.42210726817],"target":{"scaleAwareStructure":0.5355426641098889,"intensityNcc":0.3457984616456733,"productionCombined":0.5271895787477534,"angle":0,"radius":112}},
@@ -101,31 +83,31 @@ jobs:
             ]
           }
           JSON
-      - name: D0-only interpolation diagnostic
+      - name: D0-only canonical-canvas diagnostic
         shell: bash
         run: |
           set -euo pipefail
-          node tools/research/domain-invariant-descriptor/d0-input-semantics-diagnostic.mjs \
+          node tools/research/domain-invariant-descriptor/d0-canonical-semantics-diagnostic.mjs \
             --site descriptor-site --controls descriptor-input/d0-controls.json \
-            --output descriptor-output/d0-input-semantics.json | tee descriptor-output/d0-input-semantics.log
-          jq -e '.descriptorOutcomesExecuted==false and .d0OnlyApi=="recoverLocalGt"' descriptor-output/d0-input-semantics.json >/dev/null
+            --output descriptor-output/d0-canonical-semantics.json | tee descriptor-output/d0-canonical-semantics.log
+          jq -e '.descriptorOutcomesExecuted==false and .d0OnlyApi=="recoverLocalGt"' descriptor-output/d0-canonical-semantics.json >/dev/null
           python - <<'PY'
           import json
-          e=json.load(open('descriptor-output/d0-input-semantics.json'))
-          for cid in [x['id'] for x in e['controls']]:
+          e=json.load(open('descriptor-output/d0-canonical-semantics.json'))
+          for cid in sorted({r['control'] for r in e['results']}):
             rs=[r for r in e['results'] if r['control']==cid]
             rs.sort(key=lambda r:abs(r['delta']['scaleAwareStructure'])+abs(r['delta']['intensityNcc'])+abs(r['delta']['productionCombined']))
-            print('BEST',cid,rs[0]['mode'],rs[0]['delta'],rs[0]['d0'])
+            print('BEST',cid,rs[0]['canonicalMode'],rs[0]['delta'],rs[0]['d0'])
           print('ROI_HASH_MATCHES',e['historicalRoiShaMatches'])
           PY
           git diff --exit-code 702edb7451d2a74a98b037cee9803c5a69804db0 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
-      - name: Upload D0 input-semantics diagnostic
+      - name: Upload D0 canonical-canvas diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-d0-input-semantics-${{ github.run_id }}
+          name: wwmsync-d0-canonical-semantics-${{ github.run_id }}
           path: |
-            descriptor-output/d0-input-semantics.json
-            descriptor-output/d0-input-semantics.log
+            descriptor-output/d0-canonical-semantics.json
+            descriptor-output/d0-canonical-semantics.log
             descriptor-input/d0-controls.json
             /tmp/d0-status.txt
             docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
