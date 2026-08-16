@@ -13,6 +13,7 @@ permissions: {contents: read, actions: read}
 env:
   GH_TOKEN: ${{ github.token }}
   DRIVER_SHA256: '576208a24909c49d9a2e9178185ee9ea3af98a09dae27b300a3c7784f0023350'
+  INSTRUMENT_SHA256: 'd466c0951b7f0214666d5eb8ccd7a7145ce3287bb7cbee1198df17f28f4d72fd'
 
 jobs:
   descriptor-audit:
@@ -23,27 +24,110 @@ jobs:
         with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Decode frozen harness for D0 input-plumbing diagnostic
+      - name: Verify frozen harness and production guards
         shell: bash
         run: |
           set -euo pipefail
           base64 -d tools/research/domain-invariant-descriptor/driver.sh.gz.b64 | gzip -d > /tmp/descriptor-driver.sh
           test "$(sha256sum /tmp/descriptor-driver.sh|awk '{print $1}')" = "$DRIVER_SHA256"
-          bash -n /tmp/descriptor-driver.sh
-          base64 -d tools/research/domain-invariant-descriptor/run-local.mjs.gz.b64 | gzip -d > /tmp/descriptor-run-local.mjs
           base64 -d tools/research/domain-invariant-descriptor/instrument.mjs.gz.b64 | gzip -d > /tmp/descriptor-instrument.mjs
-          printf 'DESCRIPTORS_EXECUTED=NO\nD0_DIAGNOSTIC_ONLY=YES\n' > /tmp/input-plumbing-status.txt
-          sha256sum /tmp/descriptor-driver.sh /tmp/descriptor-run-local.mjs /tmp/descriptor-instrument.mjs
-      - name: Upload frozen input-plumbing diagnostic
+          test "$(sha256sum /tmp/descriptor-instrument.mjs|awk '{print $1}')" = "$INSTRUMENT_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = 58b5a1babf6a12b944f9b745b8bf7f7df573bf9b
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = 9388960a8bff53a9cfc7471372af144b7a28c34f
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = 1a227d06ae41660ea3e3b832e7f1921cc507c0d7
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          printf 'DESCRIPTORS_EXECUTED=NO\nD0_DIAGNOSTIC_ONLY=YES\n' > /tmp/d0-status.txt
+      - name: Prepare bounded 270-to-192 interpolation semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pillow opencv-python-headless
+          npm install --no-save --no-package-lock playwright-core@latest >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          rm -rf descriptor-site descriptor-input descriptor-output descriptor-tools
+          mkdir -p descriptor-site/controls/variants descriptor-input descriptor-output descriptor-tools
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt descriptor-site/
+          cp fixtures/owner-gfn-center-hud/{path-of-void,buddha-fort,general-shrine-repeat,prosperity-haven,dreamfall-cliff}.webp descriptor-site/controls/
+          cp /tmp/descriptor-instrument.mjs descriptor-tools/instrument.mjs
+          python tools/build_dashen_reference_audit_cache.py descriptor-site/dashen-cache --workers 24
+          node tools/instrument-real-gfn-production-replay.mjs descriptor-site/vision-sync.js
+          node descriptor-tools/instrument.mjs descriptor-site/vision-sync.js
+          node --check descriptor-site/vision-sync.js
+          python - <<'PY'
+          from PIL import Image
+          import cv2, numpy as np, pathlib
+          root=pathlib.Path('descriptor-site/controls')
+          out=root/'variants'; out.mkdir(parents=True,exist_ok=True)
+          ids=['path-of-void','buddha-fort','general-shrine-repeat','prosperity-haven','dreamfall-cliff']
+          pil_modes={
+            'pillow-nearest':Image.Resampling.NEAREST,
+            'pillow-bilinear':Image.Resampling.BILINEAR,
+            'pillow-bicubic':Image.Resampling.BICUBIC,
+            'pillow-lanczos':Image.Resampling.LANCZOS,
+            'pillow-box':Image.Resampling.BOX,
+            'pillow-hamming':Image.Resampling.HAMMING,
+          }
+          cv_modes={
+            'opencv-nearest':cv2.INTER_NEAREST,
+            'opencv-linear':cv2.INTER_LINEAR,
+            'opencv-cubic':cv2.INTER_CUBIC,
+            'opencv-area':cv2.INTER_AREA,
+            'opencv-lanczos4':cv2.INTER_LANCZOS4,
+          }
+          for cid in ids:
+            im=Image.open(root/f'{cid}.webp').convert('RGB')
+            assert im.size==(270,270), (cid,im.size)
+            for name,mode in pil_modes.items(): im.resize((192,192),mode).save(out/f'{cid}--{name}.png')
+            arr=np.asarray(im)
+            for name,mode in cv_modes.items():
+              r=cv2.resize(arr,(192,192),interpolation=mode)
+              Image.fromarray(r.astype(np.uint8),'RGB').save(out/f'{cid}--{name}.png')
+          PY
+          cat > descriptor-input/d0-controls.json <<'JSON'
+          {
+            "precomputedModes":["pillow-nearest","pillow-bilinear","pillow-bicubic","pillow-lanczos","pillow-box","pillow-hamming","opencv-nearest","opencv-linear","opencv-cubic","opencv-area","opencv-lanczos4"],
+            "knownRoiSha":{
+              "path-of-void":["133f20e51fac255e6e60b235df2dd75269837ff64c39da8cc957df2c7a7ee1c8","1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f","afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256"]
+            },
+            "controls":[
+              {"id":"path-of-void","mapId":1,"image":"controls/path-of-void.webp","expected":[5662.35270309106,3599.42210726817],"target":{"scaleAwareStructure":0.5355426641098889,"intensityNcc":0.3457984616456733,"productionCombined":0.5271895787477534,"angle":0,"radius":112}},
+              {"id":"buddha-fort","mapId":1,"image":"controls/buddha-fort.webp","expected":[6150.319157894736,3719.750105931495],"target":{"scaleAwareStructure":0.5247591291015966,"intensityNcc":0.2794791968757558,"productionCombined":0.5126552124691737,"angle":180,"radius":48}},
+              {"id":"general-shrine-repeat","mapId":1,"image":"controls/general-shrine-repeat.webp","expected":[6015.017126148705,3889.360588972433],"target":{"scaleAwareStructure":0.5086483271335666,"intensityNcc":0.387429144605377,"productionCombined":0.505342836239777,"angle":180,"radius":32}},
+              {"id":"prosperity-haven","mapId":2,"image":"controls/prosperity-haven.webp","expected":[4959.193804824561,4487.057644110276],"target":{"scaleAwareStructure":0.5470713174056286,"intensityNcc":0.3518143729448119,"productionCombined":0.5382144379571653,"angle":180,"radius":32}},
+              {"id":"dreamfall-cliff","mapId":2,"image":"controls/dreamfall-cliff.webp","expected":[5054.117319966583,5032.292689055973],"target":{"scaleAwareStructure":0.5028816161470961,"intensityNcc":0.03387252114448036,"productionCombined":0.47544221876103143,"angle":270,"radius":64}}
+            ]
+          }
+          JSON
+      - name: D0-only interpolation diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/research/domain-invariant-descriptor/d0-input-semantics-diagnostic.mjs \
+            --site descriptor-site --controls descriptor-input/d0-controls.json \
+            --output descriptor-output/d0-input-semantics.json | tee descriptor-output/d0-input-semantics.log
+          jq -e '.descriptorOutcomesExecuted==false and .d0OnlyApi=="recoverLocalGt"' descriptor-output/d0-input-semantics.json >/dev/null
+          python - <<'PY'
+          import json
+          e=json.load(open('descriptor-output/d0-input-semantics.json'))
+          for cid in [x['id'] for x in e['controls']]:
+            rs=[r for r in e['results'] if r['control']==cid]
+            rs.sort(key=lambda r:abs(r['delta']['scaleAwareStructure'])+abs(r['delta']['intensityNcc'])+abs(r['delta']['productionCombined']))
+            print('BEST',cid,rs[0]['mode'],rs[0]['delta'],rs[0]['d0'])
+          print('ROI_HASH_MATCHES',e['historicalRoiShaMatches'])
+          PY
+          git diff --exit-code 702edb7451d2a74a98b037cee9803c5a69804db0 -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+      - name: Upload D0 input-semantics diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-domain-invariant-input-plumbing-${{ github.run_id }}
+          name: wwmsync-d0-input-semantics-${{ github.run_id }}
           path: |
-            /tmp/descriptor-driver.sh
-            /tmp/descriptor-run-local.mjs
-            /tmp/descriptor-instrument.mjs
-            /tmp/input-plumbing-status.txt
-            docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json
+            descriptor-output/d0-input-semantics.json
+            descriptor-output/d0-input-semantics.log
+            descriptor-input/d0-controls.json
+            /tmp/d0-status.txt
             docs/wwmsync/audits/owner-gfn-post-acquisition-evidence-2026-08-15.json
             docs/wwmsync/audits/owner-gfn-post-acquisition-identity-gt-freeze-2026-08-15.json
             fixtures/owner-gfn-center-hud/provenance.json
