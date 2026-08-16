@@ -1,27 +1,259 @@
 {
-  "schema":"wwmsync-domain-invariant-structural-descriptor-prereg-v1",
-  "frozenBeforeDescriptorOutcomes":true,
-  "startingHead":"15a001b4227aea6f266f666528c009ef88c87183",
-  "ss0":{"run":31889065856,"job":95022507549,"artifact":9248045962,"artifactDigest":"sha256:0c5cc8a788274b33892b8bfdced58b552f99f6716e54acec5c45487a5bf2e1a2","verdict":"SS0 — PRIMITIVE SIGNALS NON-SEPARABLE"},
-  "productionGuards":{"structuralGate":0.58,"intensityGate":0.42,"coarseBeam":8,"protectedBlobSha1":{"vision-sync.js":"58b5a1babf6a12b944f9b745b8bf7f7df573bf9b","dashen-tile-cache.js":"9388960a8bff53a9cfc7471372af144b7a28c34f","tools/build_dashen_visual_cache.py":"1a227d06ae41660ea3e3b832e7f1921cc507c0d7"},"productionChangeAllowed":false},
-  "closedDirections":["current-score reweighting","Pareto ranking of existing signals","structural/intensity gate lowering","beam/candidate-retention expansion","common HUD bridge retuning","radial/CLAHE/blur sweeps","temporal voting/medoid/median","old temporal ZIP attachment transport"],
-  "controls":{"ownerUnique":["east-cross","general-shrine","path-of-void","buddha-fort","prosperity-haven","dreamfall-cliff"],"sameLocationDrift":"general-shrine-repeat","independentValidation":"fang-xu","notEvaluable":"ethereal-chamber"},
-  "regions":{"Qinghe":["east-cross","general-shrine","path-of-void","buddha-fort"],"Kaifeng":["prosperity-haven","dreamfall-cliff"],"fang-xu":"Qinghe","general-shrine-repeat":"Qinghe","ethereal-chamber":"NOT_EVALUABLE_REFERENCE_FAMILY"},
-  "inputAndAlignment":{"source":"use each control's exact replay HUD pixels and frozen SS0 candidate geometry; 270x270 owner fixtures feed unchanged owner-replay extraction geometry, never descriptor-specific preprocessing","luminance":"Y=(0.299*R+0.587*G+0.114*B)/255","referenceWarp":"existing frozen production candidate warp geometry only aligns source/reference samples; descriptor signals are evaluated directly","support":"normalized source annulus 0.20<=r<=0.78 with fixed 3-pixel canonical border excluded","interpolation":"existing replay/production bilinear sampling semantics, identical for GT and wrong candidates","noAdaptiveNormalization":true},
-  "candidatePolicy":{"source":"SS0 artifact 9248045962 candidate-table.csv/evidence.json","correct":"exact SS0 :gt-local row; GT identity only from independent ground truth","wrongSet":"all SS0 WRONG rows on the control which Pareto-dominate GT in (scaleAwareStructure,intensityNcc), plus SS0 final WRONG candidate; deduplicate candidateId","strongestWrong":"maximum new-descriptor score within frozen wrongSet","rank":"1+count(frozen wrong scores strictly greater than GT); ties separately reported","margin":"GT-strongestWrong","missingOwnerGeometry":"where SS0 table omits x/y/radius, reconstruct with unchanged production replay inputs and D0 only; D1-D4 may not be inspected until D0 geometry/score reproduction passes","reproductionTolerance":{"scaleAwareStructureAbs":0.000001,"intensityNccAbs":0.000001,"productionCombinedAbs":0.000001,"angleDegAbs":0.000001,"scaleAbs":0.000001,"gtDistancePxAbs":0.05},"reproductionFailure":"INPUT_REPRODUCTION_FAIL; never substitute descriptor-selected candidate"},
-  "D0":{"name":"CURRENT_PRIMITIVE_BASELINE","signals":["scaleAwareStructure","intensityNcc"],"purpose":"diagnostic control only; no new weighting or thresholds"},
-  "D1":{"name":"LOCAL_CENSUS_ORDINAL","input":"luminance","neighborhood":"7x7","samples":"all integer offsets (dy,dx), dy=-3..3 outer loop then dx=-3..3, excluding (0,0), exactly 48 bits","bit":"neighbor>=center","validity":"center and all samples inside common support","score":"equal source/reference bits / 48, averaged uniformly over valid centers","adaptiveWeights":false},
-  "D2":{"name":"UNSIGNED_GRADIENT_ORIENTATION","input":"luminance","gradient":"3x3 Sobel BORDER_REFLECT_101","orientation":"atan2(gy,gx) modulo pi","bins":8,"binRule":"floor(theta/pi*8), clamp 0..7","magnitude":"sqrt(gx^2+gy^2), divide by support p90 then clip 0..1, epsilon=1e-6","perPixelAgreement":"1-min(circularBinDistance,8-circularBinDistance)/4","weight":"min(sourceNormalizedMagnitude,referenceNormalizedMagnitude)","score":"weighted mean over common support, null if weight sum<=1e-6","rawIntensityScoreForbidden":true},
-  "D3":{"name":"SYMMETRIC_EDGE_DISTANCE_CHAMFER","input":"D2 Sobel magnitude","edgeRule":"magnitude>=support p85, percentile independently per aligned patch with identical rule","distance":"Euclidean distance transform to nearest edge","capPx":6,"directed":"mean(min(distance,6)/6) from each edge set to other","score":"1-0.5*(directedSourceToReference+directedReferenceToSource)","minimumEdgesPerSide":16,"insufficient":"score=null and descriptor coverage failure; no threshold retune"},
-  "D4":{"name":"SKELETON_NETWORK_DISTANCE","input":"D3 binary edge map","cleanup":"one 3x3 CROSS morphological closing iteration","skeleton":"deterministic Zhang-Suen thinning; row-major simultaneous deletion each sub-iteration; max 128 full iterations or convergence","distance":"same symmetric Euclidean distance-transform formula as D3","capPx":6,"minimumSkeletonPixelsPerSide":12,"insufficient":"score=null and descriptor coverage failure; no threshold retune"},
-  "D5":{"enabled":false,"reason":"disabled before outcomes; may not be added later"},
-  "poseGrid":{"angleDeltaDeg":[-15,0,15],"radiusFactor":[0.9,1.0,1.1],"xOffsetPx":[-8,0,8],"yOffsetPx":[-8,0,8],"combinationsPerCandidate":243,"symmetry":"identical grid around GT and every frozen wrong base candidate","noLocationSpecificPoseTuning":true},
-  "phase2CandidateLocked":{"report":["GT descriptor score","strongest wrong descriptor score","margin","GT rank","wrong still dominates"]},
-  "phase3SymmetricPose":{"selection":"best descriptor score within identical 243-pose grid independently around each frozen GT/wrong candidate","comparison":"best GT versus best strongest wrong"},
-  "crossControl":{"mustReportSeparately":["east-cross","general-shrine","path-of-void","buddha-fort","prosperity-haven","dreamfall-cliff","fang-xu"],"summary":["positive margin count","median margin","worst margin","GT rank","both-region coverage","Fang behavior"],"meanCannotHideContradiction":true},
-  "drift":{"pair":["general-shrine","general-shrine-repeat"],"materialMarginChangeAbs":0.10,"classes":{"DR-STABLE":"correct preferred both and absolute margin change<=0.10","DR-PARTIAL":"correct preferred both and absolute margin change>0.10","DR-FLIP":"ordering reverses","DR-WRONG-STABLE":"wrong preferred both"}},
-  "retrievalProxy":{"conditional":"only descriptors satisfying owner/Fang/drift local survivor predicates; never rescues local failure","population":"all 424 exact Dashen z5 tile centers from artifact 9210943659; sort (tileY,tileX), center=(tileX*256+128,tileY*256+128), same population every control","pose":"same exact 243-pose grid at every sampled center","gtNeighborhood":"sampled center nearest independent GT; descriptor cannot redefine","rank":"1+count(non-GT sampled centers score>GT-center score); ties separately counted","wrongAboveGT":"count non-GT sampled centers score>GT-center score","falseBasinConcentration":"8-connected components in z5 tile-index space among centers above GT; largestCount/max(1,wrongAboveGT), component count, largest members","uniqueness":"1-count(non-GT scores>=GTscore-0.01)/max(1,N_nonGT)","runtime":"warm-up first 10 candidate-pose evaluations then wall-clock descriptor only; median and p95 ms/candidate-pose","noProductionAcceptance":true},
-  "stress40Frame":{"conditional":"only if owner>=4/6, both regions, Fang and drift survive and retrieval shows no newly stronger persistent false basin","fixture":"wwmsync-gfn-motion-20260810-143835.zip","sha256":"aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216","frameCount":40,"populationAndPose":"unchanged retrieval 424 centers and 243-pose grid","perFrame":"top center, top score, runner-up, epsilon-0.01 uniqueness, runtime","topCandidateRecurrence":"histogram exact top centers; max recurrence/40","topBasinPersistence":"8-connected components of top centers over time; largest recurrence/40, neutral because absolute GT unavailable","candidateDiversity":"distinct top centers/40 and normalized natural-log Shannon entropy","descriptorStability":"median and worst consecutive-frame z5-pixel distance plus median top-runner margin","prohibited":"no localization PASS/FAIL or absolute correctness; no temporal voting/tuning"},
-  "survivorRule":{"ownerPositiveMinimum":"4/6 owner unique controls","regionRequirement":"at least one positive owner margin in Qinghe and one in Kaifeng","fang":"GT preferred over all frozen SS0 dominators candidate-locked and symmetric-pose","generalDrift":"DR-STABLE or DR-PARTIAL only","persistentFalseBasin":"no newly stronger persistent sampled wrong basin","causality":"descriptor separation only, never gates/weights/beam","noRelaxationAfterOutcomes":true},
-  "finalCases":{"RD0":"D1-D4 non-separable similarly to primitives; learned known-GT representation justified; no reweighting","RD1":"one common frozen descriptor satisfies survivor rule; separate production-candidate architecture task justified, no production modification now","RD2":"partial representation rescue; heterogeneous failure split, no universal fix claim","RD3":"new representation unsafe due stronger/more stable false basins; reject family"}
+  "schema": "wwmsync-domain-invariant-structural-descriptor-prereg-v1",
+  "frozenBeforeDescriptorOutcomes": true,
+  "startingHead": "15a001b4227aea6f266f666528c009ef88c87183",
+  "ss0": {
+    "run": 31889065856,
+    "job": 95022507549,
+    "artifact": 9248045962,
+    "artifactDigest": "sha256:0c5cc8a788274b33892b8bfdced58b552f99f6716e54acec5c45487a5bf2e1a2",
+    "verdict": "SS0 — PRIMITIVE SIGNALS NON-SEPARABLE"
+  },
+  "productionGuards": {
+    "structuralGate": 0.58,
+    "intensityGate": 0.42,
+    "coarseBeam": 8,
+    "protectedBlobSha1": {
+      "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+      "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+      "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7"
+    },
+    "productionChangeAllowed": false
+  },
+  "closedDirections": [
+    "current-score reweighting",
+    "Pareto ranking of existing signals",
+    "structural/intensity gate lowering",
+    "beam/candidate-retention expansion",
+    "common HUD bridge retuning",
+    "radial/CLAHE/blur sweeps",
+    "temporal voting/medoid/median",
+    "old temporal ZIP attachment transport"
+  ],
+  "controls": {
+    "ownerUnique": [
+      "east-cross",
+      "general-shrine",
+      "path-of-void",
+      "buddha-fort",
+      "prosperity-haven",
+      "dreamfall-cliff"
+    ],
+    "sameLocationDrift": "general-shrine-repeat",
+    "independentValidation": "fang-xu",
+    "notEvaluable": "ethereal-chamber"
+  },
+  "regions": {
+    "Qinghe": [
+      "east-cross",
+      "general-shrine",
+      "path-of-void",
+      "buddha-fort"
+    ],
+    "Kaifeng": [
+      "prosperity-haven",
+      "dreamfall-cliff"
+    ],
+    "fang-xu": "Qinghe",
+    "general-shrine-repeat": "Qinghe",
+    "ethereal-chamber": "NOT_EVALUABLE_REFERENCE_FAMILY"
+  },
+  "inputAndAlignment": {
+    "source": "use each control's exact replay HUD pixels and frozen SS0 candidate geometry; 270x270 owner fixtures feed unchanged owner-replay extraction geometry, never descriptor-specific preprocessing",
+    "luminance": "Y=(0.299*R+0.587*G+0.114*B)/255",
+    "referenceWarp": "existing frozen production candidate warp geometry only aligns source/reference samples; descriptor signals are evaluated directly",
+    "support": "normalized source annulus 0.20<=r<=0.78 with fixed 3-pixel canonical border excluded",
+    "interpolation": "existing replay/production bilinear sampling semantics, identical for GT and wrong candidates",
+    "noAdaptiveNormalization": true
+  },
+  "candidatePolicy": {
+    "source": "SS0 artifact 9248045962 candidate-table.csv/evidence.json",
+    "correct": "exact SS0 :gt-local row; GT identity only from independent ground truth",
+    "wrongSet": "all SS0 WRONG rows on the control which Pareto-dominate GT in (scaleAwareStructure,intensityNcc), plus SS0 final WRONG candidate; deduplicate candidateId",
+    "strongestWrong": "maximum new-descriptor score within frozen wrongSet",
+    "rank": "1+count(frozen wrong scores strictly greater than GT); ties separately reported",
+    "margin": "GT-strongestWrong",
+    "missingOwnerGeometry": "where SS0 table omits x/y/radius, reconstruct with unchanged production replay inputs and D0 only; D1-D4 may not be inspected until D0 geometry/score reproduction passes",
+    "reproductionTolerance": {
+      "scaleAwareStructureAbs": 1e-06,
+      "intensityNccAbs": 1e-06,
+      "productionCombinedAbs": 1e-06,
+      "angleDegAbs": 1e-06,
+      "scaleAbs": 1e-06,
+      "gtDistancePxAbs": 0.05
+    },
+    "reproductionFailure": "INPUT_REPRODUCTION_FAIL; never substitute descriptor-selected candidate"
+  },
+  "D0": {
+    "name": "CURRENT_PRIMITIVE_BASELINE",
+    "signals": [
+      "scaleAwareStructure",
+      "intensityNcc"
+    ],
+    "purpose": "diagnostic control only; no new weighting or thresholds"
+  },
+  "D1": {
+    "name": "LOCAL_CENSUS_ORDINAL",
+    "input": "luminance",
+    "neighborhood": "7x7",
+    "samples": "all integer offsets (dy,dx), dy=-3..3 outer loop then dx=-3..3, excluding (0,0), exactly 48 bits",
+    "bit": "neighbor>=center",
+    "validity": "center and all samples inside common support",
+    "score": "equal source/reference bits / 48, averaged uniformly over valid centers",
+    "adaptiveWeights": false
+  },
+  "D2": {
+    "name": "UNSIGNED_GRADIENT_ORIENTATION",
+    "input": "luminance",
+    "gradient": "3x3 Sobel BORDER_REFLECT_101",
+    "orientation": "atan2(gy,gx) modulo pi",
+    "bins": 8,
+    "binRule": "floor(theta/pi*8), clamp 0..7",
+    "magnitude": "sqrt(gx^2+gy^2), divide by support p90 then clip 0..1, epsilon=1e-6",
+    "perPixelAgreement": "1-min(circularBinDistance,8-circularBinDistance)/4",
+    "weight": "min(sourceNormalizedMagnitude,referenceNormalizedMagnitude)",
+    "score": "weighted mean over common support, null if weight sum<=1e-6",
+    "rawIntensityScoreForbidden": true
+  },
+  "D3": {
+    "name": "SYMMETRIC_EDGE_DISTANCE_CHAMFER",
+    "input": "D2 Sobel magnitude",
+    "edgeRule": "magnitude>=support p85, percentile independently per aligned patch with identical rule",
+    "distance": "Euclidean distance transform to nearest edge",
+    "capPx": 6,
+    "directed": "mean(min(distance,6)/6) from each edge set to other",
+    "score": "1-0.5*(directedSourceToReference+directedReferenceToSource)",
+    "minimumEdgesPerSide": 16,
+    "insufficient": "score=null and descriptor coverage failure; no threshold retune"
+  },
+  "D4": {
+    "name": "SKELETON_NETWORK_DISTANCE",
+    "input": "D3 binary edge map",
+    "cleanup": "one 3x3 CROSS morphological closing iteration",
+    "skeleton": "deterministic Zhang-Suen thinning; row-major simultaneous deletion each sub-iteration; max 128 full iterations or convergence",
+    "distance": "same symmetric Euclidean distance-transform formula as D3",
+    "capPx": 6,
+    "minimumSkeletonPixelsPerSide": 12,
+    "insufficient": "score=null and descriptor coverage failure; no threshold retune"
+  },
+  "D5": {
+    "enabled": false,
+    "reason": "disabled before outcomes; may not be added later"
+  },
+  "poseGrid": {
+    "angleDeltaDeg": [
+      -15,
+      0,
+      15
+    ],
+    "radiusFactor": [
+      0.9,
+      1.0,
+      1.1
+    ],
+    "xOffsetPx": [
+      -8,
+      0,
+      8
+    ],
+    "yOffsetPx": [
+      -8,
+      0,
+      8
+    ],
+    "combinationsPerCandidate": 81,
+    "symmetry": "identical grid around GT and every frozen wrong base candidate",
+    "noLocationSpecificPoseTuning": true
+  },
+  "phase2CandidateLocked": {
+    "report": [
+      "GT descriptor score",
+      "strongest wrong descriptor score",
+      "margin",
+      "GT rank",
+      "wrong still dominates"
+    ]
+  },
+  "phase3SymmetricPose": {
+    "selection": "best descriptor score within identical 81-pose grid independently around each frozen GT/wrong candidate",
+    "comparison": "best GT versus best strongest wrong"
+  },
+  "crossControl": {
+    "mustReportSeparately": [
+      "east-cross",
+      "general-shrine",
+      "path-of-void",
+      "buddha-fort",
+      "prosperity-haven",
+      "dreamfall-cliff",
+      "fang-xu"
+    ],
+    "summary": [
+      "positive margin count",
+      "median margin",
+      "worst margin",
+      "GT rank",
+      "both-region coverage",
+      "Fang behavior"
+    ],
+    "meanCannotHideContradiction": true
+  },
+  "drift": {
+    "pair": [
+      "general-shrine",
+      "general-shrine-repeat"
+    ],
+    "materialMarginChangeAbs": 0.1,
+    "classes": {
+      "DR-STABLE": "correct preferred both and absolute margin change<=0.10",
+      "DR-PARTIAL": "correct preferred both and absolute margin change>0.10",
+      "DR-FLIP": "ordering reverses",
+      "DR-WRONG-STABLE": "wrong preferred both"
+    }
+  },
+  "retrievalProxy": {
+    "conditional": "only descriptors satisfying owner/Fang/drift local survivor predicates; never rescues local failure",
+    "population": "all 424 exact Dashen z5 tile centers from artifact 9210943659; sort (tileY,tileX), center=(tileX*256+128,tileY*256+128), same population every control",
+    "pose": "same exact 81-pose grid at every sampled center",
+    "gtNeighborhood": "sampled center nearest independent GT; descriptor cannot redefine",
+    "rank": "1+count(non-GT sampled centers score>GT-center score); ties separately counted",
+    "wrongAboveGT": "count non-GT sampled centers score>GT-center score",
+    "falseBasinConcentration": "8-connected components in z5 tile-index space among centers above GT; largestCount/max(1,wrongAboveGT), component count, largest members",
+    "uniqueness": "1-count(non-GT scores>=GTscore-0.01)/max(1,N_nonGT)",
+    "runtime": "warm-up first 10 candidate-pose evaluations then wall-clock descriptor only; median and p95 ms/candidate-pose",
+    "noProductionAcceptance": true
+  },
+  "stress40Frame": {
+    "conditional": "only if owner>=4/6, both regions, Fang and drift survive and retrieval shows no newly stronger persistent false basin",
+    "fixture": "wwmsync-gfn-motion-20260810-143835.zip",
+    "sha256": "aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216",
+    "frameCount": 40,
+    "populationAndPose": "unchanged retrieval 424 centers and 81-pose grid",
+    "perFrame": "top center, top score, runner-up, epsilon-0.01 uniqueness, runtime",
+    "topCandidateRecurrence": "histogram exact top centers; max recurrence/40",
+    "topBasinPersistence": "8-connected components of top centers over time; largest recurrence/40, neutral because absolute GT unavailable",
+    "candidateDiversity": "distinct top centers/40 and normalized natural-log Shannon entropy",
+    "descriptorStability": "median and worst consecutive-frame z5-pixel distance plus median top-runner margin",
+    "prohibited": "no localization PASS/FAIL or absolute correctness; no temporal voting/tuning"
+  },
+  "survivorRule": {
+    "ownerPositiveMinimum": "4/6 owner unique controls",
+    "regionRequirement": "at least one positive owner margin in Qinghe and one in Kaifeng",
+    "fang": "GT preferred over all frozen SS0 dominators candidate-locked and symmetric-pose",
+    "generalDrift": "DR-STABLE or DR-PARTIAL only",
+    "persistentFalseBasin": "no newly stronger persistent sampled wrong basin",
+    "causality": "descriptor separation only, never gates/weights/beam",
+    "noRelaxationAfterOutcomes": true
+  },
+  "finalCases": {
+    "RD0": "D1-D4 non-separable similarly to primitives; learned known-GT representation justified; no reweighting",
+    "RD1": "one common frozen descriptor satisfies survivor rule; separate production-candidate architecture task justified, no production modification now",
+    "RD2": "partial representation rescue; heterogeneous failure split, no universal fix claim",
+    "RD3": "new representation unsafe due stronger/more stable false basins; reject family"
+  },
+  "arithmeticCorrectionBeforeDescriptorOutcomes": {
+    "from": 243,
+    "to": 81,
+    "reason": "3×3×3×3 = 81; no descriptor outcomes had run"
+  }
 }

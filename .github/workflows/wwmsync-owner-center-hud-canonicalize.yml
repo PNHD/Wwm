@@ -1,137 +1,336 @@
 name: WWMSync Phase-0 Canonical Fixture Recovery
+
 on:
   workflow_dispatch:
   push:
-    branches: [feature/wwm-native-sync-v2]
-    paths: ['.github/workflows/wwmsync-owner-center-hud-canonicalize.yml']
-permissions: {contents: write}
-concurrency: {group: 'wwmsync-phase0-${{ github.ref }}', cancel-in-progress: false}
+    branches:
+      - feature/wwm-native-sync-v2
+    paths:
+      - .github/workflows/wwmsync-owner-center-hud-canonicalize.yml
+      - fixtures/owner-gfn-center-hud/**
+      - docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wwmsync-phase0-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  START: 2fe80538d7e04af9506baf513c996d5afc4367a9
+  RECOVERY_ROOT_HEAD: 2fe80538d7e04af9506baf513c996d5afc4367a9
+  RECOVERY_START_HEAD: d2322ac8f56b420422319c7a2352f04b8b1e64ad
   DIR: fixtures/owner-gfn-center-hud
   PREREG: docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json
+
 jobs:
   phase0:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: python -m pip install --quiet Pillow==11.3.0
+      - name: Checkout exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install image verifier
+        run: python -m pip install --disable-pip-version-check --quiet Pillow==11.3.0
+
       - name: Guard ancestry and production
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git merge-base "$START" HEAD)" = "$START"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$RECOVERY_ROOT_HEAD" HEAD
+          git merge-base --is-ancestor "$RECOVERY_START_HEAD" HEAD
+
           test "$(git rev-parse HEAD:vision-sync.js)" = 58b5a1babf6a12b944f9b745b8bf7f7df573bf9b
           test "$(git rev-parse HEAD:dashen-tile-cache.js)" = 9388960a8bff53a9cfc7471372af144b7a28c34f
           test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = 1a227d06ae41660ea3e3b832e7f1921cc507c0d7
           test "$(git rev-parse HEAD:$DIR/provenance.json)" = 84123d70a0c7080e262be2902a30233f63782b26
-          ! git diff --name-only "$START"..HEAD -- production/wwsync vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py | grep -q .
-          grep -F 'STRUCTURAL_THRESHOLD = 0.58' vision-sync.js
-          grep -F 'INTENSITY_THRESHOLD = 0.42' vision-sync.js
-          grep -F 'COARSE_TOP_K = 8' vision-sync.js
-      - name: Recover exact canonical WebPs and correct prereg
-        id: recover
+
+          if git diff --name-only "$RECOVERY_START_HEAD"..HEAD -- \
+            vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync | grep -q .; then
+            echo "Protected production path changed" >&2
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          src = Path("vision-sync.js").read_text(encoding="utf-8")
+          required = [
+              "COARSE_BEAM=8",
+              "if(fine.scaleScore<.58)",
+              "if(fine.intensityScore<.42)",
+          ]
+          missing = [s for s in required if s not in src]
+          assert not missing, f"missing frozen production semantics: {missing}"
+          print("PRODUCTION_BLOBS=PASS")
+          print("STRUCTURAL_GATE=0.58")
+          print("INTENSITY_GATE=0.42")
+          print("COARSE_BEAM=8")
+          PY
+
+      - name: Verify bounded Phase-0 tree delta
         shell: bash
-        env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import base64,hashlib,json,os,subprocess,urllib.request
-          from pathlib import Path
-          from PIL import Image
-          d=Path('fixtures/owner-gfn-center-hud'); prov=json.loads((d/'provenance.json').read_text())
-          assert prov['source']['zipSha256']=='b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad'
-          assert prov['source']['manifestSha256']=='4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0'
-          token=os.environ['GH_TOKEN']; repo=os.environ['GITHUB_REPOSITORY']
-          for r in prov['fixtures']:
-            req=urllib.request.Request(f'https://api.github.com/repos/{repo}/git/blobs/{r["gitBlobSha1"]}',headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
-            with urllib.request.urlopen(req) as resp: obj=json.load(resp)
-            raw=base64.b64decode(obj['content']); f=d/r['file']; f.write_bytes(raw)
-            assert hashlib.sha256(raw).hexdigest()==r['webpSha256']
-            assert subprocess.check_output(['git','hash-object',str(f)],text=True).strip()==r['gitBlobSha1']
-            with Image.open(f) as im: im.load(); assert im.size==tuple(r['size'])==(270,270) and im.mode==r['mode']=='RGB'; rgb=im.tobytes()
-            assert len(rgb)==r['rgbByteLength']==218700 and hashlib.sha256(rgb).hexdigest()==r['rgb8Sha256']
-            rgba=bytearray((len(rgb)//3)*4); rgba[0::4]=rgb[0::3]; rgba[1::4]=rgb[1::3]; rgba[2::4]=rgb[2::3]; rgba[3::4]=b'\xff'*(len(rgb)//3)
-            assert hashlib.sha256(rgba).hexdigest()==r['rgba255Sha256']
-            print(r['file'],r['webpSha256'],r['rgb8Sha256'],r['rgba255Sha256'],r['gitBlobSha1'])
-          for p in d.rglob('*.b64.*'): p.unlink()
-          for n in ('transport-index.json','_tmp_should_not_create'):
-            p=d/n
-            if p.exists(): p.unlink()
-          print('DIRECT_OBJECT_TRANSPORT_INTEGRITY=PASS'); print('CANONICAL_PIXEL_FIXTURES=PASS')
-          PY
-          python - <<'PY'
-          import copy,json,subprocess
-          from pathlib import Path
-          f=Path('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json')
-          oldtxt=subprocess.check_output(['git','show','2fe80538d7e04af9506baf513c996d5afc4367a9:'+str(f)],text=True); assert f.read_text()==oldtxt
-          old=json.loads(oldtxt); assert old['poseGrid']['combinationsPerCandidate']==243 and 'arithmeticCorrectionBeforeDescriptorOutcomes' not in old and oldtxt.count('243-pose')==3
-          new=copy.deepcopy(old); new['poseGrid']['combinationsPerCandidate']=81; new['arithmeticCorrectionBeforeDescriptorOutcomes']={'from':243,'to':81,'reason':'3×3×3×3 = 81; no descriptor outcomes had run'}
-          txt=(json.dumps(new,indent=2,ensure_ascii=False)+'\n').replace('243-pose','81-pose'); parsed=json.loads(txt)
-          assert parsed['poseGrid']['combinationsPerCandidate']==81 and txt.count('81-pose')==3 and '243-pose' not in txt
-          for k in ('rotationDeg','scale','radialMask','iconMask'): assert parsed['poseGrid'][k]==old['poseGrid'][k]
-          f.write_text(txt); print('PREREG_ARITHMETIC_ONLY_PROOF=PASS')
-          PY
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$DIR" "$PREREG"
           python - <<'PY'
           import subprocess
-          allowed={'fixtures/owner-gfn-center-hud/package.b64.00','fixtures/owner-gfn-center-hud/package.b64.01','docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'}|{f'fixtures/owner-gfn-center-hud/{x}' for x in ['path-of-void.webp','buddha-fort.webp','general-shrine-repeat.webp','prosperity-haven.webp','ethereal-chamber.webp','dreamfall-cliff.webp']}
-          changed=set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()); assert changed==allowed,(changed,allowed)
+          allowed = {
+              ".github/workflows/wwmsync-owner-center-hud-canonicalize.yml",
+              "docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json",
+              "fixtures/owner-gfn-center-hud/package.b64.00",
+              "fixtures/owner-gfn-center-hud/package.b64.01",
+              "fixtures/owner-gfn-center-hud/path-of-void.webp",
+              "fixtures/owner-gfn-center-hud/buddha-fort.webp",
+              "fixtures/owner-gfn-center-hud/general-shrine-repeat.webp",
+              "fixtures/owner-gfn-center-hud/prosperity-haven.webp",
+              "fixtures/owner-gfn-center-hud/ethereal-chamber.webp",
+              "fixtures/owner-gfn-center-hud/dreamfall-cliff.webp",
+          }
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--name-only", f"{__import__('os').environ['RECOVERY_START_HEAD']}..HEAD"],
+              text=True,
+          ).splitlines())
+          assert changed == allowed, f"unexpected Phase-0 delta: changed={sorted(changed)} allowed={sorted(allowed)}"
+          print("BOUNDED_PHASE0_TREE_DELTA=PASS")
           PY
-          git commit -m 'fixtures(wwmsync): canonicalize Phase-0 HUD fixtures [skip ci]'
-          echo "final=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Push without racing branch
-        run: |
-          set -euo pipefail
-          git fetch origin feature/wwm-native-sync-v2
-          test "$(git rev-parse origin/feature/wwm-native-sync-v2)" = "$GITHUB_SHA"
-          git push origin HEAD:feature/wwm-native-sync-v2
-      - name: Final steady-state verification
+
+      - name: Verify canonical fixtures and pixel invariants
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '${{ steps.recover.outputs.final }}'
           python - <<'PY'
+          import hashlib
           import json
           from pathlib import Path
-          d=Path('fixtures/owner-gfn-center-hud'); assert len(list(d.glob('*.webp')))==6; assert not list(d.rglob('*.b64.*')); assert not (d/'transport-index.json').exists(); assert not (d/'_tmp_should_not_create').exists()
-          p=json.loads(Path('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json').read_text()); assert p['poseGrid']['combinationsPerCandidate']==81; assert p['arithmeticCorrectionBeforeDescriptorOutcomes']=={'from':243,'to':81,'reason':'3×3×3×3 = 81; no descriptor outcomes had run'}
+          from PIL import Image
+
+          d = Path("fixtures/owner-gfn-center-hud")
+          expected_names = {
+              "provenance.json",
+              "path-of-void.webp",
+              "buddha-fort.webp",
+              "general-shrine-repeat.webp",
+              "prosperity-haven.webp",
+              "ethereal-chamber.webp",
+              "dreamfall-cliff.webp",
+          }
+          actual_names = {p.name for p in d.iterdir() if p.is_file()}
+          assert actual_names == expected_names, (sorted(actual_names), sorted(expected_names))
+          assert not list(d.rglob("package.b64.*"))
+          assert not list(d.rglob("package-tail.b64.*"))
+          assert not (d / "transport-index.json").exists()
+          assert not (d / "_tmp_should_not_create").exists()
+
+          prov = json.loads((d / "provenance.json").read_text(encoding="utf-8"))
+          assert prov["sourcePackage"]["zipSha256"] == "b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad"
+          assert prov["sourcePackage"]["embeddedManifestSha256"] == "4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0"
+          assert prov["pixelTruth"]["dimensions"] == [270, 270]
+          assert prov["pixelTruth"]["decodedMode"] == "RGB"
+          assert prov["pixelTruth"]["decodedRgbBytes"] == 218700
+          assert len(prov["fixtures"]) == 6
+
+          expected_files = expected_names - {"provenance.json"}
+          assert {r["file"] for r in prov["fixtures"]} == expected_files
+
+          for r in prov["fixtures"]:
+              f = d / r["file"]
+              raw = f.read_bytes()
+              webp_sha = hashlib.sha256(raw).hexdigest()
+              git_blob_sha = hashlib.sha1(
+                  f"blob {len(raw)}\0".encode("ascii") + raw
+              ).hexdigest()
+              assert webp_sha == r["webpSha256"], (r["file"], webp_sha)
+              assert git_blob_sha == r["expectedCanonicalGitBlobSha1"], (r["file"], git_blob_sha)
+
+              with Image.open(f) as im:
+                  im.load()
+                  assert im.size == (270, 270), (r["file"], im.size)
+                  assert im.mode == "RGB", (r["file"], im.mode)
+                  rgb = im.tobytes()
+                  rgba = im.convert("RGBA").tobytes()
+
+              assert len(rgb) == 218700, (r["file"], len(rgb))
+              rgb_sha = hashlib.sha256(rgb).hexdigest()
+              rgba_sha = hashlib.sha256(rgba).hexdigest()
+              assert rgb_sha == r["rgb8Sha256"], (r["file"], rgb_sha)
+              assert rgba_sha == r["taskPromptRgba255CompatibilitySha256"], (r["file"], rgba_sha)
+              print(
+                  "FIXTURE",
+                  r["file"],
+                  "WEBP", webp_sha,
+                  "RGB8", rgb_sha,
+                  "RGBA255", rgba_sha,
+                  "GIT_BLOB", git_blob_sha,
+              )
+
+          print("CANONICAL_PIXEL_FIXTURES=PASS")
+          print("CLEANUP=PASS")
           PY
-          test "$(git rev-parse HEAD:vision-sync.js)" = 58b5a1babf6a12b944f9b745b8bf7f7df573bf9b
-          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = 9388960a8bff53a9cfc7471372af144b7a28c34f
-          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = 1a227d06ae41660ea3e3b832e7f1921cc507c0d7
-          ! git diff --name-only "$START"..HEAD -- production/wwsync vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py | grep -q .
-          echo 'D1_D4_OUTCOMES=NOT_RUN'; echo 'DESCRIPTOR_AUDIT=STILL_PENDING_OUTCOMES'; echo 'RD=PENDING'
-      - name: Write evidence
+
+      - name: Verify prereg arithmetic-only correction
+        shell: bash
         run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          path = Path(os.environ["PREREG"])
+          old_text = subprocess.check_output(
+              ["git", "show", f"{os.environ['RECOVERY_START_HEAD']}:{path.as_posix()}"],
+              text=True,
+          )
+          new_text = path.read_text(encoding="utf-8")
+          old = json.loads(old_text)
+          new = json.loads(new_text)
+
+          assert old["poseGrid"]["combinationsPerCandidate"] == 243
+          assert "arithmeticCorrectionBeforeDescriptorOutcomes" not in old
+          assert old_text.count("243-pose") == 3
+
+          expected = copy.deepcopy(old)
+          expected["poseGrid"]["combinationsPerCandidate"] = 81
+          expected["phase3SymmetricPose"]["selection"] = expected["phase3SymmetricPose"]["selection"].replace("243-pose", "81-pose")
+          expected["retrievalProxy"]["pose"] = expected["retrievalProxy"]["pose"].replace("243-pose", "81-pose")
+          expected["stress40Frame"]["populationAndPose"] = expected["stress40Frame"]["populationAndPose"].replace("243-pose", "81-pose")
+          expected["arithmeticCorrectionBeforeDescriptorOutcomes"] = {
+              "from": 243,
+              "to": 81,
+              "reason": "3×3×3×3 = 81; no descriptor outcomes had run",
+          }
+
+          assert new == expected, "prereg changed beyond the frozen arithmetic-only correction"
+          assert new_text.count("81-pose") == 3
+          assert "243-pose" not in new_text
+
+          for key in ("D1", "D2", "D3", "D4", "D5", "inputAndAlignment", "candidatePolicy", "survivorRule"):
+              assert new[key] == old[key], key
+          assert new["D5"]["enabled"] is False
+          assert new["poseGrid"]["angleDeltaDeg"] == [-15, 0, 15]
+          assert new["poseGrid"]["radiusFactor"] == [0.9, 1.0, 1.1]
+          assert new["poseGrid"]["xOffsetPx"] == [-8, 0, 8]
+          assert new["poseGrid"]["yOffsetPx"] == [-8, 0, 8]
+
+          print("PREREG_COMBINATIONS_PER_CANDIDATE=81")
+          print("PREREG_ARITHMETIC_ONLY_CORRECTION=PASS")
+          print("DESCRIPTOR_DEFINITIONS_OTHERWISE_UNCHANGED=PASS")
+          print("D1_D4_OUTCOMES=NOT_RUN")
+          print("RD=PENDING")
+          PY
+
+      - name: Write machine-readable Phase-0 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p /tmp/phase0
           python - <<'PY'
-          import hashlib,json,subprocess
+          import hashlib
+          import json
+          import os
           from pathlib import Path
-          d=Path('fixtures/owner-gfn-center-hud'); rows=[]
-          for f in sorted(d.glob('*.webp')): rows.append({'path':str(f),'webpSha256':hashlib.sha256(f.read_bytes()).hexdigest(),'gitBlobSha1':subprocess.check_output(['git','hash-object',str(f)],text=True).strip()})
-          e={'phase':'PHASE-0 CANONICAL FIXTURE RECOVERY','start':'2fe80538d7e04af9506baf513c996d5afc4367a9','setup':'${{ github.sha }}','final':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'transport':'SOURCE ZIP VERIFIED BY AGENT; EXACT MATCHING FROZEN GIT BLOBS FETCHED ONCE FOR RECOVERY; FINAL TREE HAS NORMAL TRACKED WEBPS AND NO CARRIERS','zipSha256':'b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad','manifestSha256':'4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0','fixtures':rows,'prereg':81,'D1-D4':'NOT_RUN','descriptorAudit':'STILL_PENDING_OUTCOMES','RD':'PENDING','productionChange':'NO','structural':0.58,'intensity':0.42,'coarseBeam':8,'runtimeTransportDependency':False,'acceptanceMarker':'EXECUTED'}
-          Path('/tmp/phase0/evidence.json').write_text(json.dumps(e,indent=2)+'\n')
+          from PIL import Image
+
+          d = Path("fixtures/owner-gfn-center-hud")
+          prov = json.loads((d / "provenance.json").read_text(encoding="utf-8"))
+          rows = []
+          for r in sorted(prov["fixtures"], key=lambda x: x["file"]):
+              f = d / r["file"]
+              raw = f.read_bytes()
+              with Image.open(f) as im:
+                  im.load()
+                  rgb = im.tobytes()
+                  rgba = im.convert("RGBA").tobytes()
+              rows.append({
+                  "file": r["file"],
+                  "webpSha256": hashlib.sha256(raw).hexdigest(),
+                  "rgb8Sha256": hashlib.sha256(rgb).hexdigest(),
+                  "rgba255Sha256": hashlib.sha256(rgba).hexdigest(),
+                  "gitBlobSha1": hashlib.sha1(f"blob {len(raw)}\0".encode("ascii") + raw).hexdigest(),
+                  "dimensions": [270, 270],
+                  "mode": "RGB",
+                  "rgbByteLength": len(rgb),
+              })
+
+          evidence = {
+              "phase": "PHASE-0 CANONICAL FIXTURE RECOVERY",
+              "recoveryRootHead": os.environ["RECOVERY_ROOT_HEAD"],
+              "recoveryStartingHead": os.environ["RECOVERY_START_HEAD"],
+              "testedHead": os.environ["GITHUB_SHA"],
+              "sourceZipSha256": "b4de207954132451ca720d0607a0af325e9606972c7b8882d1fe4a5fb041dcad",
+              "embeddedManifestSha256": "4b0d2ee684e68f9137ee336634d25473726659ba8529ee88fde2580d9c300bf0",
+              "sourceZipRole": "one-time agent recovery provenance only; not consumed by CI",
+              "fixtures": rows,
+              "cleanup": {
+                  "packageB64Absent": True,
+                  "transportIndexAbsent": True,
+                  "temporaryCarriersAbsent": True,
+              },
+              "prereg": {
+                  "combinationsPerCandidate": 81,
+                  "arithmeticCorrectionBeforeDescriptorOutcomes": {
+                      "from": 243,
+                      "to": 81,
+                      "reason": "3×3×3×3 = 81; no descriptor outcomes had run",
+                  },
+                  "descriptorDefinitionsOtherwiseUnchanged": True,
+              },
+              "production": {
+                  "visionSyncBlobSha1": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+                  "dashenTileCacheBlobSha1": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+                  "dashenVisualCacheBuilderBlobSha1": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+                  "structuralGate": 0.58,
+                  "intensityGate": 0.42,
+                  "coarseBeam": 8,
+                  "productionChange": False,
+              },
+              "ci": {
+                  "readOnly": True,
+                  "runtimeFixtureTransportDependency": False,
+              },
+              "research": {
+                  "D1-D4": "NOT_RUN",
+                  "descriptorAudit": "STILL_PENDING_OUTCOMES",
+                  "RD": "PENDING",
+              },
+          }
+          Path("/tmp/phase0/evidence.json").write_text(
+              json.dumps(evidence, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
           PY
+
       - name: Upload Phase-0 evidence artifact
         id: upload
         uses: actions/upload-artifact@v4
-        with: {name: 'wwmsync-owner-center-hud-phase0-${{ github.run_id }}', path: /tmp/phase0, if-no-files-found: error}
+        with:
+          name: wwmsync-owner-center-hud-phase0-${{ github.run_id }}
+          path: /tmp/phase0
+          if-no-files-found: error
+
       - name: Phase-0 acceptance marker
+        shell: bash
         run: |
-          echo 'PHASE_0_ACCEPTANCE_MARKER=EXECUTED'
-          echo 'PHASE_0_CANONICAL_FIXTURE_RECOVERY=COMPLETE'
-          echo 'CANONICAL_PIXEL_FIXTURES=PASS'
-          echo 'PREREG_POSE_GRID=81'
-          echo 'D1_D4_OUTCOMES=NOT_RUN'
-          echo 'DESCRIPTOR_AUDIT=STILL_PENDING_OUTCOMES'
-          echo 'RD=PENDING'
-          echo 'RECOVERY_START_HEAD=${{ env.START }}'
-          echo 'SETUP_HEAD=${{ github.sha }}'
-          echo 'FINAL_HEAD=${{ steps.recover.outputs.final }}'
-          echo 'ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}'
-          echo 'PRODUCTION_CHANGE=NO'
+          set -euo pipefail
+          echo "PHASE_0_ACCEPTANCE_MARKER=SUCCESS"
+          echo "PHASE_0_CANONICAL_FIXTURE_RECOVERY=COMPLETE"
+          echo "CANONICAL_PIXEL_FIXTURES=PASS"
+          echo "PREREG_POSE_GRID=81"
+          echo "D1_D4_OUTCOMES=NOT_RUN"
+          echo "DESCRIPTOR_AUDIT=STILL_PENDING_OUTCOMES"
+          echo "RD=PENDING"
+          echo "RECOVERY_START_HEAD=$RECOVERY_START_HEAD"
+          echo "TESTED_HEAD=$GITHUB_SHA"
+          echo "ARTIFACT_ID=${{ steps.upload.outputs.artifact-id }}"
+          echo "ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
+          echo "PRODUCTION_CHANGE=NO"
