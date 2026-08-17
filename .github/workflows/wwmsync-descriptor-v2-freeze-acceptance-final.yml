@@ -1,0 +1,195 @@
+name: WWMSync Descriptor V2 Freeze Acceptance Final
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-descriptor-v2-freeze-acceptance-final.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  START_HEAD: '69578d239a89f8558b780b6d0f8382d3f737b9d5'
+  PREREG_COMMIT: '9e11969528095ec618599ddcc5d961f53bb01415'
+  CANDIDATE_RUN_HEAD: '2d9895880f52d530e89f1d76c9fd7e826da5ab9b'
+  FREEZE_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  FREEZE_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  FREEZE_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  ORIGINAL_PREREG_BLOB: '29540d6e9b4458cf4681a71351fdd2b0cdd5f423'
+  V2_PREREG_BLOB: '554bf3318b9b75690589fd3c9275bb20b92e82e5'
+  AMENDMENT_BLOB: '961ed6f2928265dda4fce47b86dd460f462400c7'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  CANDIDATE_RUN: '31986349537'
+  AGGREGATE_ARTIFACT: '9273933374'
+  AGGREGATE_DIGEST: 'sha256:bcde05959c6fc9ff43ab8b666e330d992fb8e6455ba928aa8caddfc926bf36ea'
+  AGGREGATE_PAYLOAD_SHA256: '2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be'
+  BL2_RUN: '31985103484'
+  BL2_JOB: '95258619911'
+  BL2_ARTIFACT: '9273501655'
+  BL2_DIGEST: 'sha256:8a614778c67e6b05a26d5fd32b6b52e40298f66dc9372f622d1d843a75cdfbbf'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  accept:
+    name: authoritative v2 candidate/D0 freeze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify ancestry, prereg ordering, freeze immutability, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$START_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" "$CANDIDATE_RUN_HEAD"
+          git merge-base --is-ancestor "$CANDIDATE_RUN_HEAD" "$FREEZE_COMMIT"
+          git merge-base --is-ancestor "$FREEZE_COMMIT" HEAD
+          test "$(git log --diff-filter=A --format=%H -- docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json | tail -1)" = "$PREREG_COMMIT"
+          test "$(git log --diff-filter=A --format=%H -- "$FREEZE_PATH" | tail -1)" = "$FREEZE_COMMIT"
+          test "$(sha256sum "$FREEZE_PATH" | awk '{print $1}')" = "$FREEZE_SHA256"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json)" = "$ORIGINAL_PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json)" = "$V2_PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-lineage-amendment-2026-08-16.json)" = "$AMENDMENT_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+
+      - name: Verify BL2 and exact source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p acceptance/input
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$BL2_ARTIFACT" > acceptance/bl2.json
+          test "$(jq -r '.workflow_run.id' acceptance/bl2.json)" = "$BL2_RUN"
+          test "$(jq -r '.digest' acceptance/bl2.json)" = "$BL2_DIGEST"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BL2_RUN/jobs" --jq ".jobs[]|select(.id==$BL2_JOB)|.conclusion")" = success
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > acceptance/input/east.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > acceptance/input/general.webp
+          test "$(sha256sum acceptance/input/east.webp | awk '{print $1}')" = 144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792
+          test "$(sha256sum acceptance/input/general.webp | awk '{print $1}')" = 261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55
+          test "$(sha256sum fixtures/owner-gfn-center-hud/path-of-void.webp | awk '{print $1}')" = 7e1e3624c35faf6b6bd1985b01305ddddae8908ab39015789849a26f1b4b3312
+          test "$(sha256sum fixtures/owner-gfn-center-hud/buddha-fort.webp | awk '{print $1}')" = 3287e05bee1ad49a4428f99566efad1d4ef9c417c893445478d44a274900eb3d
+          test "$(sha256sum fixtures/owner-gfn-center-hud/general-shrine-repeat.webp | awk '{print $1}')" = 981c3f7f003afed7220fba642c13638ae7f2b693bd7c64729a2f2418db528aae
+          test "$(sha256sum fixtures/owner-gfn-center-hud/prosperity-haven.webp | awk '{print $1}')" = 27a60aaeecb8cd23f5e6b2606cada4870c0188b982a5ab6a4e630d6b829ede04
+          test "$(sha256sum fixtures/owner-gfn-center-hud/dreamfall-cliff.webp | awk '{print $1}')" = 8e3b6ac88496b69460fc67c2906e57fcaf83290746c3efa76d8464efc7c38ec0
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > acceptance/fang.json
+          test "$(jq -r '.workflow_run.id' acceptance/fang.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' acceptance/fang.json)" = "$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > acceptance/input/fang.zip
+          mkdir acceptance/input/fang; unzip -q acceptance/input/fang.zip -d acceptance/input/fang
+          F="$(find acceptance/input/fang -name steam-general-shrine-1-roi.png -print -quit)"; test -n "$F"
+          test "$(sha256sum "$F" | awk '{print $1}')" = 272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30
+
+      - name: Verify authoritative candidate run and aggregate payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > acceptance/candidate-run.json
+          test "$(jq -r '.head_sha' acceptance/candidate-run.json)" = "$CANDIDATE_RUN_HEAD"
+          test "$(jq -r '.conclusion' acceptance/candidate-run.json)" = success
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT" > acceptance/aggregate.json
+          test "$(jq -r '.workflow_run.id' acceptance/aggregate.json)" = "$CANDIDATE_RUN"
+          test "$(jq -r '.digest' acceptance/aggregate.json)" = "$AGGREGATE_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT/zip" > acceptance/input/aggregate.zip
+          mkdir acceptance/input/aggregate; unzip -q acceptance/input/aggregate.zip -d acceptance/input/aggregate
+          P="$(find acceptance/input/aggregate -name candidate-freeze-payload.json -print -quit)"; test -n "$P"
+          test "$(sha256sum "$P" | awk '{print $1}')" = "$AGGREGATE_PAYLOAD_SHA256"
+          cp "$P" acceptance/payload.json
+
+      - name: Verify freeze semantics, D0 tables, 3-run repeatability, and descriptor stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, subprocess
+          freeze=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'))
+          payload=json.load(open('acceptance/payload.json'))
+          old=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'))
+          v2=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json'))
+          amend=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-lineage-amendment-2026-08-16.json'))
+          assert freeze['verdict']=='VF0 — V2 CANDIDATE FREEZE COMPLETE'
+          assert freeze['candidateRunHead']==payload['candidateRunHead']=='2d9895880f52d530e89f1d76c9fd7e826da5ab9b'
+          assert freeze['runtime']==payload['runtime'] and freeze['reference']==payload['reference']
+          assert freeze['controls']==payload['controls'] and freeze['repeatability']==payload['repeatability']
+          assert freeze['wrongThresholdPx']==96 and freeze['topK']==8
+          assert freeze['runtime']['imageOS']=='ubuntu24' and freeze['runtime']['imageVersion']=='20260810.271.1'
+          assert freeze['runtime']['chromeVersion'].strip()=='Google Chrome 151.0.7922.108'
+          assert freeze['runtime']['playwrightCoreVersion']=='1.62.1'
+          b=freeze['runtime']['browser']; assert b['devicePixelRatio']==1 and b['canvas']['alpha'] is False and b['canvas']['imageSmoothingEnabled'] is True and b['canvas']['imageSmoothingQuality']=='high'
+          expected=set(v2['controls']['ownerUnique']+[v2['controls']['sameLocationDrift'],v2['controls']['independentValidation']])
+          assert set(freeze['controls'])==expected and 'ethereal-chamber' not in freeze['controls']
+          for cid,c in freeze['controls'].items():
+              gt=c['gt']; assert gt['gtDistancePx']==0 and all(math.isfinite(float(gt[k])) for k in ['x','y','angle','radius','scale','scaleAwareStructure','intensityNcc','productionCombined'])
+              assert len(c['top8'])==8
+              ids=[]; wrong=[]; near=[]
+              for rank,z in enumerate(c['top8'],1):
+                  assert z['productionRank']==rank
+                  assert all(math.isfinite(float(z[k])) for k in ['x','y','angle','radius','scale','gtDistancePx','scaleAwareStructure','intensityNcc','productionCombined'])
+                  d=math.hypot(z['x']-gt['x'],z['y']-gt['y']); assert abs(d-z['gtDistancePx'])<=1e-9
+                  label='NEAR_GT' if d<=96 else 'WRONG'; assert z['classification']==label
+                  (near if label=='NEAR_GT' else wrong).append(z['candidateId']); ids.append(z['candidateId'])
+              assert len(ids)==len(set(ids))==8 and c['wrongCandidateIds']==wrong and c['nearGtCandidateIds']==near
+              assert c['productionWinnerCandidateId']==c['top8'][0]['candidateId']
+          rep=freeze['repeatability']; assert rep['verdict']=='VF0' and rep['replicatesFound']==3 and rep['requiredReplicates']==3 and rep['toleranceAbs']==1e-6 and rep['reasons']==[]
+          assert all(float(v)<=1e-6 for v in rep['maxAbsVariation'].values())
+          assert len({r['replicate'] for r in rep['replicates']})==3 and all(r['status']=='PASS' and r['head']==freeze['candidateRunHead'] for r in rep['replicates'])
+          for ev in rep['controlVariation'].values():
+              assert ev['inputHashesEqual'] and ev['gtGeometryEqual'] and ev['top8IdsOrderEqual'] and all(float(v)<=1e-6 for v in ev['maxAbsVariation'].values())
+          for k in ['D1','D2','D3','D4','D5','poseGrid']: assert v2['descriptorInheritance'][k]==old[k]
+          assert old['poseGrid']['combinationsPerCandidate']==81 and old['D5']['enabled'] is False
+          assert amend['classification'].startswith('BL2') and amend['legacySuperseded'] is False and amend['descriptorOutcomesInspected'] is False and amend['D1D4Opened'] is False
+          assert freeze['descriptorOutcomesInspected'] is False and freeze['D1D4Opened'] is False and freeze['RD']=='PENDING'
+          assert freeze['strictStopEvidence']=={'D1':False,'D2':False,'D3':False,'D4':False,'pose81DescriptorComparison':False,'generalDescriptorDrift':False,'fangDescriptorValidation':False,'retrievalProxy':False,'stress40Frame':False,'RDClassification':False}
+          assert freeze['productionGuards']==v2['productionGuards'] and freeze['productionChange']=='NO'
+          PY
+          ! grep -Eq '__diDescriptors|__diEvaluate|scoreCenter|LOCAL_CENSUS_ORDINAL|UNSIGNED_GRADIENT_ORIENTATION|SYMMETRIC_EDGE_DISTANCE_CHAMFER|SKELETON_NETWORK_DISTANCE' tools/research/domain-invariant-descriptor/v2-candidate-freeze-instrument.mjs tools/research/domain-invariant-descriptor/v2-candidate-freeze-runner.mjs
+
+      - name: Build authoritative acceptance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p acceptance/final
+          cat > acceptance/final/status.txt <<EOF
+          VERDICT=VF0 — V2 CANDIDATE FREEZE COMPLETE
+          STARTING_HEAD=$START_HEAD
+          FREEZE_COMMIT=$FREEZE_COMMIT
+          ACCEPTANCE_HEAD=$GITHUB_SHA
+          FREEZE_SHA256=$FREEZE_SHA256
+          CANDIDATE_RUN=$CANDIDATE_RUN
+          AGGREGATE_ARTIFACT=$AGGREGATE_ARTIFACT
+          AGGREGATE_PAYLOAD_SHA256=$AGGREGATE_PAYLOAD_SHA256
+          MAX_REPEATABILITY_VARIATION=0.0
+          DESCRIPTOR_OUTCOMES_INSPECTED=NO
+          D1_D4_OPENED=NO
+          RD=PENDING
+          PRODUCTION_CHANGE=NO
+          EOF
+          cp "$FREEZE_PATH" acceptance/final/
+          cp acceptance/candidate-run.json acceptance/final/
+          cp acceptance/aggregate.json acceptance/final/
+          cp acceptance/bl2.json acceptance/final/
+          cp acceptance/fang.json acceptance/final/
+
+      - name: Upload authoritative v2 acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-descriptor-v2-freeze-acceptance-${{ github.run_id }}
+          path: acceptance/final/
+          if-no-files-found: error
+          retention-days: 90
