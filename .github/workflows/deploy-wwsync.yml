@@ -123,12 +123,12 @@ jobs:
             p.on('pageerror',e=>errors.push(e.message));
             const r=await p.goto(process.env.EXACT_URL,{waitUntil:'domcontentloaded',timeout:60000});
             if(!r?.ok())throw new Error(`HTTP ${r?.status()}`);
-            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_MANUAL_RELATIVE_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='EXISTING_REUSED'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function',null,{timeout:30000});
-            const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,maps:document.querySelectorAll('#mapSelect option').length}));
+            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_MANUAL_RELATIVE_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='EXISTING_REUSED'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.L?.map==='function',null,{timeout:30000});
+            const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),mapOptions:document.querySelectorAll('#mapSelect option').length}));
             console.log('DIRECT_RUNTIME',JSON.stringify(s));
             console.log('PAGE_ERRORS',JSON.stringify(errors));
             await b.close();
-            if(errors.length||s.maps<3||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined')process.exit(1);
+            if(errors.length||s.leafletMapType!=='function'||!s.hasMapShell||!s.hasSeedAction||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined')process.exit(1);
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           CHROME_PATH="$CHROME_PATH" node /tmp/smoke.cjs
