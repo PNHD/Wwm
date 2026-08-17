@@ -1,0 +1,349 @@
+{
+  "schema": "wwmsync-learned-domain-invariant-representation-v1-prereg-v1",
+  "audit": "LEARNED / DOMAIN-INVARIANT KNOWN-GT REPRESENTATION AUDIT V1",
+  "date": "2026-08-17",
+  "frozenBeforeLearnedGtWrongOutcomes": true,
+  "learnedOutcomesInspected": false,
+  "auditStartingLiveHead": "d8eed21f8913473ab89d2730bf75968e960573af",
+  "preregParentHead": "e304b14af4dc0f8cfd20756ddb785c70b71c07fb",
+  "authority": {
+    "descriptorV2": {
+      "verdict": "V2-RD2 — PARTIAL REPRESENTATION RESCUE",
+      "authoritativeRun": 31989337212,
+      "aggregateJob": 95270023809,
+      "artifact": 9274795303,
+      "artifactDigest": "sha256:549c5a1e7302dd78adb0c2ef0862d31c9a366ce9aaf39ac81e8812ae135a94b7",
+      "finalAcceptanceRun": 31989572538,
+      "finalAcceptanceJob": 95270554300,
+      "finalAcceptanceArtifact": 9274860323,
+      "finalAcceptanceDigest": "sha256:e64b08bd5991b764c748e79342c4b385c2d20b2205f7625b345bca01b3acb89c",
+      "reportPath": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md",
+      "reportBlob": "79287c1657327f03c0861fa0e629e3720edb8e9b"
+    },
+    "candidateFreeze": {
+      "verdict": "VF0 — V2 CANDIDATE FREEZE COMPLETE",
+      "path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json",
+      "commit": "72a91762dba0efb8106b7afb45124721ff1a7a01",
+      "blob": "51adf1da2cfc201f8f67cd575e271a2461640eeb",
+      "sha256": "6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3",
+      "gtCount": 8,
+      "top8Count": 64,
+      "wrongCount": 64,
+      "nearGtCount": 0,
+      "productionTop8RegenerationForbidden": true,
+      "geometryMutationForbidden": true
+    }
+  },
+  "modelProvenance": {
+    "probe": {
+      "prospectiveOnly": true,
+      "run": 32001933591,
+      "job": 95303779809,
+      "artifact": 9278698977,
+      "artifactDigest": "sha256:a38d895b81d5f634cd92abd0e07d172925cbd4e51a1fe443c54f25a1b898fc22",
+      "head": "e304b14af4dc0f8cfd20756ddb785c70b71c07fb",
+      "learnedGtWrongOutcomesInspected": false
+    },
+    "repository": "facebookresearch/dinov2",
+    "repositoryUrl": "https://github.com/facebookresearch/dinov2",
+    "sourceCommit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+    "sourceBlobs": {
+      "dinov2/hub/backbones.py": "af5fd95d38eb33f73a85b92a94a715773a4e70bc",
+      "dinov2/hub/utils.py": "c6fa705f31736069cd68c5f642253cb5ad7fbe10",
+      "dinov2/data/transforms.py": "eb5f252b50c54d58f160528c9f2b00fad47103c7"
+    },
+    "modelIdentity": "dinov2_vits14_reg",
+    "architecture": "Meta DINOv2 ViT-S/14 with registers",
+    "patchSize": 14,
+    "embeddingDimension": 384,
+    "registerTokenCount": 4,
+    "weight": {
+      "url": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_reg4_pretrain.pth",
+      "byteSize": 88291785,
+      "sha256": "f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb"
+    },
+    "substitutionAllowed": false,
+    "fineTuning": false,
+    "adapter": false,
+    "lora": false,
+    "wwmsyncTraining": false,
+    "gtSupervisedFitting": false,
+    "thresholdLearning": false
+  },
+  "runtime": {
+    "runner": "ubuntu-24.04",
+    "python": "3.12.13",
+    "pytorch": "2.7.1+cpu",
+    "torchvision": "0.22.1+cpu",
+    "pillowObservedAtProvenance": "12.3.0",
+    "numpyObservedAtProvenance": "2.5.2",
+    "device": "cpu",
+    "torchNumThreads": 2,
+    "torchNumInteropThreads": 1,
+    "pythonHashSeed": "0",
+    "ompNumThreads": "2",
+    "mklNumThreads": "2",
+    "deterministicAlgorithms": true,
+    "cudnnBenchmark": false,
+    "cudnnDeterministic": true,
+    "modelEval": true,
+    "inferenceMode": true,
+    "gradients": false,
+    "xformersRequired": false
+  },
+  "modelInput": {
+    "sourceWorkCanvas": {
+      "width": 192,
+      "height": 192,
+      "channels": "RGB",
+      "dtype": "uint8",
+      "semantics": "exact canonical work canvas already frozen/reproduced by VF0; no learned-specific preprocessing before resize"
+    },
+    "referenceWorkCanvas": {
+      "width": 192,
+      "height": 192,
+      "channels": "RGB",
+      "dtype": "uint8",
+      "source": "exact Dashen FINE_Z=5 tile pixels loaded by the unchanged replay/reference path",
+      "geometry": "exact VF0 candidate x/y/angle/radius plus inherited symmetric pose tuple",
+      "pixelMapping": "for destination pixel (x,y), mid=95.5, nx=(x-mid)/96, ny=(y-mid)/96; rx=cx+(nx*cos(angle)-ny*sin(angle))*radius; ry=cy+(nx*sin(angle)+ny*cos(angle))*radius",
+      "sampling": "bilinear independently on raw RGB8 tile-canvas channels; clamp 0..255 then round to nearest integer",
+      "locationSpecificTransform": false
+    },
+    "resize": {
+      "width": 196,
+      "height": 196,
+      "implementation": "torchvision.transforms.functional.resize on PIL RGB",
+      "interpolation": "InterpolationMode.BICUBIC",
+      "antialias": true,
+      "oneResizeOnly": true
+    },
+    "preNormalization": {
+      "dtype": "uint8 RGB",
+      "hash": "SHA-256 over contiguous row-major 196x196x3 RGB bytes",
+      "requiredForEveryControlGtInput": true
+    },
+    "tensor": {
+      "dtype": "float32",
+      "rangeBeforeNormalize": "[0,1]",
+      "channelOrder": "RGB"
+    },
+    "normalization": {
+      "source": "facebookresearch/dinov2 dinov2/data/transforms.py at frozen source commit",
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225]
+    },
+    "augmentation": false,
+    "colorJitter": false,
+    "histogramNormalization": false,
+    "locationSpecificTransform": false
+  },
+  "featureExtraction": {
+    "layer": "final backbone output only via forward_features",
+    "intermediateLayers": false,
+    "layerSweep": false,
+    "clsToken": "extract and conformance-record; not mixed into L1/L2/L3",
+    "patchTokens": 196,
+    "patchGrid": [14, 14],
+    "registerTokens": "extract for conformance only; exclude from all similarity samples",
+    "expectedShapes": {
+      "cls": [1, 384],
+      "register": [1, 4, 384],
+      "patch": [1, 196, 384]
+    },
+    "cosineNormalization": "torch.nn.functional.normalize(..., p=2, dim=-1) exactly where specified per head"
+  },
+  "heads": {
+    "L1": {
+      "name": "GLOBAL_PATCH_MEAN_COSINE",
+      "definition": "arithmetic mean of the 196 final-layer patch tokens per image; L2-normalize resulting 384-vector; cosine(queryMean,referenceMean)",
+      "clsMixing": false
+    },
+    "L2": {
+      "name": "ALIGNED_PATCH_COSINE",
+      "definition": "L2-normalize every query/reference patch token independently; cosine corresponding patch i; uniform arithmetic mean over exactly 196 aligned positions",
+      "adaptiveWeighting": false,
+      "attentionWeighting": false,
+      "D2Fusion": false
+    },
+    "L3": {
+      "name": "BIDIRECTIONAL_PATCH_CHAMFER_COSINE",
+      "definition": "L2-normalize all 196 query/reference patch tokens; mean over query-token maximum cosine to any reference token and mean over reference-token maximum cosine to any query token; score=0.5*(qToR+rToQ)",
+      "spatialPenalty": false,
+      "learnedWeighting": false,
+      "temperature": false,
+      "topKTruncation": false
+    }
+  },
+  "conformance": {
+    "mustPrecedeRealCandidateScoringInEveryOutcomeJob": true,
+    "syntheticNonGtOnly": true,
+    "sameImageIdentityToleranceAbs": 0.000002,
+    "repeatedEmbedding": "bitwise identical on the frozen CPU runtime",
+    "finiteOutputs": true,
+    "exactPatchTokens": 196,
+    "exactRegisterTokens": 4,
+    "registerTokensExcluded": true,
+    "noGrad": true,
+    "modelEval": true,
+    "inferenceMode": true,
+    "inputTransformHashRepeatStable": true
+  },
+  "controls": {
+    "ownerUnique": [
+      {"id": "east-cross", "name": "East Cross", "region": "Qinghe"},
+      {"id": "general-shrine", "name": "General Shrine historical", "region": "Qinghe"},
+      {"id": "path-of-void", "name": "Path of Void", "region": "Qinghe"},
+      {"id": "buddha-fort", "name": "Buddha Fort", "region": "Qinghe"},
+      {"id": "prosperity-haven", "name": "Prosperity Haven", "region": "Kaifeng"},
+      {"id": "dreamfall-cliff", "name": "Dreamfall Cliff", "region": "Kaifeng"}
+    ],
+    "sameLocationDrift": {"id": "general-shrine-repeat", "name": "General Shrine repeat", "region": "Qinghe"},
+    "independentValidation": {"id": "fang-xu", "name": "Fang Xu", "region": "Qinghe"},
+    "notEvaluableReferenceFamily": "ethereal-chamber"
+  },
+  "candidateLocked": {
+    "populationPerControl": "exact VF0 GT plus all 8 exact VF0 WRONG candidates",
+    "candidateCountPerControl": 9,
+    "scoreReport": ["GT score", "all wrong scores", "strongest wrong", "margin", "GT rank among 9", "ties", "strongest wrong ID"],
+    "margin": "GT minus strongest WRONG",
+    "rank": "1 + count(WRONG score strictly greater than GT); ties reported separately",
+    "positive": "margin > 0",
+    "candidateMovement": false
+  },
+  "poseGrid": {
+    "inheritedFrom": "docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json",
+    "angleDeltaDeg": [-15, 0, 15],
+    "radiusFactor": [0.9, 1.0, 1.1],
+    "xOffsetPx": [-8, 0, 8],
+    "yOffsetPx": [-8, 0, 8],
+    "combinationsPerCandidate": 81,
+    "symmetry": "identical complete grid around GT and every frozen WRONG base candidate",
+    "selection": "independently choose maximum score under the same learned head for each base candidate",
+    "gtSpecificAdvantage": false
+  },
+  "featureCaching": {
+    "scope": "replay/CI-only",
+    "keyFields": ["pre-normalization input/reference content SHA-256", "candidate ID", "pose tuple", "model weight SHA-256", "model source commit", "preprocessing contract SHA-256"],
+    "scoreMutation": false,
+    "duplicateInferenceForbidden": true,
+    "batchingAllowed": true,
+    "parallelCiAllowed": true,
+    "batchSize": 16
+  },
+  "ownerCrossControl": {
+    "perHeadSeparately": true,
+    "report": ["owner positive /6 locked", "owner positive /6 81-pose", "Qinghe positive controls", "Kaifeng positive controls", "median margin", "worst margin", "GT ranks", "contradictions"],
+    "aggregateMeanCannotHideFailure": true
+  },
+  "generalDrift": {
+    "pair": ["general-shrine", "general-shrine-repeat"],
+    "materialMarginChangeAbs": 0.10,
+    "lockedAnd81Separately": true,
+    "classes": {
+      "DR-STABLE": "GT preferred both and absolute margin change <= 0.10",
+      "DR-PARTIAL": "GT preferred both and absolute margin change > 0.10",
+      "DR-FLIP": "ordering reverses",
+      "DR-WRONG-STABLE": "WRONG preferred both"
+    }
+  },
+  "fang": {
+    "mandatory": true,
+    "reportPerHead": ["GT score", "strongest wrong", "margin", "rank", "locked", "81-pose"]
+  },
+  "localSurvivorRule": {
+    "perHead": true,
+    "clauses": [
+      ">=4/6 owner unique positive locked",
+      ">=4/6 owner unique positive under symmetric 81-pose",
+      "successes include at least one Qinghe and at least one Kaifeng",
+      "Fang GT preferred locked",
+      "Fang GT preferred 81-pose",
+      "General drift is DR-STABLE or DR-PARTIAL",
+      "candidate population remains VF0-frozen",
+      "no production gate/beam changes"
+    ],
+    "relaxationAfterOutcomes": false
+  },
+  "retrieval": {
+    "conditional": "only learned local survivors; zero local survivors => SKIPPED_NO_LOCAL_SURVIVORS",
+    "implementationMustAlreadyBeCommittedBeforeRetrieval": true,
+    "population": "same deterministic all 424 exact Dashen z5 tile centers frozen by descriptor V1/V2; sorted (tileY,tileX), center=(tileX*256+128,tileY*256+128)",
+    "head": "same exact L1/L2/L3 head that survived locally; no score changes",
+    "pose": "same exact inherited symmetric 81-pose grid at every sampled center",
+    "gtNeighborhood": "sampled center nearest independent GT; learned representation cannot redefine",
+    "rank": "1 + count(non-GT sampled centers score > GT-center score); ties separately counted",
+    "falseBasin": "8-connected components in z5 tile-index space among centers above GT",
+    "falseBasinConcentration": "largestCount/max(1,wrongAboveGT)",
+    "uniqueness": "1-count(non-GT scores >= GTscore-0.01)/max(1,N_nonGT)",
+    "runtime": "warm-up first 10 candidate-pose evaluations; report median and p95 inference/runtime",
+    "batchingAndFeatureCaching": true,
+    "productionAcceptance": false
+  },
+  "retrievalSafety": {
+    "safe": "no newly stronger persistent sampled wrong basin relative to the GT-neighborhood ordering under the surviving head",
+    "unsafe": "persistent false-basin condition is established by wrong-above-GT connected concentration and repeated dominance sufficient to classify learned retrieval as unsafe",
+    "stressEligibility": "only retrieval-safe local survivors"
+  },
+  "stress40Frame": {
+    "conditional": "only retrieval-safe learned survivors; otherwise SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS",
+    "fixture": "wwmsync-gfn-motion-20260810-143835.zip",
+    "sha256": "aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216",
+    "absoluteGtAvailable": false,
+    "populationAndPose": "unchanged learned retrieval 424 centers and same 81-pose grid",
+    "report": ["top-center recurrence", "top-basin persistence", "candidate diversity", "normalized natural-log Shannon entropy", "consecutive top-center movement", "top-vs-runner learned-margin stability", "runtime"],
+    "localizationTruthClaimForbidden": true,
+    "temporalVoting": false
+  },
+  "verdict": {
+    "allowed": [
+      "LR0 — LEARNED REPRESENTATION NON-SEPARABLE",
+      "LR1 — COMMON LEARNED REPRESENTATION SURVIVES",
+      "LR2 — PARTIAL LEARNED RESCUE",
+      "LR3 — LEARNED REPRESENTATION UNSAFE"
+    ],
+    "precedence": [
+      "LR1 only when all local survivor, Fang, drift, retrieval safety, and conditional stress safety requirements pass",
+      "otherwise LR3 if an unsafe persistent false-basin condition is established",
+      "otherwise LR2 if material partial positive evidence exists",
+      "otherwise LR0"
+    ],
+    "materialPartialPositiveEvidence": "at least one learned head produces positive GT-vs-WRONG margin on at least one owner unique control or Fang in either locked or symmetric-81 evaluation, without satisfying LR1 and without LR3",
+    "productionRemainsUnchanged": true
+  },
+  "prohibited": [
+    "fine-tune DINOv2",
+    "train on owner controls",
+    "fit weights",
+    "fit thresholds",
+    "fit PCA",
+    "learn VLAD centers",
+    "train a projector",
+    "choose feature layer after outcomes",
+    "change 196 input size",
+    "change model after outcomes",
+    "combine DINO with D2",
+    "combine L1/L2/L3",
+    "introduce AnyLoc/VLAD",
+    "introduce CLIP/SigLIP",
+    "add another foundation model",
+    "use historical DINO/AnyLoc outcome-dependent parameters"
+  ],
+  "historicalLearnedDiagnostics": {
+    "status": "EXPLORATORY_ONLY",
+    "configurationSource": false,
+    "reason": "this audit is prospective on immutable VF0 candidates with preregistered model/heads, mandatory General drift and Fang"
+  },
+  "productionGuards": {
+    "protectedBlobSha1": {
+      "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+      "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+      "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7"
+    },
+    "structural": 0.58,
+    "intensity": 0.42,
+    "coarseBeam": 8,
+    "productionWwsyncUntouched": true,
+    "productionChange": "NO"
+  }
+}
