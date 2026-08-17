@@ -1,0 +1,206 @@
+name: WWMSync Descriptor Audit V2 Outcomes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-descriptor-v2-outcomes.yml'
+      - 'tools/research/domain-invariant-descriptor/v2-descriptor-outcome-instrument.mjs'
+      - 'tools/research/domain-invariant-descriptor/v2-descriptor-outcome-runner.mjs'
+      - 'tools/research/domain-invariant-descriptor/v2-descriptor-outcome-aggregate.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  START_LIVE_HEAD: 'ddabe5f40670eae7286e98d17eebf6ceca17adb0'
+  START_HEAD: '69578d239a89f8558b780b6d0f8382d3f737b9d5'
+  PREREG_COMMIT: '9e11969528095ec618599ddcc5d961f53bb01415'
+  PREREG_BLOB: '554bf3318b9b75690589fd3c9275bb20b92e82e5'
+  ORIGINAL_PREREG_BLOB: '29540d6e9b4458cf4681a71351fdd2b0cdd5f423'
+  FREEZE_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  FREEZE_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  FREEZE_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  FREEZE_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  PREREG_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json'
+  ORIGINAL_PREREG_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  control:
+    name: v2 descriptor ${{ matrix.control }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        control: [east-cross, general-shrine, path-of-void, buddha-fort, prosperity-haven, dreamfall-cliff, general-shrine-repeat, fang-xu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify V2 freeze, prospective state, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_LIVE_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" "$FREEZE_COMMIT"
+          git merge-base --is-ancestor "$FREEZE_COMMIT" "$START_LIVE_HEAD"
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:$ORIGINAL_PREREG_PATH)" = "$ORIGINAL_PREREG_BLOB"
+          test "$(git rev-parse HEAD:$FREEZE_PATH)" = "$FREEZE_BLOB"
+          test "$(sha256sum "$FREEZE_PATH"|awk '{print $1}')" = "$FREEZE_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          test -z "$(git ls-tree -r --name-only "$START_LIVE_HEAD" | grep -E 'descriptor-v2-final-evidence|descriptor-v2-final-report|v2-descriptor-outcome' || true)"
+          python - <<'PY'
+          import json
+          v2=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json'))
+          old=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'))
+          fr=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'))
+          assert fr['verdict']=='VF0 — V2 CANDIDATE FREEZE COMPLETE' and fr['topK']==8 and fr['wrongThresholdPx']==96
+          assert len(fr['controls'])==8 and sum(len(c['top8']) for c in fr['controls'].values())==64
+          assert all(len(c['top8'])==8 and all(x['classification']=='WRONG' for x in c['top8']) for c in fr['controls'].values())
+          assert sum(len(c['nearGtCandidateIds']) for c in fr['controls'].values())==0
+          for k in ['D1','D2','D3','D4']: assert v2['descriptorInheritance'][k]==old[k]
+          assert v2['descriptorInheritance']['poseGrid']==old['poseGrid'] and old['poseGrid']['combinationsPerCandidate']==81
+          assert v2['descriptorInheritance']['D5']['enabled'] is False
+          assert old['drift']['materialMarginChangeAbs']==.1
+          assert old['survivorRule']['ownerPositiveMinimum']=='4/6 owner unique controls'
+          assert old['retrievalProxy']['population'].startswith('all 424 exact Dashen z5 tile centers')
+          assert old['stress40Frame']['sha256']=='aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216'
+          assert v2['productionGuards']['structural']==.58 and v2['productionGuards']['intensity']==.42 and v2['productionGuards']['coarseBeam']==8 and v2['productionGuards']['productionChange']=='NO'
+          PY
+
+      - name: Prepare exact sources and canonical browser runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p v2-site/controls v2-input v2-output
+          npm install --no-save --no-package-lock playwright-core@1.62.1 >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"; test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > v2-site/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > v2-site/controls/general-shrine.webp
+          test "$(sha256sum v2-site/controls/east-cross.webp|awk '{print $1}')" = 144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792
+          test "$(sha256sum v2-site/controls/general-shrine.webp|awk '{print $1}')" = 261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55
+          cp fixtures/owner-gfn-center-hud/{path-of-void,buddha-fort,general-shrine-repeat,prosperity-haven,dreamfall-cliff}.webp v2-site/controls/
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > v2-input/fang-meta.json
+          test "$(jq -r '.workflow_run.id' v2-input/fang-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' v2-input/fang-meta.json)" = "$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > v2-input/fang.zip
+          mkdir v2-input/fang; unzip -q v2-input/fang.zip -d v2-input/fang
+          F="$(find v2-input/fang -name steam-general-shrine-1-roi.png -print -quit)"; test -n "$F"; test "$(sha256sum "$F"|awk '{print $1}')" = 272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30; cp "$F" v2-site/controls/fang-xu.png
+          cat > v2-input/config.json <<'JSON'
+          {"controls":[
+            {"id":"east-cross","name":"East Cross","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/east-cross.webp","sourceCropSize":215.75},
+            {"id":"general-shrine","name":"General Shrine historical","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/general-shrine.webp","sourceCropSize":215.75},
+            {"id":"path-of-void","name":"Path of Void","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/path-of-void.webp","sourceCropSize":null},
+            {"id":"buddha-fort","name":"Buddha Fort","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/buddha-fort.webp","sourceCropSize":null},
+            {"id":"prosperity-haven","name":"Prosperity Haven","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/prosperity-haven.webp","sourceCropSize":null},
+            {"id":"dreamfall-cliff","name":"Dreamfall Cliff","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/dreamfall-cliff.webp","sourceCropSize":null},
+            {"id":"general-shrine-repeat","name":"General Shrine repeat","role":"SAME_LOCATION_DRIFT","region":"Qinghe","mapId":1,"image":"controls/general-shrine-repeat.webp","sourceCropSize":null},
+            {"id":"fang-xu","name":"Steam Fang Xu Global-PC HUD","role":"INDEPENDENT_VALIDATION","region":"Qinghe","mapId":1,"image":"controls/fang-xu.png","sourceCropSize":null}
+          ]}
+          JSON
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt v2-site/
+          python tools/build_dashen_reference_audit_cache.py v2-site/dashen-cache --workers 24
+          node tools/instrument-real-gfn-production-replay.mjs v2-site/vision-sync.js
+          node tools/research/domain-invariant-descriptor/v2-descriptor-outcome-instrument.mjs v2-site/vision-sync.js
+          node --check v2-site/vision-sync.js
+
+      - name: Execute frozen candidate-locked and symmetric 81-pose outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/research/domain-invariant-descriptor/v2-descriptor-outcome-runner.mjs --site v2-site --prereg "$PREREG_PATH" --original-prereg "$ORIGINAL_PREREG_PATH" --freeze "$FREEZE_PATH" --config v2-input/config.json --control '${{ matrix.control }}' --output v2-output
+
+      - name: Upload control evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: descriptor-v2-control-${{ github.run_id }}-${{ matrix.control }}
+          path: v2-output/
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    name: V2 survivor, conditional phases, and RD
+    if: always()
+    needs: [control]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: descriptor-v2-control-${{ github.run_id }}-*
+          path: control-artifacts
+      - name: Aggregate exact local survivor clauses
+        id: aggregate
+        shell: bash
+        run: |
+          set +e
+          mkdir -p final-evidence
+          python tools/research/domain-invariant-descriptor/v2-descriptor-outcome-aggregate.py --root control-artifacts --freeze "$FREEZE_PATH" --prereg "$PREREG_PATH" --original-prereg "$ORIGINAL_PREREG_PATH" --output final-evidence
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Verify final evidence contract and production immutability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          python - <<'PY'
+          import json
+          p=json.load(open('final-evidence/descriptor-v2-final-evidence.json'))
+          assert p['productionChange']=='NO'
+          assert set(p['descriptors'])=={'D1','D2','D3','D4'}
+          assert len(p['controls'])==8
+          assert all(len(p['controls'][c]['candidateIds'])==9 for c in p['controls'])
+          assert all(p['implementationConformance'][c]['ok'] for c in p['implementationConformance'])
+          if not p['localSurvivors']:
+              assert p['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+              assert p['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+              assert p['RD'] in ('V2-RD0','V2-RD2')
+          PY
+      - name: Upload authoritative V2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-descriptor-v2-final-${{ github.run_id }}
+          path: |
+            final-evidence/
+            control-artifacts/
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce conditional completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc='${{ steps.aggregate.outputs.rc }}'
+          if [ "$rc" = 2 ]; then echo 'Local survivor exists: retrieval phase is required before authoritative acceptance.'; exit 2; fi
+          test "$rc" = 0
