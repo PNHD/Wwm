@@ -1,0 +1,130 @@
+{
+  "schema": "wwmsync-domain-invariant-d0-lineage-amendment-v1",
+  "task": "D0 BASELINE LINEAGE ADJUDICATION / CANONICAL BROWSER RE-FREEZE",
+  "effectiveStatus": "BLOCKED_NO_NUMERIC_SUPERSESSION",
+  "classification": "BL2 — CANONICAL RUNTIME NOT REPRODUCIBLE",
+  "classificationBasis": "The historical raw-Canvas emulator is not preserved, and the complete preregistered D0 research runtime cannot be instantiated without changing candidate identity/geometry because five owner historical final-WRONG x/y coordinates were not preserved. Canonical-browser raster repeatability is therefore not used to select or regenerate those coordinates; browser scoring stops before any new D0 numeric baseline is accepted.",
+  "reasonForAmendment": "Historical owner-recording D0 numeric outputs came from a raw Canvas emulation runtime whose executable implementation is no longer preserved. A subsequent byte-exact acquisition investigation proved the final 192x192 work canvases reproducible, moving the unresolved lineage downstream to raster/runtime semantics. Final prereg candidate-geometry audit then proved that five owner historical final-WRONG candidates also lack preserved x/y coordinates, so a provenance-clean re-freeze cannot score the exact unchanged prereg sample.",
+  "legacyD0Classification": "HISTORICAL_NON_REPRODUCIBLE_RUNTIME_BASELINE",
+  "legacyEvidencePreserved": true,
+  "legacySuperseded": false,
+  "supersessionScope": "NONE until a complete unchanged candidate geometry set is provenance-recovered. This amendment does not overwrite historical D0, candidate IDs, GT, SS0 history, D1-D4 semantics, survivor rule, pose grid, or D5 state.",
+  "historicalExecutionNote": "sandbox Chromium localhost/file:// unavailable; exact production matcher/search/gate JS ran with unchanged pixels through raw Canvas emulation; GitHub acceptance did not assert browser-raster bit identity",
+  "emulatorRecovery": {
+    "outcome": "EMULATOR_NOT_PRESERVED",
+    "implementationRecovered": false,
+    "evidenceRun": 31984112126,
+    "evidenceJob": 95256000125,
+    "evidenceArtifact": 9273275377,
+    "evidenceDigest": "sha256:f75462e343b78d6764f2415fda32317d39bd4a667b389a119a64382d929c114f",
+    "searchScope": [
+      "all reachable Git objects/paths across fetched refs",
+      "deleted/history name-status inventory",
+      "owner post-acquisition commit lineage",
+      "authoritative replay-source snapshot artifact",
+      "authoritative post-acquisition acceptance artifact",
+      "workflow inline/generated scripts",
+      "tracer packages/source",
+      "provenance-relevant compressed/base64 payload paths"
+    ]
+  },
+  "ownerWorkCanvasEvidence": {
+    "status": "BYTE_EXACT_REPRODUCIBLE",
+    "sourceSemanticsClosed": true,
+    "source": "1920x1080",
+    "productionRoiRule": "min(width,height)*0.25",
+    "semanticSourceCrop": [270,270],
+    "sourceRect": [0,0,270,270],
+    "destination": [192,192],
+    "canvasAlpha": false,
+    "pathOfVoidHistoricalPngSha256": "1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f",
+    "pathOfVoidHistoricalRgb8Sha256": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+    "equivalentFinalCanvasReproductionEstablishedFor": [
+      "buddha-fort",
+      "general-shrine-repeat",
+      "prosperity-haven",
+      "dreamfall-cliff"
+    ]
+  },
+  "candidateIdentityContract": {
+    "policy": "GT is the existing :gt-local candidate identity. WRONG identities are exactly historical SS0 Pareto-dominating WRONG candidate IDs plus the historical final WRONG, deduplicated exactly as preregistered. No candidate may be added or removed based on canonical-browser D0.",
+    "ss0Run": 31889065856,
+    "ss0Job": 95022507549,
+    "ss0Artifact": 9248045962,
+    "ss0Digest": "sha256:0c5cc8a788274b33892b8bfdced58b552f99f6716e54acec5c45487a5bf2e1a2",
+    "identityChanged": false
+  },
+  "candidateGeometryLineage": {
+    "status": "INCOMPLETE_UPSTREAM_BLOCKER",
+    "lineageFile": "docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-candidate-geometry-lineage-2026-08-16.json",
+    "missingHistoricalXY": [
+      "path-of-void:final",
+      "buddha-fort:final",
+      "general-shrine-repeat:final",
+      "prosperity-haven:final",
+      "dreamfall-cliff:final"
+    ],
+    "boundedSearchRun": 31984520812,
+    "boundedSearchArtifact": 9273363651,
+    "boundedSearchDigest": "sha256:9c715dc7d21f50eca036a2422e7507511bcfd51ae431580a4d56d58177a1a258",
+    "boundedSearchResult": "No preserved x/y syntax was found for any of the five historical final-WRONG identities after searching reachable Git blobs, relevant non-expired artifacts, and relevant workflow job logs. Current-browser search candidates may not be used to choose replacement x/y because that would mutate the prereg sample after observing a different runtime.",
+    "geometryRegenerationAuthorized": false
+  },
+  "canonicalBrowserRuntimeCandidate": {
+    "selectedBeforeDescriptorOutcomes": true,
+    "runner": "ubuntu-24.04",
+    "runnerImageOS": "ubuntu24",
+    "runnerImageVersionObserved": "20260810.271.1",
+    "browserEngine": "Google Chrome / Chromium system channel on GitHub hosted ubuntu-24.04",
+    "browserVersionObserved": "Google Chrome 151.0.7922.108",
+    "playwrightCoreVersionObserved": "1.62.1",
+    "canvasApi": "HTMLCanvasElement 2D",
+    "alpha": false,
+    "destination": [192,192],
+    "imageSmoothingEnabled": true,
+    "imageSmoothingQuality": "high",
+    "devicePixelRatio": 1,
+    "pixelReadback": "ImageData Uint8ClampedArray RGBA8; RGB8 derived by dropping alpha",
+    "productionJsBlob": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "referenceCacheLineage": "tools/build_dashen_reference_audit_cache.py + production dashen tile cache lineage",
+    "runtimeSelectionUsedGTPerformance": false,
+    "acceptedAsNumericBaseline": false,
+    "reasonNotAccepted": "Complete unchanged prereg candidate geometry cannot be instantiated."
+  },
+  "canonicalD0": {
+    "status": "NOT_FROZEN",
+    "completeTableAvailable": false,
+    "reason": "Scoring the five owner historical final-WRONG candidates would require inventing or regenerating missing x/y coordinates, which is forbidden by the frozen-candidate contract."
+  },
+  "legacyVsCanonicalDeltaAudit": {
+    "status": "NOT_RUN",
+    "reason": "No provenance-clean complete canonical D0 table exists."
+  },
+  "ss0DirectionalComparison": {
+    "status": "NOT_ADJUDICATED",
+    "reason": "Would require the blocked complete canonical D0 table; SS0 historical conclusion remains preserved and unchanged."
+  },
+  "repeatabilityContract": {
+    "status": "NOT_ESTABLISHED",
+    "canonicalBrowserD0RunsRequired": 3,
+    "canonicalBrowserD0RunsExecuted": 0,
+    "reason": "Upstream frozen candidate geometry lineage is incomplete; repeatability runs must not regenerate candidate geometry from canonical-browser search."
+  },
+  "descriptorDefinitionsChanged": false,
+  "descriptorOutcomesInspected": false,
+  "D1D4Opened": false,
+  "survivorRuleChanged": false,
+  "poseGridChanged": false,
+  "D5Enabled": false,
+  "productionGuards": {
+    "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structural": 0.58,
+    "intensity": 0.42,
+    "coarseBeam": 8,
+    "productionWwsyncUntouched": true
+  },
+  "descriptorAuditStatus": "PENDING",
+  "RD": "PENDING"
+}
