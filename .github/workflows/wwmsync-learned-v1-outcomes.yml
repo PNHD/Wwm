@@ -208,8 +208,8 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json,glob
-          p=json.load(open(glob.glob('learned-output/*.json')[0]))
+          import json
+          p=json.load(open('learned-output/${{ matrix.control }}.json'))
           assert p['status']=='PASS' and p['productionChange']=='NO'
           assert set(p['heads'])=={'L1','L2','L3'}
           assert p['conformance']['status']=='PASS' and p['conformance']['patchTokenCount']==196
