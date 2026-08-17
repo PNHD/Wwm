@@ -1,0 +1,223 @@
+{
+  "schema": "wwmsync-domain-invariant-structural-descriptor-v2-prereg-v1",
+  "protocol": "PROSPECTIVE CANONICAL-BROWSER CANDIDATE FREEZE — DESCRIPTOR AUDIT V2",
+  "date": "2026-08-17",
+  "prospective": true,
+  "startingHead": "69578d239a89f8558b780b6d0f8382d3f737b9d5",
+  "frozenBeforeV2CandidateOutcomes": true,
+  "descriptorOutcomesInspected": false,
+  "D1D4Opened": false,
+  "RD": "PENDING",
+  "v1Preservation": {
+    "status": "PRESERVED_UNCHANGED",
+    "originalPreregistration": {
+      "path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json",
+      "gitBlobSha1": "29540d6e9b4458cf4681a71351fdd2b0cdd5f423"
+    },
+    "d0LineageAmendment": {
+      "path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-lineage-amendment-2026-08-16.json",
+      "gitBlobSha1": "961ed6f2928265dda4fce47b86dd460f462400c7"
+    },
+    "classification": "BL2 — CANONICAL RUNTIME NOT REPRODUCIBLE",
+    "legacyNumericD0Superseded": false,
+    "descriptorV1Outcomes": "NOT EXECUTED",
+    "descriptorV1RD": "PENDING / BLOCKED",
+    "historicalGeometryIncompleteWrongIdentitiesRemainV1Only": true,
+    "v2DoesNotRepairOverwriteOrReinterpretV1": true
+  },
+  "canonicalBrowserRuntime": {
+    "selectedBeforeCandidateOutcomes": true,
+    "runner": "GitHub Actions ubuntu-24.04",
+    "runnerImageOS": "ubuntu24",
+    "runnerImageVersionPolicy": "record actual ImageVersion in every replicate; all three must match or freeze fails",
+    "browserEngine": "system Google Chrome / Chromium",
+    "priorObservedBrowserVersion": "Google Chrome 151.0.7922.108",
+    "browserVersionPolicy": "record actual version in every replicate; all three must match or freeze fails; never choose based on localization performance",
+    "playwrightCoreVersion": "1.62.1",
+    "canvasApi": "HTMLCanvasElement 2D",
+    "alpha": false,
+    "destination": [192, 192],
+    "imageSmoothingEnabled": true,
+    "imageSmoothingQuality": "high",
+    "devicePixelRatio": 1,
+    "pixelReadback": "ImageData Uint8ClampedArray RGBA8; RGB8 derived by dropping alpha",
+    "productionVisionSyncBlobSha1": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "referenceCacheLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+    "runtimeSelectionUsesLocalizationPerformance": false
+  },
+  "controls": {
+    "ownerUnique": ["east-cross", "general-shrine", "path-of-void", "buddha-fort", "prosperity-haven", "dreamfall-cliff"],
+    "sameLocationDrift": "general-shrine-repeat",
+    "independentValidation": "fang-xu",
+    "diagnosticOnly": {"ethereal-chamber": "NOT_EVALUABLE_REFERENCE_FAMILY"}
+  },
+  "inputs": {
+    "hashContract": "Owner-recording family freezes the already-established byte-exact 192x192 final work-canvas pixel hashes. East Cross, historical General Shrine and Fang Xu freeze exact existing GitHub-hosted replay/source payload hashes plus the fixed 192x192 rendering rule. Their resulting work-canvas hashes are recorded and must be identical across all three replicates before acceptance. No input may be reacquired.",
+    "east-cross": {
+      "source": "fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* decoded in lexical order",
+      "sourceSha256": "144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792",
+      "renderRule": {"sourceRect": [0, 0, 215.75, 215.75], "destination": [0, 0, 192, 192], "alpha": false, "smoothing": true, "quality": "high"}
+    },
+    "general-shrine": {
+      "source": "fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* decoded in lexical order",
+      "sourceSha256": "261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55",
+      "renderRule": {"sourceRect": [0, 0, 215.75, 215.75], "destination": [0, 0, 192, 192], "alpha": false, "smoothing": true, "quality": "high"}
+    },
+    "path-of-void": {
+      "source": "already-authoritative owner recording HUD work canvas",
+      "workCanvasPngSha256": "1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f",
+      "workCanvasRgb8Sha256": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256"
+    },
+    "buddha-fort": {
+      "source": "already-authoritative owner recording HUD work canvas",
+      "workCanvasPngSha256": "8063ccf7e9087571ac6dc0dd53df493a8c5fbc65f9178d7c733dd818d659fe60",
+      "workCanvasRgb8Sha256": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec"
+    },
+    "general-shrine-repeat": {
+      "source": "already-authoritative owner recording HUD work canvas",
+      "workCanvasPngSha256": "3dae8af15b2f500d30a9f0206dcba78e975861966e21b7deaa5ac816b8aab7b9",
+      "workCanvasRgb8Sha256": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063"
+    },
+    "prosperity-haven": {
+      "source": "already-authoritative owner recording HUD work canvas",
+      "workCanvasPngSha256": "e93054fd8f825f21e1433917ab68876b8fe9a0c9d3f4e3a0723fc8b79729f2f8",
+      "workCanvasRgb8Sha256": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73"
+    },
+    "dreamfall-cliff": {
+      "source": "already-authoritative owner recording HUD work canvas",
+      "workCanvasPngSha256": "efb32328fadd2ad3396fbab6a468e701e7f22f892c1d1a35dd924b316b0be74a",
+      "workCanvasRgb8Sha256": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e"
+    },
+    "fang-xu": {
+      "source": "authoritative Steam Global-PC General Shrine replay artifact steam-general-shrine-1-roi.png",
+      "artifact": {"run": 31609680755, "artifact": 9146646914, "digest": "sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041"},
+      "sourceSha256": "272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30",
+      "renderRule": {"sourceRect": "full image", "destination": [0, 0, 192, 192], "alpha": false, "smoothing": true, "quality": "high"}
+    }
+  },
+  "groundTruthCandidates": {
+    "east-cross": {"x": 5219.931321637427, "y": 4648.817136173768, "angle": 315, "radius": 108, "scale": 2.7, "geometryComplete": true},
+    "general-shrine": {"x": 6015.017126148705, "y": 3889.360588972433, "angle": 0, "radius": 120, "scale": 3.0, "geometryComplete": true},
+    "path-of-void": {"x": 5662.35270309106, "y": 3599.42210726817, "angle": 0, "radius": 112, "scale": 2.8, "geometryComplete": true},
+    "buddha-fort": {"x": 6150.319157894736, "y": 3719.750105931495, "angle": 180, "radius": 48, "scale": 1.2, "geometryComplete": true},
+    "general-shrine-repeat": {"x": 6015.017126148705, "y": 3889.360588972433, "angle": 180, "radius": 32, "scale": 0.8, "geometryComplete": true},
+    "prosperity-haven": {"x": 4959.193804824561, "y": 4487.057644110276, "angle": 180, "radius": 32, "scale": 0.8, "geometryComplete": true},
+    "dreamfall-cliff": {"x": 5054.117319966583, "y": 5032.292689055973, "angle": 270, "radius": 64, "scale": 1.6, "geometryComplete": true},
+    "fang-xu": {"x": 5983.1277673350005, "y": 3862.4348370927314, "angle": 65, "radius": 96, "scale": 2.4, "geometryComplete": true}
+  },
+  "candidateSelection": {
+    "allowedEvidence": ["independent GT", "unchanged production matcher", "canonical browser D0", "deterministic production search/ranking"],
+    "forbiddenEvidence": ["D1", "D2", "D3", "D4", "descriptor margins", "descriptor ranks"],
+    "searchRule": "For every evaluable control execute the unchanged production global search exactly once per replicate and capture its complete final TOP-8 population/order. Membership and ordering come only from unchanged production search.",
+    "persistFields": ["candidateId", "x", "y", "angle", "radius", "scale", "gtDistancePx", "scaleAwareStructure", "intensityNcc", "productionCombined", "productionRank"],
+    "candidateIdRule": "deterministic SHA-256-derived identifier over control id + production rank + exact x/y/angle/radius numeric geometry; descriptor-independent",
+    "wrongThresholdPx": 96,
+    "classification": {"NEAR_GT": "GT distance <= 96 px", "WRONG": "GT distance > 96 px"},
+    "wrongSet": "ALL production final TOP-8 entries classified WRONG; additionally include the production final winner only if it is not already represented in TOP-8",
+    "historicalGeometryIncompleteWrongIdentitiesUsed": false,
+    "descriptorDependentCandidateDiscovery": false,
+    "optionalD0DominatorLabel": {
+      "enabled": true,
+      "definition": "Within the frozen v2 population only, a WRONG candidate Pareto-dominates frozen GT when it is >= GT in both scaleAwareStructure and intensityNcc and strictly > in at least one.",
+      "changesMembership": false
+    }
+  },
+  "noSampleEditing": {
+    "removeInconvenientWrong": false,
+    "addBecauseFutureDescriptorLikesIt": false,
+    "replaceWithHistoricalCandidate": false,
+    "alter96PxRuleAfterOutcomes": false,
+    "alterTop8CountAfterOutcomes": false,
+    "regenerateAfterFutureDescriptorOutcomes": false
+  },
+  "D0": {
+    "name": "V2_CANONICAL_BROWSER_CURRENT_PRIMITIVE_BASELINE",
+    "fields": ["scaleAwareStructure", "intensityNcc", "productionCombined", "x", "y", "angle", "radius", "scale", "gtDistancePx", "inputHash", "referenceLineage", "browserRuntime"],
+    "historicalSS0Overwritten": false,
+    "productionCombinedDefinition": "unchanged production .92*scaleAwareStructure + .08*intensityScore; intensityNcc is persisted separately exactly as produced by the unchanged photometric scorer"
+  },
+  "repeatability": {
+    "independentReplicates": 3,
+    "sameCodeAndInputState": true,
+    "requirements": ["identical input hashes", "identical GT geometry", "identical TOP-8 candidate IDs/order", "identical x/y/angle/radius within tolerance", "stable D0 metrics within tolerance"],
+    "numericToleranceAbs": 1e-6,
+    "geometryToleranceAbs": 1e-6,
+    "D0MetricToleranceAbs": 1e-6,
+    "ifExceeded": "measure actual max/range and return VF1; do not widen tolerance"
+  },
+  "candidateFreeze": {
+    "path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json",
+    "requiresFullGeometryForEveryCandidate": true,
+    "mayBeCommittedOnlyAfterRepeatabilityPass": true
+  },
+  "descriptorInheritance": {
+    "source": {"path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json", "gitBlobSha1": "29540d6e9b4458cf4681a71351fdd2b0cdd5f423"},
+    "semanticEqualityRequiredByCI": true,
+    "D1": {
+      "name": "LOCAL_CENSUS_ORDINAL", "input": "luminance", "neighborhood": "7x7",
+      "samples": "all integer offsets (dy,dx), dy=-3..3 outer loop then dx=-3..3, excluding (0,0), exactly 48 bits",
+      "bit": "neighbor>=center", "validity": "center and all samples inside common support",
+      "score": "equal source/reference bits / 48, averaged uniformly over valid centers", "adaptiveWeights": false
+    },
+    "D2": {
+      "name": "UNSIGNED_GRADIENT_ORIENTATION", "input": "luminance", "gradient": "3x3 Sobel BORDER_REFLECT_101",
+      "orientation": "atan2(gy,gx) modulo pi", "bins": 8, "binRule": "floor(theta/pi*8), clamp 0..7",
+      "magnitude": "sqrt(gx^2+gy^2), divide by support p90 then clip 0..1, epsilon=1e-6",
+      "perPixelAgreement": "1-min(circularBinDistance,8-circularBinDistance)/4",
+      "weight": "min(sourceNormalizedMagnitude,referenceNormalizedMagnitude)",
+      "score": "weighted mean over common support, null if weight sum<=1e-6", "rawIntensityScoreForbidden": true
+    },
+    "D3": {
+      "name": "SYMMETRIC_EDGE_DISTANCE_CHAMFER", "input": "D2 Sobel magnitude",
+      "edgeRule": "magnitude>=support p85, percentile independently per aligned patch with identical rule",
+      "distance": "Euclidean distance transform to nearest edge", "capPx": 6,
+      "directed": "mean(min(distance,6)/6) from each edge set to other",
+      "score": "1-0.5*(directedSourceToReference+directedReferenceToSource)",
+      "minimumEdgesPerSide": 16, "insufficient": "score=null and descriptor coverage failure; no threshold retune"
+    },
+    "D4": {
+      "name": "SKELETON_NETWORK_DISTANCE", "input": "D3 binary edge map",
+      "cleanup": "one 3x3 CROSS morphological closing iteration",
+      "skeleton": "deterministic Zhang-Suen thinning; row-major simultaneous deletion each sub-iteration; max 128 full iterations or convergence",
+      "distance": "same symmetric Euclidean distance-transform formula as D3", "capPx": 6,
+      "minimumSkeletonPixelsPerSide": 12, "insufficient": "score=null and descriptor coverage failure; no threshold retune"
+    },
+    "D5": {"enabled": false, "reason": "disabled before outcomes; may not be added later"},
+    "poseGrid": {
+      "angleDeltaDeg": [-15, 0, 15], "radiusFactor": [0.9, 1.0, 1.1], "xOffsetPx": [-8, 0, 8], "yOffsetPx": [-8, 0, 8],
+      "combinationsPerCandidate": 81,
+      "symmetry": "identical grid around GT and every frozen wrong base candidate",
+      "noLocationSpecificPoseTuning": true
+    }
+  },
+  "futureSurvivorRule": {
+    "ownerPositiveMinimum": "4/6 owner unique positive margin",
+    "regionRequirement": "includes Qinghe + Kaifeng",
+    "fang": "correct preferred",
+    "generalHistoricalRepeat": "drift safe",
+    "persistentFalseBasin": "no stronger unsafe false basin",
+    "productionGatesOrBeamChanged": false,
+    "noRelaxationAfterOutcomes": true
+  },
+  "productionGuards": {
+    "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structural": 0.58, "intensity": 0.42, "coarseBeam": 8,
+    "productionWwsyncUntouched": true, "productionChange": "NO"
+  },
+  "strictStop": {
+    "executeD1": false, "executeD2": false, "executeD3": false, "executeD4": false,
+    "execute81PoseDescriptorComparison": false,
+    "executeGeneralDescriptorDrift": false,
+    "executeFangDescriptorValidation": false,
+    "executeRetrievalProxy": false,
+    "execute40FrameStress": false,
+    "executeRDClassification": false
+  },
+  "finalCases": {
+    "VF0": "V2 CANDIDATE FREEZE COMPLETE — canonical browser candidate population is complete and reproducible; D1-D4 v2 audit is authorized next.",
+    "VF1": "CANONICAL PRODUCTION SEARCH NOT REPEATABLE — candidate population/order/geometry or D0 exceeds frozen repeatability tolerance; descriptor audit remains blocked.",
+    "VF2": "REQUIRED SOURCE/GT GEOMETRY INCOMPLETE — one or more required controls cannot be instantiated provenance-clean; descriptor audit remains blocked."
+  }
+}
