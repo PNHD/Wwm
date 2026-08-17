@@ -12,6 +12,7 @@ on:
 permissions: {contents: read, actions: read}
 
 env:
+  GH_TOKEN: ${{ github.token }}
   VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
   CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
   CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
@@ -74,20 +75,16 @@ jobs:
           rows=[]
           for line in pathlib.Path('lineage-search/relevant-object-paths.txt').read_text(errors='ignore').splitlines():
               parts=line.split(' ',1); oid=parts[0]; p=parts[1] if len(parts)>1 else ''
-              try:
-                  b=subprocess.check_output(['git','cat-file','-p',oid],stderr=subprocess.DEVNULL,timeout=3)
+              try: b=subprocess.check_output(['git','cat-file','-p',oid],stderr=subprocess.DEVNULL,timeout=3)
               except Exception: continue
               if len(b)>2_000_000 or b'\0' in b[:4096]: continue
-              text=b.decode('utf-8','ignore')
-              hits=[]
+              text=b.decode('utf-8','ignore'); hits=[]
               for pat in [r'raw Canvas emulation',r'Canvas emulat',r'emulat.{0,40}Canvas',r'Canvas.{0,40}emulat',r'createCanvas',r'CanvasRenderingContext2D']:
                   if re.search(pat,text,re.I|re.S): hits.append(pat)
               if hits: rows.append({'object':oid,'path':p,'hits':hits})
           pathlib.Path('lineage-search/text-hit-inventory.json').write_text(json.dumps(rows,indent=2)+'\n')
           PY
-          for spec in \
-            "$SOURCE_ARTIFACT:$SOURCE_RUN:$SOURCE_DIGEST:source" \
-            "$OWNER_ARTIFACT:$OWNER_RUN:$OWNER_DIGEST:acceptance"; do
+          for spec in "$SOURCE_ARTIFACT:$SOURCE_RUN:$SOURCE_DIGEST:source" "$OWNER_ARTIFACT:$OWNER_RUN:$OWNER_DIGEST:acceptance"; do
             IFS=: read -r aid rid dig label <<<"$spec"
             gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid" > "lineage-search/$label-meta.json"
             test "$(jq -r '.workflow_run.id' lineage-search/$label-meta.json)" = "$rid"
@@ -97,16 +94,7 @@ jobs:
           done
           python - <<'PY'
           import json,pathlib
-          out={
-            'schema':'wwmsync-historical-emulator-search-v1',
-            'outcome':'EMULATOR_NOT_PRESERVED',
-            'boundedSearchScope':['all reachable git objects/paths across all fetched refs','deleted/history name-status inventory','owner post-acquisition commit lineage','authoritative replay-source snapshot artifact','authoritative post-acquisition acceptance artifact','workflow inline/generated scripts','tracer packages/source','provenance-relevant compressed/base64 payload paths'],
-            'historicalExecutionNote':'sandbox Chromium localhost/file:// unavailable; exact production matcher/search/gate JS ran with unchanged pixels through raw Canvas emulation; GitHub acceptance did not assert browser-raster bit identity',
-            'sourceSnapshot':{'run':31872161105,'artifact':9243725171,'digest':'sha256:a8a8c7f347562502d5c2271dc86f99c47e3c671302a271ba569e80b6efa9fae8'},
-            'acceptance':{'run':31872599823,'job':94983436586,'artifact':9243841549,'digest':'sha256:e7786742e2e355c0d16d42d94b383db2f2a489e818a61dd955420f1aa0072b7a'},
-            'implementationRecovered':False,
-            'reason':'Preserved source/tracer/acceptance packages and reachable history contain the execution note and browser/tracer code, but no provenance-linked executable raw-Canvas emulator implementation capable of reproducing owner-recording D0.'
-          }
+          out={'schema':'wwmsync-historical-emulator-search-v1','outcome':'EMULATOR_NOT_PRESERVED','boundedSearchScope':['all reachable git objects/paths across all fetched refs','deleted/history name-status inventory','owner post-acquisition commit lineage','authoritative replay-source snapshot artifact','authoritative post-acquisition acceptance artifact','workflow inline/generated scripts','tracer packages/source','provenance-relevant compressed/base64 payload paths'],'historicalExecutionNote':'sandbox Chromium localhost/file:// unavailable; exact production matcher/search/gate JS ran with unchanged pixels through raw Canvas emulation; GitHub acceptance did not assert browser-raster bit identity','sourceSnapshot':{'run':31872161105,'artifact':9243725171,'digest':'sha256:a8a8c7f347562502d5c2271dc86f99c47e3c671302a271ba569e80b6efa9fae8'},'acceptance':{'run':31872599823,'job':94983436586,'artifact':9243841549,'digest':'sha256:e7786742e2e355c0d16d42d94b383db2f2a489e818a61dd955420f1aa0072b7a'},'implementationRecovered':False,'reason':'Preserved source/tracer/acceptance packages and reachable history contain the execution note and browser/tracer code, but no provenance-linked executable raw-Canvas emulator implementation capable of reproducing owner-recording D0.'}
           pathlib.Path('lineage-search/emulator-adjudication.json').write_text(json.dumps(out,indent=2)+'\n')
           PY
 
@@ -152,15 +140,7 @@ jobs:
           python - <<'PY'
           import json
           fang=json.load(open('d0-input/fang/steam-general-shrine-ground-truth.json'))
-          c=[
-           dict(id='east-cross',name='East Cross',mapId=1,image='controls/east-cross.webp',sourceCropSize=215.75,expected=[5219.931321637427,4648.817136173768],role='OWNER_UNIQUE',region='Qinghe',historical=True),
-           dict(id='general-shrine',name="General Shrine historical",mapId=1,image='controls/general-shrine.webp',sourceCropSize=215.75,expected=[6015.017126148705,3889.360588972433],role='OWNER_UNIQUE',region='Qinghe',historical=True),
-           dict(id='path-of-void',name='Path of Void',mapId=1,image='controls/path-of-void.webp',sourceCropSize=None,expected=[5662.35270309106,3599.42210726817],role='OWNER_UNIQUE',region='Qinghe',historical=False),
-           dict(id='buddha-fort',name='Buddha Fort',mapId=1,image='controls/buddha-fort.webp',sourceCropSize=None,expected=[6150.319157894736,3719.750105931495],role='OWNER_UNIQUE',region='Qinghe',historical=False),
-           dict(id='prosperity-haven',name='Prosperity Haven',mapId=2,image='controls/prosperity-haven.webp',sourceCropSize=None,expected=[4959.193804824561,4487.057644110276],role='OWNER_UNIQUE',region='Kaifeng',historical=False),
-           dict(id='dreamfall-cliff',name='Dreamfall Cliff',mapId=2,image='controls/dreamfall-cliff.webp',sourceCropSize=None,expected=[5054.117319966583,5032.292689055973],role='OWNER_UNIQUE',region='Kaifeng',historical=False),
-           dict(id='fang-xu',name='Steam Fang Xu Global-PC HUD',mapId=1,image='controls/fang-xu.png',sourceCropSize=None,expected=fang['expected']['dashenZ5'],role='INDEPENDENT_VALIDATION',region='Qinghe',historical=True),
-           dict(id='general-shrine-repeat',name='General Shrine repeat',mapId=1,image='controls/general-shrine-repeat.webp',sourceCropSize=None,expected=[6015.017126148705,3889.360588972433],role='SAME_LOCATION_DRIFT_CONTROL',region='Qinghe',historical=False)]
+          c=[dict(id='east-cross',name='East Cross',mapId=1,image='controls/east-cross.webp',sourceCropSize=215.75,expected=[5219.931321637427,4648.817136173768],role='OWNER_UNIQUE',region='Qinghe',historical=True),dict(id='general-shrine',name='General Shrine historical',mapId=1,image='controls/general-shrine.webp',sourceCropSize=215.75,expected=[6015.017126148705,3889.360588972433],role='OWNER_UNIQUE',region='Qinghe',historical=True),dict(id='path-of-void',name='Path of Void',mapId=1,image='controls/path-of-void.webp',sourceCropSize=None,expected=[5662.35270309106,3599.42210726817],role='OWNER_UNIQUE',region='Qinghe',historical=False),dict(id='buddha-fort',name='Buddha Fort',mapId=1,image='controls/buddha-fort.webp',sourceCropSize=None,expected=[6150.319157894736,3719.750105931495],role='OWNER_UNIQUE',region='Qinghe',historical=False),dict(id='prosperity-haven',name='Prosperity Haven',mapId=2,image='controls/prosperity-haven.webp',sourceCropSize=None,expected=[4959.193804824561,4487.057644110276],role='OWNER_UNIQUE',region='Kaifeng',historical=False),dict(id='dreamfall-cliff',name='Dreamfall Cliff',mapId=2,image='controls/dreamfall-cliff.webp',sourceCropSize=None,expected=[5054.117319966583,5032.292689055973],role='OWNER_UNIQUE',region='Kaifeng',historical=False),dict(id='fang-xu',name='Steam Fang Xu Global-PC HUD',mapId=1,image='controls/fang-xu.png',sourceCropSize=None,expected=fang['expected']['dashenZ5'],role='INDEPENDENT_VALIDATION',region='Qinghe',historical=True),dict(id='general-shrine-repeat',name='General Shrine repeat',mapId=1,image='controls/general-shrine-repeat.webp',sourceCropSize=None,expected=[6015.017126148705,3889.360588972433],role='SAME_LOCATION_DRIFT_CONTROL',region='Qinghe',historical=False)]
           json.dump({'controls':c},open('d0-input/controls.json','w'),indent=2)
           PY
 
@@ -189,21 +169,10 @@ jobs:
           import json,os,pathlib,hashlib,subprocess
           c=json.load(open('d0-output/canonical-d0.json')); e=json.load(open(os.environ['OWNER_EVIDENCE']))
           for cid in ['path-of-void','buddha-fort','general-shrine-repeat','prosperity-haven','dreamfall-cliff']:
-              h=c['controls'][cid]['input']['hashes']; old=e['controls'][cid]['roiSha']
-              assert h['pngSha256']==old[1], (cid,h['pngSha256'],old[1])
-              assert h['rgb8Sha256']==old[2], (cid,h['rgb8Sha256'],old[2])
-          refblob=subprocess.check_output(['git','rev-parse','HEAD:tools/build_dashen_reference_audit_cache.py'],text=True).strip()
-          refmanifest=pathlib.Path('d0-output/reference-cache-sha256.txt').read_bytes()
-          runtime={
-            'runner':'ubuntu-24.04','imageOS':pathlib.Path('d0-output/image-os.txt').read_text().strip(),'imageVersion':pathlib.Path('d0-output/image-version.txt').read_text().strip(),
-            'browserEngine':'Chromium/Google Chrome system channel on GitHub hosted ubuntu-24.04','browserVersion':pathlib.Path('d0-output/chrome-version.txt').read_text().strip(),'playwrightCoreVersion':pathlib.Path('d0-output/playwright-version.txt').read_text().strip(),
-            'canvasApi':'HTMLCanvasElement 2D','workCanvasAlpha':False,'workCanvasDestination':[192,192],'productionCanonicalImageSmoothingEnabled':True,'productionCanonicalImageSmoothingQuality':'high',
-            'productionJsBlob':'58b5a1babf6a12b944f9b745b8bf7f7df573bf9b','referenceCacheBuilderBlob':refblob,'referenceCacheTreeSha256':hashlib.sha256(refmanifest).hexdigest(),
-            'pixelReadback':'ImageData Uint8ClampedArray RGBA8; RGB8 hash derived by dropping alpha','descriptorOutcomesExecuted':False,'rd':'PENDING'
-          }
-          c['canonicalRuntimeFreeze']=runtime
-          pathlib.Path('d0-output/canonical-d0.json').write_text(json.dumps(c,indent=2)+'\n')
-          pathlib.Path('d0-output/runtime-freeze.json').write_text(json.dumps(runtime,indent=2)+'\n')
+              h=c['controls'][cid]['input']['hashes']; old=e['controls'][cid]['roiSha']; assert h['pngSha256']==old[1]; assert h['rgb8Sha256']==old[2]
+          refblob=subprocess.check_output(['git','rev-parse','HEAD:tools/build_dashen_reference_audit_cache.py'],text=True).strip(); refmanifest=pathlib.Path('d0-output/reference-cache-sha256.txt').read_bytes()
+          runtime={'runner':'ubuntu-24.04','imageOS':pathlib.Path('d0-output/image-os.txt').read_text().strip(),'imageVersion':pathlib.Path('d0-output/image-version.txt').read_text().strip(),'browserEngine':'Chromium/Google Chrome system channel on GitHub hosted ubuntu-24.04','browserVersion':pathlib.Path('d0-output/chrome-version.txt').read_text().strip(),'playwrightCoreVersion':pathlib.Path('d0-output/playwright-version.txt').read_text().strip(),'canvasApi':'HTMLCanvasElement 2D','workCanvasAlpha':False,'workCanvasDestination':[192,192],'productionCanonicalImageSmoothingEnabled':True,'productionCanonicalImageSmoothingQuality':'high','productionJsBlob':'58b5a1babf6a12b944f9b745b8bf7f7df573bf9b','referenceCacheBuilderBlob':refblob,'referenceCacheTreeSha256':hashlib.sha256(refmanifest).hexdigest(),'pixelReadback':'ImageData Uint8ClampedArray RGBA8; RGB8 hash derived by dropping alpha','descriptorOutcomesExecuted':False,'rd':'PENDING'}
+          c['canonicalRuntimeFreeze']=runtime; pathlib.Path('d0-output/canonical-d0.json').write_text(json.dumps(c,indent=2)+'\n'); pathlib.Path('d0-output/runtime-freeze.json').write_text(json.dumps(runtime,indent=2)+'\n')
           PY
           git diff --exit-code -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
 
