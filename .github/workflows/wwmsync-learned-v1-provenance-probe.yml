@@ -1,0 +1,221 @@
+name: WWMSync Learned V1 Model Provenance Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-learned-v1-provenance-probe.yml'
+
+permissions:
+  contents: read
+
+env:
+  START_LIVE_HEAD: 'd8eed21f8913473ab89d2730bf75968e960573af'
+  V2_REPORT_BLOB: '79287c1657327f03c0861fa0e629e3720edb8e9b'
+  VF0_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  VF0_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  VF0_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  DINO_REPO: 'facebookresearch/dinov2'
+  DINO_COMMIT: '7764ea0f912e53c92e82eb78a2a1631e92725fc8'
+  DINO_BACKBONES_BLOB: 'af5fd95d38eb33f73a85b92a94a715773a4e70bc'
+  DINO_UTILS_BLOB: 'c6fa705f31736069cd68c5f642253cb5ad7fbe10'
+  DINO_MODEL: 'dinov2_vits14_reg'
+  DINO_WEIGHT_URL: 'https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_reg4_pretrain.pth'
+  PYTHONHASHSEED: '0'
+  OMP_NUM_THREADS: '2'
+  MKL_NUM_THREADS: '2'
+
+jobs:
+  provenance:
+    name: Freeze official model provenance before learned outcomes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify prospective authority and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_LIVE_HEAD" HEAD
+          git merge-base --is-ancestor "$VF0_COMMIT" "$START_LIVE_HEAD"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md)" = "$V2_REPORT_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json)" = "$VF0_BLOB"
+          test "$(sha256sum docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json | awk '{print $1}')" = "$VF0_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_LIVE_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          test ! -e docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json
+          test -z "$(git ls-tree -r --name-only "$START_LIVE_HEAD" | grep -E 'learned-domain-invariant-representation-v1-(evidence|outcome|report)' || true)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install exact CPU inference runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.7.1 torchvision==0.22.1
+          python - <<'PY'
+          import platform, torch, torchvision
+          print('PYTHON_VERSION='+platform.python_version())
+          print('PYTORCH_VERSION='+torch.__version__)
+          print('TORCHVISION_VERSION='+torchvision.__version__)
+          PY
+
+      - name: Fetch exact official DINOv2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          dino="$RUNNER_TEMP/dinov2"
+          git init "$dino" >/dev/null
+          git -C "$dino" remote add origin "https://github.com/$DINO_REPO.git"
+          git -C "$dino" fetch --depth=1 origin "$DINO_COMMIT" >/dev/null
+          git -C "$dino" checkout --detach FETCH_HEAD >/dev/null
+          test "$(git -C "$dino" rev-parse HEAD)" = "$DINO_COMMIT"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/backbones.py)" = "$DINO_BACKBONES_BLOB"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/utils.py)" = "$DINO_UTILS_BLOB"
+          grep -Fq 'def dinov2_vits14_reg' "$dino/dinov2/hub/backbones.py"
+          grep -Fq 'num_register_tokens=4' "$dino/dinov2/hub/backbones.py"
+          echo "DINOV2_DIR=$dino" >> "$GITHUB_ENV"
+
+      - name: Download and hash official register-model weights once
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p provenance
+          weight="$RUNNER_TEMP/dinov2_vits14_reg4_pretrain.pth"
+          curl --fail --location --retry 4 --retry-delay 2 "$DINO_WEIGHT_URL" --output "$weight"
+          test -s "$weight"
+          size="$(stat -c %s "$weight")"
+          sha="$(sha256sum "$weight" | awk '{print $1}')"
+          printf 'WEIGHT_PATH=%s\nWEIGHT_SIZE=%s\nWEIGHT_SHA256=%s\n' "$weight" "$size" "$sha" >> "$GITHUB_ENV"
+          printf 'WEIGHT_URL=%s\nWEIGHT_SIZE=%s\nWEIGHT_SHA256=%s\n' "$DINO_WEIGHT_URL" "$size" "$sha"
+
+      - name: Synthetic model and feature conformance only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, math, os, platform, sys
+          from pathlib import Path
+          import torch
+          import torchvision
+
+          torch.set_num_threads(2)
+          torch.set_num_interop_threads(1)
+          torch.use_deterministic_algorithms(True)
+          torch.backends.cudnn.benchmark = False
+          torch.backends.cudnn.deterministic = True
+          torch.set_grad_enabled(False)
+
+          sys.path.insert(0, os.environ['DINOV2_DIR'])
+          from dinov2.hub.backbones import dinov2_vits14_reg
+
+          model = dinov2_vits14_reg(pretrained=False)
+          try:
+              state = torch.load(os.environ['WEIGHT_PATH'], map_location='cpu', weights_only=True)
+          except TypeError:
+              state = torch.load(os.environ['WEIGHT_PATH'], map_location='cpu')
+          model.load_state_dict(state, strict=True)
+          model.to('cpu')
+          model.eval()
+
+          # Synthetic/non-GT input only. The real-image transform is frozen later in prereg.
+          x = torch.linspace(-1.0, 1.0, 3 * 196 * 196, dtype=torch.float32).reshape(1, 3, 196, 196)
+          with torch.inference_mode():
+              a = model.forward_features(x)
+              b = model.forward_features(x.clone())
+
+          cls = a['x_norm_clstoken']
+          reg = a['x_norm_regtokens']
+          patch = a['x_norm_patchtokens']
+          assert tuple(cls.shape) == (1, 384), tuple(cls.shape)
+          assert tuple(reg.shape) == (1, 4, 384), tuple(reg.shape)
+          assert tuple(patch.shape) == (1, 196, 384), tuple(patch.shape)
+          assert torch.isfinite(cls).all() and torch.isfinite(reg).all() and torch.isfinite(patch).all()
+          assert torch.equal(cls, b['x_norm_clstoken'])
+          assert torch.equal(reg, b['x_norm_regtokens'])
+          assert torch.equal(patch, b['x_norm_patchtokens'])
+
+          p = torch.nn.functional.normalize(patch[0], dim=1)
+          mean = torch.nn.functional.normalize(patch[0].mean(dim=0), dim=0)
+          l1 = float(torch.dot(mean, mean))
+          l2 = float((p * p).sum(dim=1).mean())
+          sim = p @ p.T
+          l3 = float(0.5 * (sim.max(dim=1).values.mean() + sim.max(dim=0).values.mean()))
+          for value in (l1, l2, l3):
+              assert math.isfinite(value) and abs(value - 1.0) < 2e-6, value
+
+          payload = {
+              'schema': 'wwmsync-learned-v1-model-provenance-probe-v1',
+              'status': 'PASS',
+              'prospectiveOnly': True,
+              'learnedGtWrongOutcomesInspected': False,
+              'repository': os.environ['DINO_REPO'],
+              'sourceCommit': os.environ['DINO_COMMIT'],
+              'sourceBlobs': {
+                  'dinov2/hub/backbones.py': os.environ['DINO_BACKBONES_BLOB'],
+                  'dinov2/hub/utils.py': os.environ['DINO_UTILS_BLOB'],
+              },
+              'model': os.environ['DINO_MODEL'],
+              'architecture': 'DINOv2 ViT-S/14 with 4 register tokens',
+              'weight': {
+                  'url': os.environ['DINO_WEIGHT_URL'],
+                  'byteSize': int(os.environ['WEIGHT_SIZE']),
+                  'sha256': os.environ['WEIGHT_SHA256'],
+              },
+              'runtime': {
+                  'python': platform.python_version(),
+                  'pytorch': torch.__version__,
+                  'torchvision': torchvision.__version__,
+                  'device': 'cpu',
+                  'torchNumThreads': torch.get_num_threads(),
+                  'torchNumInteropThreads': torch.get_num_interop_threads(),
+                  'deterministicAlgorithms': torch.are_deterministic_algorithms_enabled(),
+                  'pythonHashSeed': os.environ.get('PYTHONHASHSEED'),
+                  'ompNumThreads': os.environ.get('OMP_NUM_THREADS'),
+                  'mklNumThreads': os.environ.get('MKL_NUM_THREADS'),
+                  'cudnnBenchmark': torch.backends.cudnn.benchmark,
+                  'cudnnDeterministic': torch.backends.cudnn.deterministic,
+              },
+              'conformance': {
+                  'modelEval': not model.training,
+                  'gradEnabled': torch.is_grad_enabled(),
+                  'inputShape': list(x.shape),
+                  'clsShape': list(cls.shape),
+                  'registerShape': list(reg.shape),
+                  'patchShape': list(patch.shape),
+                  'registerTokensExcludedFromSimilaritySamples': True,
+                  'patchTokenCount': int(patch.shape[1]),
+                  'embeddingDim': int(patch.shape[2]),
+                  'repeatEmbeddingsBitwiseEqual': True,
+                  'identity': {'L1': l1, 'L2': l2, 'L3': l3},
+                  'finiteOutputs': True,
+              },
+          }
+          Path('provenance/model-provenance.json').write_text(json.dumps(payload, indent=2) + '\n')
+          print(json.dumps(payload, indent=2))
+          PY
+
+      - name: Upload frozen provenance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-learned-v1-model-provenance-${{ github.run_id }}
+          path: provenance/model-provenance.json
+          if-no-files-found: error
+          retention-days: 30
