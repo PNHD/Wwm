@@ -1,0 +1,25 @@
+name: WWMSync D0 Runtime Probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/wwmsync-d0-runtime-probe.yml']
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ImageOS=${ImageOS:-UNSET}"
+          echo "ImageVersion=${ImageVersion:-UNSET}"
+          echo "RUNNER_OS=${RUNNER_OS:-UNSET}"
+          cat /etc/os-release
+          command -v google-chrome || true
+          google-chrome --version || true
+          npm install --no-save --no-package-lock playwright-core@1.55.0
+          node -p "require('playwright-core/package.json').version"
+          printf 'D0_ONLY=YES\nDESCRIPTOR_OUTCOMES_EXECUTED=NO\nRD=PENDING\n'
