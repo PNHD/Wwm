@@ -1,0 +1,257 @@
+name: WWMSync Final Complementary Fusion V1 Finalize
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-final-complementary-fusion-v1-finalize.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BRANCH: 'feature/wwm-native-sync-v2'
+  AUDIT_START_HEAD: '4ca8b596f09535893c22933893cea539dfdc254f'
+  PREREG_COMMIT: '853682dff56cc6a7fa7ebcf442cafa8c40ff39e2'
+  PREREG_BLOB: 'bde910bc2d17cd11b7732cfa8ad19288fab99a76'
+  PREREG_PATH: 'docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json'
+  OUTCOME_HEAD: '6fc491835d9c8b99681cba7669d5b40989ba384d'
+  OUTCOME_RUN: '32004733869'
+  OUTCOME_JOB: '95312585361'
+  OUTCOME_ARTIFACT: '9279687922'
+  OUTCOME_DIGEST: 'sha256:803ab7a86ce5ddfea27201f2d09f471e77e5b594aed521cf782a3bbe5429d477'
+  REPORT_PATH: 'docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-outcome-2026-08-17.md'
+  EVIDENCE_PATH: 'docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-evidence-2026-08-17.json'
+  CLOSURE_MD_PATH: 'docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.md'
+  CLOSURE_JSON_PATH: 'docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.json'
+  VF0_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  VF0_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  V2_REPORT_BLOB: '79287c1657327f03c0861fa0e629e3720edb8e9b'
+  LEARNED_REPORT_BLOB: '19761c39b5bf3bdb6fd633f4009506f1d56fc079'
+  LEARNED_EVIDENCE_BLOB: 'b5ceaf69d45c98ee9aa2ada2f2d391fa49f9f184'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  finalize:
+    name: Commit FA closure and independently verify live GitHub
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify frozen prereg, authorities, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$AUDIT_START_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" "$OUTCOME_HEAD"
+          git merge-base --is-ancestor "$OUTCOME_HEAD" HEAD
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json)" = "$VF0_BLOB"
+          test "$(sha256sum docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json | awk '{print $1}')" = "$VF0_SHA256"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md)" = "$V2_REPORT_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/learned-domain-invariant-representation-v1-outcome-2026-08-17.md)" = "$LEARNED_REPORT_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/learned-domain-invariant-representation-v1-evidence-2026-08-17.json)" = "$LEARNED_EVIDENCE_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          python - <<'PY'
+          import json
+          p=json.load(open('docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json'))
+          assert p['frozenBeforeFusionOutcomes'] is True and p['fusionOutcomesInspected'] is False
+          assert p['fusionFamily']['onlyHeads']==['F1','F2','F3']
+          assert p['samePoseRule']['required'] is True
+          assert p['hardStopPolicy']['noAutomaticResearchRoundAfterThis'] is True
+          assert p['productionGuards']['productionChange']=='NO'
+          PY
+
+      - name: Verify authoritative successful fusion outcome run and artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p accepted-input/outcome
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$OUTCOME_RUN" > accepted-input/run.json
+          test "$(jq -r '.status' accepted-input/run.json)" = completed
+          test "$(jq -r '.conclusion' accepted-input/run.json)" = success
+          test "$(jq -r '.head_sha' accepted-input/run.json)" = "$OUTCOME_HEAD"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$OUTCOME_RUN/jobs?per_page=100" > accepted-input/jobs.json
+          test "$(jq -r --argjson id "$OUTCOME_JOB" '.jobs[]|select(.id==$id)|.conclusion' accepted-input/jobs.json)" = success
+          test "$(jq -r --argjson id "$OUTCOME_JOB" '.jobs[]|select(.id==$id)|.name' accepted-input/jobs.json)" = 'Aggregate final fusion v1 and apply frozen survivor rule'
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT" > accepted-input/artifact.json
+          test "$(jq -r '.workflow_run.id' accepted-input/artifact.json)" = "$OUTCOME_RUN"
+          test "$(jq -r '.workflow_run.head_sha' accepted-input/artifact.json)" = "$OUTCOME_HEAD"
+          test "$(jq -r '.digest' accepted-input/artifact.json)" = "$OUTCOME_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT/zip" > accepted-input/outcome.zip
+          unzip -q accepted-input/outcome.zip -d accepted-input/outcome
+          test -f accepted-input/outcome/fusion-v1-local-evidence.json
+          test -f accepted-input/outcome/fusion-v1.status.txt
+
+      - name: Generate accepted fusion evidence, outcome report, and hard project closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, statistics
+          raw=json.load(open('accepted-input/outcome/fusion-v1-local-evidence.json'))
+          prereg=json.load(open(os.environ['PREREG_PATH']))
+          assert raw['status']=='PASS'
+          assert raw['head']==os.environ['OUTCOME_HEAD']
+          assert raw['FA']=='FA2 — PARTIAL FUSION RESCUE'
+          assert raw['localSurvivors']==[]
+          assert raw['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+          assert raw['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+          assert raw['samePose']['tuplesChecked']==5832 and raw['samePose']['mismatches']==0
+          assert raw['formulaConformance']['tuplesChecked']==5832
+          assert all(v==0 for v in raw['formulaConformance']['maxAbsError'].values())
+          assert max(v['maxAbsError'] for v in raw['componentReproduction']['D2'].values())<=1e-6
+          assert max(v['maxAbsError'] for v in raw['componentReproduction']['L1'].values())<=2e-6
+          assert max(v['maxAbsError'] for v in raw['componentReproduction']['L3'].values())<=2e-6
+          for h in ['F1','F2','F3']:
+              assert raw['heads'][h]['localSurvivor'] is False
+          assert raw['heads']['F1']['owner']['lockedPositive']==0 and raw['heads']['F1']['owner']['pose81Positive']==1
+          assert raw['heads']['F2']['owner']['lockedPositive']==0 and raw['heads']['F2']['owner']['pose81Positive']==0
+          assert raw['heads']['F3']['owner']['lockedPositive']==0 and raw['heads']['F3']['owner']['pose81Positive']==1
+          assert all(raw['heads'][h]['generalDrift']['locked']['class']=='DR-WRONG-STABLE' and raw['heads'][h]['generalDrift']['pose81']['class']=='DR-WRONG-STABLE' for h in ['F1','F2','F3'])
+
+          accepted={
+            'schema':'wwmsync-final-complementary-fusion-v1-accepted-evidence-v1',
+            'date':'2026-08-17','status':'ACCEPTED','audit':'FINAL COMPLEMENTARY FUSION AUDIT V1',
+            'startingHead':os.environ['AUDIT_START_HEAD'],'outcomeHead':os.environ['OUTCOME_HEAD'],
+            'authoritativeOutcome':{'run':int(os.environ['OUTCOME_RUN']),'aggregateJob':int(os.environ['OUTCOME_JOB']),'artifact':int(os.environ['OUTCOME_ARTIFACT']),'artifactDigest':os.environ['OUTCOME_DIGEST']},
+            'prereg':{'commit':os.environ['PREREG_COMMIT'],'blob':os.environ['PREREG_BLOB'],'path':os.environ['PREREG_PATH'],'fusionOutcomesInspected':False},
+            'authority':raw['authority'],'candidatePopulation':raw['candidatePopulation'],
+            'componentReproduction':raw['componentReproduction'],'samePose':raw['samePose'],'formulaConformance':raw['formulaConformance'],
+            'controls':raw['controls'],'heads':raw['heads'],'localSurvivors':raw['localSurvivors'],
+            'retrieval':raw['retrieval'],'stress40Frame':raw['stress40Frame'],
+            'verdict':raw['FA'],'verdictPrecedence':'FA1 requires complete survivor+safety; else FA4 unsafe persistent false-basin; else FA2 meaningful partial positive; else FA3.',
+            'meaningfulPartialPositiveSeparation':raw['materialPartialPositiveSeparation'],'unsafePersistentFalseBasinEvidence':raw['unsafePersistentFalseBasinEvidence'],
+            'fullPoseEvidence':'Authoritative artifact preserves all 5,832 candidate-pose tuples with D2/L1/L3 and F1/F2/F3 same-pose scores. This committed evidence preserves candidate-locked and selected best-81 candidate score rows and selected poses.',
+            'researchClosure':'STOP','productionCandidate':'NONE','productionFeasibilityArchitectureTaskJustified':False,'productionChange':'NO','productionGuards':prereg['productionGuards']
+          }
+          os.makedirs(os.path.dirname(os.environ['EVIDENCE_PATH']),exist_ok=True)
+          with open(os.environ['EVIDENCE_PATH'],'w') as f: json.dump(accepted,f,indent=2,sort_keys=True); f.write('\n')
+
+          names={'east-cross':'East Cross','general-shrine':'General historical','path-of-void':'Path','buddha-fort':'Buddha','prosperity-haven':'Prosperity','dreamfall-cliff':'Dreamfall','general-shrine-repeat':'General repeat','fang-xu':'Fang'}
+          order=list(names)
+          lines=['# WWMSync Final Complementary Fusion Audit V1 — Outcome','', '**Status:** COMPLETE / CI ACCEPTED','', '**Final verdict:** **FA2 — PARTIAL FUSION RESCUE**','', '**WWMSync representation research:** **CLOSED**','', '**Production change:** **NO**','', '## Authority','',
+            f"- Starting live HEAD: `{os.environ['AUDIT_START_HEAD']}`",f"- Prereg commit: `{os.environ['PREREG_COMMIT']}`",f"- Prereg blob: `{os.environ['PREREG_BLOB']}`",f"- Outcome HEAD: `{os.environ['OUTCOME_HEAD']}`",f"- Authoritative outcome run: `{os.environ['OUTCOME_RUN']}`",f"- Aggregate job: `{os.environ['OUTCOME_JOB']}`",f"- Outcome artifact: `{os.environ['OUTCOME_ARTIFACT']}`",f"- Outcome artifact digest: `{os.environ['OUTCOME_DIGEST']}`",'',
+            '- Descriptor V2 authority: **V2-RD2 — PARTIAL REPRESENTATION RESCUE**.','- Learned V1 authority: **LR2 — PARTIAL LEARNED RESCUE**.','- VF0 population unchanged: 8 GT, 64 TOP-8, 64 WRONG, 0 NEAR_GT.','',
+            '## Reproduction and conformance','',
+            f"- D2 accepted-score reproduction max absolute error: `{max(v['maxAbsError'] for v in raw['componentReproduction']['D2'].values()):.12g}`.",
+            f"- L1 accepted-score reproduction max absolute error: `{max(v['maxAbsError'] for v in raw['componentReproduction']['L1'].values()):.12g}`.",
+            f"- L3 accepted-score reproduction max absolute error: `{max(v['maxAbsError'] for v in raw['componentReproduction']['L3'].values()):.12g}`.",
+            '- Same-pose tuples checked: `5,832`; mismatches: `0`.','- F1/F2/F3 arithmetic checks: `5,832`; maximum absolute formula error: `0`.','- Repeated D2 locked GT candidate/pose was deterministic in every control.','',
+            '## Candidate-locked and symmetric 81-pose results','']
+          for h in ['F1','F2','F3']:
+              lines += [f'### {h}','', '| Control | Locked GT | Locked wrong | Margin / rank | 81 GT | 81 wrong | Margin / rank |','|---|---:|---:|---:|---:|---:|---:|']
+              for cid in order:
+                  a=raw['controls'][cid]['heads'][h]['locked']; b=raw['controls'][cid]['heads'][h]['pose81']
+                  lines.append(f"| {names[cid]} | {a['gtScore']:.6f} | {a['strongestWrongScore']:.6f} | {a['margin']:+.6f} / {a['gtRank']} | {b['gtScore']:.6f} | {b['strongestWrongScore']:.6f} | {b['margin']:+.6f} / {b['gtRank']} |")
+              lines.append('')
+          lines += ['## Owner cross-control summary','', '| Head | Locked +/6 | 81 +/6 | Locked median | Locked worst | 81 median | 81 worst | Qinghe / Kaifeng |','|---|---:|---:|---:|---:|---:|---:|---|']
+          for h in ['F1','F2','F3']:
+              o=raw['heads'][h]['owner']
+              lines.append(f"| {h} | {o['lockedPositive']}/6 | {o['pose81Positive']}/6 | {o['lockedMedianMargin']:+.6f} | {o['lockedWorstMargin']:+.6f} | {o['pose81MedianMargin']:+.6f} | {o['pose81WorstMargin']:+.6f} | locked {len(o['lockedQinghePositive'])}/{len(o['lockedKaifengPositive'])}; 81 {len(o['pose81QinghePositive'])}/{len(o['pose81KaifengPositive'])} |")
+          lines += ['', 'No fusion head has any locked owner success. F1 and F3 rescue only East Cross after symmetric pose search; F2 has no owner success in either mode. No Kaifeng control is positive under any head/stage.','', '## General historical/repeat drift','', '| Head | Locked historical | Locked repeat | Locked class | 81 historical | 81 repeat | 81 class |','|---|---:|---:|---|---:|---:|---|']
+          for h in ['F1','F2','F3']:
+              g=raw['heads'][h]['generalDrift']
+              lines.append(f"| {h} | {g['locked']['historicalMargin']:+.6f} | {g['locked']['repeatMargin']:+.6f} | {g['locked']['class']} | {g['pose81']['historicalMargin']:+.6f} | {g['pose81']['repeatMargin']:+.6f} | {g['pose81']['class']} |")
+          lines += ['', 'All three fusion heads are `DR-WRONG-STABLE` in both modes.','', '## Fang independent validation','', '| Head | Locked margin / rank | 81 margin / rank |','|---|---:|---:|']
+          for h in ['F1','F2','F3']:
+              fng=raw['heads'][h]['fang']; lines.append(f"| {h} | {fng['locked']['margin']:+.6f} / {fng['locked']['gtRank']} | {fng['pose81']['margin']:+.6f} / {fng['pose81']['gtRank']} |")
+          lines += ['', 'F1 and F2 prefer Fang GT in both modes. F3 flips from locked negative to 81 positive. This is material complementary evidence but does not satisfy the owner/drift survivor protocol.','', '## Survivor rule','', '| Clause | F1 | F2 | F3 |','|---|---|---|---|']
+          clause_order=['ownerLockedAtLeast4of6','ownerPose81AtLeast4of6','lockedIncludesQingheAndKaifeng','pose81IncludesQingheAndKaifeng','fangLockedPreferred','fangPose81Preferred','generalLockedDriftSafe','generalPose81DriftSafe','candidatePopulationUnchanged','productionGatesOrBeamChanged']
+          for k in clause_order:
+              vals=[]
+              for h in ['F1','F2','F3']:
+                  v=raw['heads'][h]['survivorClauses'][k]
+                  if k=='productionGatesOrBeamChanged': v=not v
+                  vals.append('PASS' if v else 'FAIL')
+              label='noProductionGateOrBeamChange' if k=='productionGatesOrBeamChanged' else k
+              lines.append(f"| `{label}` | {vals[0]} | {vals[1]} | {vals[2]} |")
+          lines += ['', '**Local survivors: none.**','', '## Conditional retrieval','', '`SKIPPED_NO_LOCAL_SURVIVORS` — the frozen survivor rule forbids retrieval for F1/F2/F3.','', '## Conditional 40-frame stress','', '`SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS` — no head reached retrieval safety eligibility. No absolute localization truth claim is made.','', '## Final verdict','', '**FA2 — PARTIAL FUSION RESCUE**','', 'Fusion contains material complementary evidence (especially Fang F1/F2 and East 81 F1/F3) but does not generalize across owner controls, Kaifeng, or General historical/repeat drift. No complete survivor exists.','', 'Per the preregistered verdict precedence and hard-stop policy, this closes WWMSync representation research.','', '## Project closure','', '- Phase 0: **COMPLETE**','- Descriptor V2: **V2-RD2**','- Learned V1: **LR2**','- Final fusion: **FA2**','- Production candidate: **NONE**','- Production-feasibility architecture task justified: **NO**','- Production change: **NO**','- Further representation research under this project: **STOP**','- Next research task justified: **NO**','', 'Production guards remain structural `0.58`, intensity `0.42`, coarse beam `8`; protected production blobs and `production/wwsync` are unchanged.']
+          with open(os.environ['REPORT_PATH'],'w') as f:f.write('\n'.join(lines)+'\n')
+
+          closure={
+            'schema':'wwmsync-representation-research-closure-v1','date':'2026-08-17','status':'CLOSED',
+            'Phase0':'COMPLETE','DescriptorV2':'V2-RD2','LearnedV1':'LR2','FinalFusion':'FA2 — PARTIAL FUSION RESCUE',
+            'ProductionCandidate':'NONE','ProductionFeasibilityArchitectureTaskJustified':'NO','ProductionChange':'NO',
+            'FurtherRepresentationResearchUnderThisProject':'STOP','NextResearchTaskJustified':'NO',
+            'reason':'Final equal-weight complementary fusion produced material partial evidence but no head satisfied the complete owner+region+Fang+General-drift local survivor protocol; retrieval and stress were therefore ineligible by preregistration.',
+            'authoritativeFusionOutcome':accepted['authoritativeOutcome'],'prereg':accepted['prereg'],'productionGuards':prereg['productionGuards']
+          }
+          with open(os.environ['CLOSURE_JSON_PATH'],'w') as f:json.dump(closure,f,indent=2,sort_keys=True);f.write('\n')
+          md=['# WWMSync Representation Research Closure — 2026-08-17','', '**Status:** CLOSED','', '- Phase 0: **COMPLETE**','- Descriptor V2: **V2-RD2**','- Learned V1: **LR2**','- Final fusion: **FA2 — PARTIAL FUSION RESCUE**','- Production candidate: **NONE**','- Production-feasibility architecture task justified: **NO**','- Production change: **NO**','- Further representation research under this project: **STOP**','- Next research task justified: **NO**','', 'The final complementary fusion round produced material partial separation but no complete local survivor. Under the frozen hard-stop policy, no further representation family, model, fusion family, adaptation, acquisition, or temporal research task is justified in WWMSync.','', f"Authoritative fusion outcome: run `{os.environ['OUTCOME_RUN']}`, aggregate job `{os.environ['OUTCOME_JOB']}`, artifact `{os.environ['OUTCOME_ARTIFACT']}`, digest `{os.environ['OUTCOME_DIGEST']}`.",'', 'Production remains unchanged.']
+          with open(os.environ['CLOSURE_MD_PATH'],'w') as f:f.write('\n'.join(md)+'\n')
+          PY
+
+      - name: Commit accepted FA2 decision and closure
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse origin/$BRANCH)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH" "$EVIDENCE_PATH" "$CLOSURE_MD_PATH" "$CLOSURE_JSON_PATH"
+          git diff --cached --check
+          git commit -m 'docs(wwmsync): close representation research after final fusion v1'
+          FINAL_HEAD="$(git rev-parse HEAD)"
+          git push origin "HEAD:$BRANCH"
+          echo "final_head=$FINAL_HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Independently verify final live GitHub state
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINAL_HEAD='${{ steps.commit.outputs.final_head }}'
+          LIVE_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" --jq '.commit.sha')"
+          test "$LIVE_HEAD" = "$FINAL_HEAD"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/contents/vision-sync.js?ref=$BRANCH" --jq '.sha')" = "$VISION_BLOB"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/contents/dashen-tile-cache.js?ref=$BRANCH" --jq '.sha')" = "$CACHE_BLOB"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/contents/tools/build_dashen_visual_cache.py?ref=$BRANCH" --jq '.sha')" = "$CACHE_BUILDER_BLOB"
+          for p in "$PREREG_PATH" "$REPORT_PATH" "$EVIDENCE_PATH" "$CLOSURE_MD_PATH" "$CLOSURE_JSON_PATH"; do
+            REMOTE_BLOB="$(gh api "repos/$GITHUB_REPOSITORY/contents/$p?ref=$BRANCH" --jq '.sha')"
+            test "$REMOTE_BLOB" = "$(git rev-parse HEAD:$p)"
+          done
+          python - <<'PY'
+          import json
+          e=json.load(open('docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-evidence-2026-08-17.json'))
+          c=json.load(open('docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.json'))
+          assert e['status']=='ACCEPTED' and e['verdict']=='FA2 — PARTIAL FUSION RESCUE'
+          assert e['localSurvivors']==[] and e['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+          assert e['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+          assert e['productionChange']=='NO' and e['productionFeasibilityArchitectureTaskJustified'] is False
+          assert c['status']=='CLOSED' and c['FurtherRepresentationResearchUnderThisProject']=='STOP' and c['NextResearchTaskJustified']=='NO'
+          assert c['ProductionCandidate']=='NONE' and c['ProductionChange']=='NO'
+          PY
+          cat > final-live-verification.json <<JSON
+          {"status":"PASS","liveHead":"$LIVE_HEAD","expectedFinalHead":"$FINAL_HEAD","preregBlob":"$PREREG_BLOB","outcomeRun":$OUTCOME_RUN,"outcomeJob":$OUTCOME_JOB,"outcomeArtifact":$OUTCOME_ARTIFACT,"outcomeDigest":"$OUTCOME_DIGEST","verdict":"FA2 — PARTIAL FUSION RESCUE","researchClosure":"STOP","productionChange":"NO","visionBlob":"$VISION_BLOB","cacheBlob":"$CACHE_BLOB","cacheBuilderBlob":"$CACHE_BUILDER_BLOB"}
+          JSON
+
+      - name: Upload final acceptance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-final-complementary-fusion-v1-acceptance-${{ github.run_id }}
+          path: |
+            docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json
+            docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-outcome-2026-08-17.md
+            docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-evidence-2026-08-17.json
+            docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.md
+            docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.json
+            final-live-verification.json
+          if-no-files-found: error
+          retention-days: 30
