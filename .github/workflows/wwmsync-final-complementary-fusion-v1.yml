@@ -1,0 +1,272 @@
+name: WWMSync Final Complementary Fusion V1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-final-complementary-fusion-v1.yml'
+      - 'tools/research/final-complementary-fusion/v1-fusion-d2-wrapper-instrument.mjs'
+      - 'tools/research/final-complementary-fusion/v1-fusion-render-runner.mjs'
+      - 'tools/research/final-complementary-fusion/v1-fusion-aggregate.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  AUDIT_START_HEAD: '4ca8b596f09535893c22933893cea539dfdc254f'
+  PREREG_COMMIT: '853682dff56cc6a7fa7ebcf442cafa8c40ff39e2'
+  PREREG_BLOB: 'bde910bc2d17cd11b7732cfa8ad19288fab99a76'
+  PREREG_PATH: 'docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json'
+  VF0_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  VF0_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  VF0_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  VF0_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  V2_REPORT_BLOB: '79287c1657327f03c0861fa0e629e3720edb8e9b'
+  LEARNED_PREREG_BLOB: '27c9b30a4f84e3de3433678835ea7343176e99ad'
+  LEARNED_PREREG_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json'
+  LEARNED_EVIDENCE_BLOB: 'b5ceaf69d45c98ee9aa2ada2f2d391fa49f9f184'
+  LEARNED_EVIDENCE_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-evidence-2026-08-17.json'
+  LEARNED_REPORT_BLOB: '19761c39b5bf3bdb6fd633f4009506f1d56fc079'
+  V2_INSTRUMENT_BLOB: '8f83589187412dea06f62d0b81e3c7564d3c090b'
+  LEARNED_RENDER_INSTRUMENT_BLOB: '6c72c400f2df3e065d23f740a13391d6818b0a49'
+  LEARNED_SCORE_BLOB: 'b616251c386e58a7f94796f4f8944ce4f8061d1b'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  DINO_REPO: 'facebookresearch/dinov2'
+  DINO_COMMIT: '7764ea0f912e53c92e82eb78a2a1631e92725fc8'
+  DINO_BACKBONES_BLOB: 'af5fd95d38eb33f73a85b92a94a715773a4e70bc'
+  DINO_UTILS_BLOB: 'c6fa705f31736069cd68c5f642253cb5ad7fbe10'
+  DINO_TRANSFORMS_BLOB: 'eb5f252b50c54d58f160528c9f2b00fad47103c7'
+  DINO_WEIGHT_URL: 'https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_reg4_pretrain.pth'
+  DINO_WEIGHT_SHA256: 'f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb'
+  DINO_WEIGHT_SIZE: '88291785'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  PYTHONHASHSEED: '0'
+  OMP_NUM_THREADS: '2'
+  MKL_NUM_THREADS: '2'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  control:
+    name: fusion v1 ${{ matrix.control }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        control: [east-cross, general-shrine, path-of-void, buddha-fort, prosperity-haven, dreamfall-cliff, general-shrine-repeat, fang-xu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify frozen prospective authority and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$AUDIT_START_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" HEAD
+          git merge-base --is-ancestor "$VF0_COMMIT" "$AUDIT_START_HEAD"
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:$VF0_PATH)" = "$VF0_BLOB"
+          test "$(sha256sum "$VF0_PATH" | awk '{print $1}')" = "$VF0_SHA256"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md)" = "$V2_REPORT_BLOB"
+          test "$(git rev-parse HEAD:$LEARNED_PREREG_PATH)" = "$LEARNED_PREREG_BLOB"
+          test "$(git rev-parse HEAD:$LEARNED_EVIDENCE_PATH)" = "$LEARNED_EVIDENCE_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/learned-domain-invariant-representation-v1-outcome-2026-08-17.md)" = "$LEARNED_REPORT_BLOB"
+          test "$(git rev-parse HEAD:tools/research/domain-invariant-descriptor/v2-descriptor-outcome-instrument.mjs)" = "$V2_INSTRUMENT_BLOB"
+          test "$(git rev-parse HEAD:tools/research/learned-domain-invariant/v1-learned-render-instrument.mjs)" = "$LEARNED_RENDER_INSTRUMENT_BLOB"
+          test "$(git rev-parse HEAD:tools/research/learned-domain-invariant/v1-learned-score.py)" = "$LEARNED_SCORE_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          python - <<'PY'
+          import json
+          p=json.load(open('docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json'))
+          f=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'))
+          assert p['startingLiveHead']=='4ca8b596f09535893c22933893cea539dfdc254f'
+          assert p['frozenBeforeFusionOutcomes'] is True and p['fusionOutcomesInspected'] is False
+          assert p['fusionFamily']['onlyHeads']==['F1','F2','F3']
+          assert p['fusionFamily']['F1']['weights']==[.5,.5]
+          assert p['fusionFamily']['F2']['weights']==[.5,.5]
+          assert p['poseGrid']['combinationsPerCandidate']==81 and p['samePoseRule']['required'] is True
+          assert p['localSurvivorRule']['allClausesRequired'] is True and p['localSurvivorRule']['relaxationForbidden'] is True
+          assert p['hardStopPolicy']['noAutomaticResearchRoundAfterThis'] is True
+          assert f['verdict']=='VF0 — V2 CANDIDATE FREEZE COMPLETE'
+          assert len(f['controls'])==8 and sum(len(c['top8']) for c in f['controls'].values())==64
+          assert all(len(c['top8'])==8 and all(x['classification']=='WRONG' for x in c['top8']) for c in f['controls'].values())
+          assert sum(len(c['nearGtCandidateIds']) for c in f['controls'].values())==0
+          assert p['productionGuards']['structural']==.58 and p['productionGuards']['intensity']==.42 and p['productionGuards']['coarseBeam']==8 and p['productionGuards']['productionChange']=='NO'
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.13'
+
+      - name: Install exact frozen CPU inference runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input --index-url https://download.pytorch.org/whl/cpu torch==2.7.1 torchvision==0.22.1 numpy==2.5.2 pillow==12.3.0
+          python - <<'PY'
+          import platform,torch,torchvision,PIL,numpy
+          assert platform.python_version()=='3.12.13'
+          assert torch.__version__=='2.7.1+cpu' and torchvision.__version__=='0.22.1+cpu'
+          assert PIL.__version__=='12.3.0' and numpy.__version__=='2.5.2'
+          PY
+
+      - name: Fetch exact frozen DINOv2 source and weights
+        shell: bash
+        run: |
+          set -euo pipefail
+          dino="$RUNNER_TEMP/dinov2"
+          git init "$dino" >/dev/null
+          git -C "$dino" remote add origin "https://github.com/$DINO_REPO.git"
+          git -C "$dino" fetch --depth=1 origin "$DINO_COMMIT" >/dev/null
+          git -C "$dino" checkout --detach FETCH_HEAD >/dev/null
+          test "$(git -C "$dino" rev-parse HEAD)" = "$DINO_COMMIT"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/backbones.py)" = "$DINO_BACKBONES_BLOB"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/utils.py)" = "$DINO_UTILS_BLOB"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/data/transforms.py)" = "$DINO_TRANSFORMS_BLOB"
+          weight="$RUNNER_TEMP/dinov2_vits14_reg4_pretrain.pth"
+          curl --fail --location --retry 4 --retry-delay 2 "$DINO_WEIGHT_URL" --output "$weight"
+          test "$(stat -c %s "$weight")" = "$DINO_WEIGHT_SIZE"
+          test "$(sha256sum "$weight" | awk '{print $1}')" = "$DINO_WEIGHT_SHA256"
+          echo "DINOV2_DIR=$dino" >> "$GITHUB_ENV"
+          echo "DINO_WEIGHT_PATH=$weight" >> "$GITHUB_ENV"
+
+      - name: Prepare canonical controls and exact replay renderers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fusion-site/controls fusion-input fusion-render fusion-learned fusion-artifact
+          npm install --no-save --no-package-lock playwright-core@1.62.1 >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"; test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > fusion-site/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > fusion-site/controls/general-shrine.webp
+          test "$(sha256sum fusion-site/controls/east-cross.webp | awk '{print $1}')" = 144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792
+          test "$(sha256sum fusion-site/controls/general-shrine.webp | awk '{print $1}')" = 261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55
+          cp fixtures/owner-gfn-center-hud/{path-of-void,buddha-fort,general-shrine-repeat,prosperity-haven,dreamfall-cliff}.webp fusion-site/controls/
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > fusion-input/fang-meta.json
+          test "$(jq -r '.workflow_run.id' fusion-input/fang-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' fusion-input/fang-meta.json)" = "$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > fusion-input/fang.zip
+          mkdir fusion-input/fang; unzip -q fusion-input/fang.zip -d fusion-input/fang
+          F="$(find fusion-input/fang -name steam-general-shrine-1-roi.png -print -quit)"; test -n "$F"
+          test "$(sha256sum "$F" | awk '{print $1}')" = 272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30
+          cp "$F" fusion-site/controls/fang-xu.png
+          cat > fusion-input/config.json <<'JSON'
+          {"controls":[
+            {"id":"east-cross","name":"East Cross","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/east-cross.webp","sourceCropSize":215.75},
+            {"id":"general-shrine","name":"General Shrine historical","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/general-shrine.webp","sourceCropSize":215.75},
+            {"id":"path-of-void","name":"Path of Void","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/path-of-void.webp","sourceCropSize":null},
+            {"id":"buddha-fort","name":"Buddha Fort","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/buddha-fort.webp","sourceCropSize":null},
+            {"id":"prosperity-haven","name":"Prosperity Haven","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/prosperity-haven.webp","sourceCropSize":null},
+            {"id":"dreamfall-cliff","name":"Dreamfall Cliff","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/dreamfall-cliff.webp","sourceCropSize":null},
+            {"id":"general-shrine-repeat","name":"General Shrine repeat","role":"SAME_LOCATION_DRIFT","region":"Qinghe","mapId":1,"image":"controls/general-shrine-repeat.webp","sourceCropSize":null},
+            {"id":"fang-xu","name":"Steam Fang Xu Global-PC HUD","role":"INDEPENDENT_VALIDATION","region":"Qinghe","mapId":1,"image":"controls/fang-xu.png","sourceCropSize":null}
+          ]}
+          JSON
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt fusion-site/
+          python tools/build_dashen_reference_audit_cache.py fusion-site/dashen-cache --workers 24
+          node tools/instrument-real-gfn-production-replay.mjs fusion-site/vision-sync.js
+          node tools/research/domain-invariant-descriptor/v2-descriptor-outcome-instrument.mjs fusion-site/vision-sync.js
+          node tools/research/learned-domain-invariant/v1-learned-render-instrument.mjs fusion-site/vision-sync.js
+          node tools/research/final-complementary-fusion/v1-fusion-d2-wrapper-instrument.mjs fusion-site/vision-sync.js
+
+      - name: Render exact same-pose D2 and learned reference population
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/research/final-complementary-fusion/v1-fusion-render-runner.mjs --site fusion-site --freeze "$VF0_PATH" --config fusion-input/config.json --output fusion-render --control '${{ matrix.control }}'
+          grep -Fq 'STATUS=PASS' fusion-render/render.status.txt
+
+      - name: Score exact frozen Learned V1 L1/L3 without modification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/research/learned-domain-invariant/v1-learned-score.py --render-dir fusion-render --prereg "$LEARNED_PREREG_PATH" --dinov2-repo "$DINOV2_DIR" --weights "$DINO_WEIGHT_PATH" --output fusion-learned --control '${{ matrix.control }}'
+          grep -Fq 'STATUS=PASS' fusion-learned/'${{ matrix.control }}'.status.txt
+          cp fusion-render/render-manifest.json fusion-artifact/render-manifest.json
+          cp fusion-learned/'${{ matrix.control }}'.json fusion-artifact/learned.json
+
+      - name: Upload immutable per-control component evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion-v1-control-${{ github.run_id }}-${{ matrix.control }}
+          path: fusion-artifact/
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    name: Aggregate final fusion v1 and apply frozen survivor rule
+    needs: control
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify aggregate authority and frozen population
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:$VF0_PATH)" = "$VF0_BLOB"
+          test "$(sha256sum "$VF0_PATH" | awk '{print $1}')" = "$VF0_SHA256"
+          test "$(git rev-parse HEAD:$LEARNED_EVIDENCE_PATH)" = "$LEARNED_EVIDENCE_BLOB"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+
+      - name: Download all same-pose component evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fusion-v1-control-${{ github.run_id }}-*
+          path: fusion-input
+          merge-multiple: false
+
+      - name: Recover exact accepted Descriptor V2 control evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p v2-authority
+          while IFS=$'\t' read -r cid aid; do
+            mkdir -p "v2-authority/$cid"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid" > "v2-authority/$cid/meta.json"
+            test "$(jq -r '.workflow_run.id' "v2-authority/$cid/meta.json")" = 31989337212
+            gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" > "v2-authority/$cid/a.zip"
+            unzip -q "v2-authority/$cid/a.zip" -d "v2-authority/$cid/content"
+            test -f "v2-authority/$cid/content/$cid.json"
+          done < <(jq -r '.authority.descriptorV2.componentArtifactByControl|to_entries[]|[.key,.value]|@tsv' "$PREREG_PATH")
+
+      - name: Reproduce components then evaluate F1 F2 F3 at identical poses
+        id: aggregate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/research/final-complementary-fusion/v1-fusion-aggregate.py --input-root fusion-input --v2-root v2-authority --prereg "$PREREG_PATH" --learned-evidence "$LEARNED_EVIDENCE_PATH" --output fusion-final
+          grep -Fq 'STATUS=PASS' fusion-final/fusion-v1.status.txt
+
+      - name: Upload final local protocol evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-final-complementary-fusion-v1-${{ github.run_id }}
+          path: fusion-final/
+          if-no-files-found: warn
+          retention-days: 30
