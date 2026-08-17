@@ -1,0 +1,90 @@
+name: WWMSync D0 Baseline Lineage Adjudication
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-d0-baseline-lineage-adjudication.yml'
+      - 'tools/research/domain-invariant-descriptor/**'
+      - 'docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-lineage-amendment-2026-08-16.json'
+
+permissions: {contents: read, actions: read}
+
+env:
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  PREREG: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'
+
+jobs:
+  d0-lineage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - name: Guard production and descriptor closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          python - <<'PY'
+          import json
+          p=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json'))
+          assert p['frozenBeforeDescriptorOutcomes'] is True
+          assert p['D5']['enabled'] is False
+          assert p['poseGrid']['combinationsPerCandidate']==81
+          print('PREREG_GUARD=PASS')
+          PY
+          printf 'DESCRIPTORS_EXECUTED=NO\nD0_ONLY=YES\nRD=PENDING\n' > /tmp/d0-status.txt
+      - name: Decode frozen harness source without executing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p d0-lineage-probe
+          base64 -d tools/research/domain-invariant-descriptor/instrument.mjs.gz.b64 | gzip -d > /tmp/descriptor-instrument.mjs
+          base64 -d tools/research/domain-invariant-descriptor/run-local.mjs.gz.b64 | gzip -d > /tmp/run-local.mjs
+          base64 -d tools/research/domain-invariant-descriptor/driver.sh.gz.b64 | gzip -d > /tmp/driver.sh
+          sha256sum /tmp/descriptor-instrument.mjs /tmp/run-local.mjs /tmp/driver.sh | tee d0-lineage-probe/decoded-source-sha256.txt
+          {
+            echo '=== instrument relevant symbols ==='
+            grep -nE 'recoverLocalGt|candidate|D0|scaleAwareStructure|intensityNcc|productionCombined' /tmp/descriptor-instrument.mjs || true
+            echo '=== run-local relevant symbols ==='
+            grep -nE 'recoverLocalGt|candidate|D0|reconstruct|scaleAwareStructure|intensityNcc|productionCombined' /tmp/run-local.mjs || true
+            echo '=== driver relevant symbols ==='
+            grep -nE 'run-local|controls.json|ss0|owner|fang|phase0|D0' /tmp/driver.sh || true
+          } | tee d0-lineage-probe/source-symbols.txt
+          test -s d0-lineage-probe/source-symbols.txt
+      - name: Record bounded provenance inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          out={
+            'schema':'wwmsync-d0-lineage-probe-v1',
+            'descriptorOutcomesExecuted':False,
+            'rd':'PENDING',
+            'historicalExecutionNote':'raw Canvas emulation; CI acceptance did not assert browser-raster bit identity',
+            'historicalReplaySourceArtifact':{'run':31872161105,'artifact':9243725171,'digest':'sha256:a8a8c7f347562502d5c2271dc86f99c47e3c671302a271ba569e80b6efa9fae8'},
+            'historicalAcceptanceArtifact':{'run':31872599823,'artifact':9243841549,'digest':'sha256:e7786742e2e355c0d16d42d94b383db2f2a489e818a61dd955420f1aa0072b7a'},
+            'd0CanonicalCanvasDiagnostic':{'run':31956706686,'artifact':9266135131,'digest':'sha256:b872c2db3f0aa4b547da1cee7d992c9af02eb8d73205f2cae6322b958de760ad'},
+            'productionGuards':{'vision-sync.js':'58b5a1babf6a12b944f9b745b8bf7f7df573bf9b','dashen-tile-cache.js':'9388960a8bff53a9cfc7471372af144b7a28c34f','tools/build_dashen_visual_cache.py':'1a227d06ae41660ea3e3b832e7f1921cc507c0d7','structural':0.58,'intensity':0.42,'coarseBeam':8}
+          }
+          pathlib.Path('d0-lineage-probe/probe.json').write_text(json.dumps(out,indent=2)+'\n')
+          PY
+      - name: Upload D0-only probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-d0-lineage-probe-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            d0-lineage-probe/
+            /tmp/d0-status.txt
+          if-no-files-found: error
+          retention-days: 7
