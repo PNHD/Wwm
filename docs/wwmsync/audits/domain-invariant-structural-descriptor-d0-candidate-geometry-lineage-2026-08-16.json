@@ -1,0 +1,70 @@
+{
+  "schema": "wwmsync-d0-candidate-geometry-lineage-v1",
+  "frozenBeforeCanonicalBrowserD0Outcomes": true,
+  "purpose": "Preserve/recover the already-preregistered SS0 candidate geometry without selecting any candidate from canonical-browser D0 scores.",
+  "candidateIdentityPolicy": "GT is the existing :gt-local identity. WRONG identities are exactly SS0 Pareto-dominating WRONG candidate IDs plus the historical final WRONG, deduplicated by candidateId. No candidate may be added or removed from canonical-browser scores.",
+  "ss0": {
+    "run": 31889065856,
+    "job": 95022507549,
+    "artifact": 9248045962,
+    "digest": "sha256:0c5cc8a788274b33892b8bfdced58b552f99f6716e54acec5c45487a5bf2e1a2"
+  },
+  "historicalFineStage": {
+    "run": 31768239431,
+    "job": 94668491244,
+    "artifact": 9207148249,
+    "digest": "sha256:ce858250c81ee3adf6efa9704a9cd22f87e7ffa2dde0c5c2ae9d9b9f9ee1ac39",
+    "use": "Restores pose/radius fields omitted by the normalized SS0 finalist rows for East Cross, General Shrine historical, and Fang Xu. Values come from the historical finalWinner object whose x/y and D0 vector exactly equal the corresponding frozen SS0 finalist row."
+  },
+  "historicalFinalistPoseOverrides": {
+    "east-cross:finalist:1": {
+      "x": 6239.3,
+      "y": 3744.3,
+      "gtDistance": 1362.814643324122,
+      "angle": 270.5,
+      "radius": 282.3240096,
+      "scale": 7.05810024,
+      "historicalHypothesisRank": 3
+    },
+    "general-shrine:finalist:1": {
+      "x": 5407.3,
+      "y": 4133.3,
+      "gtDistance": 654.8484875655719,
+      "angle": 114.5,
+      "radius": 493.8626932063999,
+      "scale": 12.346567330159997,
+      "historicalHypothesisRank": 3
+    },
+    "fang-xu:finalist:1": {
+      "x": 5218.3,
+      "y": 4015.3,
+      "gtDistance": 779.954660039484,
+      "angle": 100.5,
+      "radius": 107.13453206400001,
+      "scale": 2.6783633016,
+      "historicalHypothesisRank": 1
+    }
+  },
+  "ownerGtPoseFreeze": {
+    "path-of-void:gt-local": {"angle": 0, "radius": 112, "scale": 2.8},
+    "buddha-fort:gt-local": {"angle": 180, "radius": 48, "scale": 1.2},
+    "general-shrine-repeat:gt-local": {"angle": 180, "radius": 32, "scale": 0.8},
+    "prosperity-haven:gt-local": {"angle": 180, "radius": 32, "scale": 0.8},
+    "dreamfall-cliff:gt-local": {"angle": 270, "radius": 64, "scale": 1.6}
+  },
+  "ownerHistoricalFinalIdentityInvariants": {
+    "path-of-void:final": {"gtDistance": 341.4673299142163, "angle": 295.5, "scale": 11.0060856, "radius": 440.243424},
+    "buddha-fort:final": {"gtDistance": 808.5269509612594, "angle": 300, "scale": 11.740395325919998, "radius": 469.6158130367999},
+    "general-shrine-repeat:final": {"gtDistance": 800.1673795505717, "angle": 258.5, "scale": 2.8741953599999994, "radius": 114.96781439999998},
+    "prosperity-haven:final": {"gtDistance": 657.974021377956, "angle": 173, "scale": 3.0729204576, "radius": 122.916818304},
+    "dreamfall-cliff:final": {"gtDistance": 171.57822420235016, "angle": 172, "scale": 2.4639552, "radius": 98.558208}
+  },
+  "ownerFinalCoordinateGap": {
+    "status": "HISTORICAL_XY_NOT_PRESERVED",
+    "evidence": "The owner post-acquisition evidence and SS0 normalized final rows preserve final candidate ID, GT distance, angle, scale/radius and D0 vector but not final x/y; the accepted CI artifact contains only identity freeze, evidence, report and acceptance JSON.",
+    "boundedRecoveryRule": "Before canonical D0 scoring, recover only x/y by requiring a unique current production-search geometry candidate with exact historical angle (1e-6) and historical GT distance (0.05 px). Retain historical angle and scale/radius. Do not use canonical D0 score, rank, acceptance or proximity-to-legacy-score to choose the candidate. If the invariant match is not unique, baseline adjudication fails. The recovered x/y must then be frozen explicitly in the lineage amendment so future authoritative runs do not repeat this recovery search."
+  },
+  "descriptorOutcomesInspected": false,
+  "D1D4Opened": false,
+  "RD": "PENDING"
+}
