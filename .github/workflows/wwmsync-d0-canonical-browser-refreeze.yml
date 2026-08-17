@@ -34,7 +34,7 @@ env:
   SOURCE_ARTIFACT: '9243725171'
   SOURCE_DIGEST: 'a8a8c7f347562502d5c2271dc86f99c47e3c671302a271ba569e80b6efa9fae8'
   PLAYWRIGHT_VERSION: '1.55.0'
-  CHROME_VERSION: 'Google Chrome 140.0.7339.80'
+  CHROME_VERSION: 'Google Chrome 151.0.7922.108'
   RUNNER_IMAGE_FAMILY: 'ubuntu-24.04'
   OBSERVED_IMAGE_VERSION: '20260810.271.1'
 
@@ -157,9 +157,9 @@ jobs:
           npm install --no-save --no-package-lock "playwright-core@$PLAYWRIGHT_VERSION" >/dev/null 2>&1
           test "$(node -p "require('playwright-core/package.json').version")" = "$PLAYWRIGHT_VERSION"
           CHROME_BIN="$(command -v google-chrome)"; test -x "$CHROME_BIN"; export CHROME_BIN
-          test "$("$CHROME_BIN" --version)" = "$CHROME_VERSION"
+          test "$("$CHROME_BIN" --version | sed 's/[[:space:]]*$//')" = "$CHROME_VERSION"
           echo "$CHROME_BIN" > d0-output/chrome-bin.txt
-          "$CHROME_BIN" --version > d0-output/chrome-version.txt
+          "$CHROME_BIN" --version | sed 's/[[:space:]]*$//' > d0-output/chrome-version.txt
           node -p "require('playwright-core/package.json').version" > d0-output/playwright-version.txt
           printf '%s\n' "${ImageOS}" > d0-output/image-os.txt
           printf '%s\n' "${ImageVersion}" > d0-output/image-version.txt
