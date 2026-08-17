@@ -1,0 +1,227 @@
+name: WWMSync Learned Representation V1 Finalize
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-learned-v1-finalize.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BRANCH: 'feature/wwm-native-sync-v2'
+  AUDIT_START_HEAD: 'd8eed21f8913473ab89d2730bf75968e960573af'
+  OUTCOME_HEAD: '40c7a3163341dcf7693c2ecd456c85b3a3191618'
+  OUTCOME_RUN: '32002871831'
+  OUTCOME_JOB: '95307081395'
+  OUTCOME_ARTIFACT: '9279064565'
+  OUTCOME_DIGEST: 'sha256:c9189c23a875da2dd6428402b76c2c894d528d0b3a584f1d878a168cc4e18445'
+  PREREG_COMMIT: '2180828353d8ffed06acf60e35e01da77701f5fc'
+  PREREG_BLOB: '27c9b30a4f84e3de3433678835ea7343176e99ad'
+  PREREG_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json'
+  REPORT_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-outcome-2026-08-17.md'
+  EVIDENCE_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-evidence-2026-08-17.json'
+  V2_REPORT_BLOB: '79287c1657327f03c0861fa0e629e3720edb8e9b'
+  VF0_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  VF0_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  VF0_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  finalize:
+    name: Accept learned V1 evidence and verify live GitHub state
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify frozen authority before accepting outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$AUDIT_START_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" "$OUTCOME_HEAD"
+          git merge-base --is-ancestor "$OUTCOME_HEAD" HEAD
+          git merge-base --is-ancestor "$VF0_COMMIT" "$AUDIT_START_HEAD"
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md)" = "$V2_REPORT_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json)" = "$VF0_BLOB"
+          test "$(sha256sum docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json | awk '{print $1}')" = "$VF0_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          python - <<'PY'
+          import json
+          p=json.load(open('docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json'))
+          assert p['frozenBeforeLearnedGtWrongOutcomes'] is True
+          assert p['learnedOutcomesInspected'] is False
+          assert p['modelProvenance']['modelIdentity']=='dinov2_vits14_reg'
+          assert p['modelProvenance']['sourceCommit']=='7764ea0f912e53c92e82eb78a2a1631e92725fc8'
+          assert p['modelProvenance']['weight']['sha256']=='f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb'
+          assert p['modelProvenance']['weight']['byteSize']==88291785
+          assert p['poseGrid']['combinationsPerCandidate']==81
+          PY
+
+      - name: Verify authoritative successful outcome run and artifact provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p accepted-input
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$OUTCOME_RUN" > accepted-input/run.json
+          test "$(jq -r '.status' accepted-input/run.json)" = completed
+          test "$(jq -r '.conclusion' accepted-input/run.json)" = success
+          test "$(jq -r '.head_sha' accepted-input/run.json)" = "$OUTCOME_HEAD"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT" > accepted-input/artifact.json
+          test "$(jq -r '.workflow_run.id' accepted-input/artifact.json)" = "$OUTCOME_RUN"
+          test "$(jq -r '.workflow_run.head_sha' accepted-input/artifact.json)" = "$OUTCOME_HEAD"
+          test "$(jq -r '.digest' accepted-input/artifact.json)" = "$OUTCOME_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT/zip" > accepted-input/outcome.zip
+          unzip -q accepted-input/outcome.zip -d accepted-input/outcome
+          test -n "$(find accepted-input/outcome -name learned-v1-local-evidence.json -print -quit)"
+
+      - name: Generate accepted machine evidence and human report from authoritative artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob, json, os
+          srcs=glob.glob('accepted-input/outcome/**/learned-v1-local-evidence.json',recursive=True)
+          assert len(srcs)==1,srcs
+          d=json.load(open(srcs[0]))
+          prereg=json.load(open(os.environ['PREREG_PATH']))
+          assert d['status']=='PASS'
+          assert d['head']==os.environ['OUTCOME_HEAD']
+          assert d['LR']=='LR2 — PARTIAL LEARNED RESCUE'
+          assert d['localSurvivors']==[]
+          assert d['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+          assert d['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+          assert set(d['controls'])=={'east-cross','general-shrine','path-of-void','buddha-fort','prosperity-haven','dreamfall-cliff','general-shrine-repeat','fang-xu'}
+          for h in ['L1','L2','L3']:
+              assert not d['heads'][h]['localSurvivor']
+          E={
+            'schema':'wwmsync-learned-domain-invariant-representation-v1-accepted-evidence-v1',
+            'date':'2026-08-17','status':'ACCEPTED','audit':'LEARNED / DOMAIN-INVARIANT KNOWN-GT REPRESENTATION AUDIT V1',
+            'startingHead':os.environ['AUDIT_START_HEAD'],'outcomeHead':os.environ['OUTCOME_HEAD'],
+            'authoritativeOutcome':{'run':int(os.environ['OUTCOME_RUN']),'aggregateJob':int(os.environ['OUTCOME_JOB']),'artifact':int(os.environ['OUTCOME_ARTIFACT']),'artifactDigest':os.environ['OUTCOME_DIGEST']},
+            'v2Rd2':{'reportBlob':os.environ['V2_REPORT_BLOB'],'run':31989337212,'aggregateJob':95270023809,'artifact':9274795303,'artifactDigest':'sha256:549c5a1e7302dd78adb0c2ef0862d31c9a366ce9aaf39ac81e8812ae135a94b7','finalAcceptanceRun':31989572538,'finalAcceptanceJob':95270554300,'finalAcceptanceArtifact':9274860323,'finalAcceptanceDigest':'sha256:e64b08bd5991b764c748e79342c4b385c2d20b2205f7625b345bca01b3acb89c'},
+            'vf0':{'commit':os.environ['VF0_COMMIT'],'blob':os.environ['VF0_BLOB'],'sha256':os.environ['VF0_SHA256'],'gt':8,'top8':64,'wrong':64,'nearGt':0},
+            'prereg':{'commit':os.environ['PREREG_COMMIT'],'blob':os.environ['PREREG_BLOB'],'learnedOutcomesInspected':False},
+            'model':{'repository':prereg['modelProvenance']['repository'],'sourceCommit':prereg['modelProvenance']['sourceCommit'],'identity':prereg['modelProvenance']['modelIdentity'],'architecture':prereg['modelProvenance']['architecture'],'weightUrl':prereg['modelProvenance']['weight']['url'],'weightByteSize':prereg['modelProvenance']['weight']['byteSize'],'weightSha256':prereg['modelProvenance']['weight']['sha256']},
+            'runtime':prereg['runtime'],'preprocess':prereg['modelInput'],'featureExtraction':prereg['featureExtraction'],
+            'featureConformance':None,'controls':{},'heads':d['heads'],'localSurvivors':d['localSurvivors'],'retrieval':d['retrieval'],'stress40Frame':d['stress40Frame'],
+            'verdict':d['LR'],'verdictReason':d['verdictReason'],
+            'architectureImplication':'Frozen generic learned representation provides a narrow East Cross 81-pose rescue but does not generalize across owners, Fang, or General drift; domain mismatch remains heterogeneous.',
+            'nextResearchJustified':'YES — a separately preregistered fusion/domain-adaptation study may be justified.','productionTaskJustified':False,'productionChange':'NO',
+            'productionGuards':prereg['productionGuards'],
+            'fullPoseEvidence':'Authoritative artifact preserves all 81 poses for GT and all eight WRONG candidates for every head/control. This accepted JSON preserves every candidate score at locked and best-81 selection plus selected best poses.'
+          }
+          for cid,c in sorted(d['controls'].items()):
+              if E['featureConformance'] is None:E['featureConformance']=c['conformance']
+              cc={'name':c['control']['name'],'role':c['control']['role'],'region':c['control']['region'],'mapId':c['control']['mapId'],'queryRgb192Sha256':c['query']['rgb192Sha256'],'pre196RgbSha256':c['query']['pre196RgbSha256'],'pre196HashRepeatStable':c['query']['pre196HashRepeatStable'],'runtime':c['runtime'],'heads':{}}
+              for h in ['L1','L2','L3']:
+                  hh={'orderingChanged':c['heads'][h]['orderingChanged']}
+                  for stage in ['locked','pose81']:
+                      s=c['heads'][h][stage]
+                      hh[stage]={k:s[k] for k in ['gtScore','strongestWrongScore','strongestWrongCandidateId','margin','gtRank','ties','positive','bestGtPose','bestWrongPose']}
+                      hh[stage]['candidateScores']=[{'candidateId':r['candidateId'],'role':r['role'],'score':r['score']} for r in s['rows']]
+                  cc['heads'][h]=hh
+              E['controls'][cid]=cc
+          os.makedirs(os.path.dirname(os.environ['EVIDENCE_PATH']),exist_ok=True)
+          with open(os.environ['EVIDENCE_PATH'],'w') as f:json.dump(E,f,indent=2,sort_keys=True);f.write('\n')
+
+          names={'east-cross':'East Cross','general-shrine':'General Shrine historical','path-of-void':'Path of Void','buddha-fort':'Buddha Fort','prosperity-haven':'Prosperity Haven','dreamfall-cliff':'Dreamfall Cliff','general-shrine-repeat':'General Shrine repeat','fang-xu':'Fang Xu'}
+          order=list(names)
+          lines=['# WWMSync Learned / Domain-Invariant Known-GT Representation Audit V1 — Outcome','', '**Status:** COMPLETE / CI ACCEPTED','', '**Final verdict:** **LR2 — PARTIAL LEARNED RESCUE**','', '**Production change:** **NO**','', '## Authority','',
+            f"- Starting live HEAD: `{os.environ['AUDIT_START_HEAD']}`",f"- Learned prereg commit: `{os.environ['PREREG_COMMIT']}`",f"- Learned prereg blob: `{os.environ['PREREG_BLOB']}`",f"- Authoritative learned outcome HEAD: `{os.environ['OUTCOME_HEAD']}`",f"- Authoritative outcome run: `{os.environ['OUTCOME_RUN']}`",f"- Aggregate job: `{os.environ['OUTCOME_JOB']}`",f"- Outcome artifact: `{os.environ['OUTCOME_ARTIFACT']}`",f"- Outcome artifact digest: `{os.environ['OUTCOME_DIGEST']}`",'',
+            f"V2-RD2 authority remains accepted at report blob `{os.environ['V2_REPORT_BLOB']}`. VF0 remains commit `{os.environ['VF0_COMMIT']}`, blob `{os.environ['VF0_BLOB']}`, SHA-256 `{os.environ['VF0_SHA256']}`.",'',
+            '## Frozen model and runtime','',
+            f"- Upstream: `facebookresearch/dinov2` at `{prereg['modelProvenance']['sourceCommit']}`",f"- Model: `{prereg['modelProvenance']['modelIdentity']}` — DINOv2 ViT-S/14 with 4 register tokens",f"- Official weight bytes: `{prereg['modelProvenance']['weight']['byteSize']:,}`",f"- Weight SHA-256: `{prereg['modelProvenance']['weight']['sha256']}`",'- Runtime: Ubuntu 24.04, Python 3.12.13, PyTorch 2.7.1+cpu, torchvision 0.22.1+cpu, Pillow 12.3.0, NumPy 2.5.2, CPU-only; deterministic algorithms enabled; 2 intra-op / 1 inter-op thread.','- Model `eval()`, `inference_mode()`, gradients disabled. No fine-tuning, adapter, LoRA, PCA, VLAD, projector, threshold fitting, D2 fusion, or alternate foundation model.','',
+            '## Preprocessing and conformance','',
+            '- Exact canonical `192×192 RGB8` work canvas → one `196×196` bicubic resize with antialias → float32 RGB `[0,1]` → ImageNet mean `(0.485, 0.456, 0.406)` / std `(0.229, 0.224, 0.225)`.','- Final backbone output only: CLS extracted for conformance; 4 register tokens excluded from similarity; exactly `196` patch tokens on a `14×14` grid, embedding dimension `384`.','- Synthetic repeat embeddings are bitwise identical; same-image identity is approximately 1 for L1/L2/L3; outputs are finite; input transform hashes are stable.','', 'Pre-normalization 196×196 RGB SHA-256 per GT/query control:','']
+          for cid in order:lines.append(f"- {names[cid]}: `{E['controls'][cid]['pre196RgbSha256']}`")
+          for h,title in [('L1','GLOBAL_PATCH_MEAN_COSINE'),('L2','ALIGNED_PATCH_COSINE'),('L3','BIDIRECTIONAL_PATCH_CHAMFER_COSINE')]:
+              lines += ['',f'## {h} — {title}','', '| Control | Locked GT | Locked strongest wrong | Locked margin / rank | Best-81 GT | Best-81 strongest wrong | 81 margin / rank |','|---|---:|---:|---:|---:|---:|---:|']
+              for cid in order:
+                  x=E['controls'][cid]['heads'][h];a=x['locked'];b=x['pose81'];lines.append(f"| {names[cid]} | {a['gtScore']:.6f} | {a['strongestWrongScore']:.6f} | {a['margin']:+.6f} / {a['gtRank']} | {b['gtScore']:.6f} | {b['strongestWrongScore']:.6f} | {b['margin']:+.6f} / {b['gtRank']} |")
+          lines += ['','Full GT + eight-WRONG score rows, strongest-WRONG IDs, ties, selected GT/wrong poses, ordering changes, hashes, and runtime are preserved in the accepted machine evidence; all 81-pose raw score evidence remains in the authoritative artifact.','', '## Owner cross-control summary','', '| Head | Locked owner +/6 | 81 owner +/6 | Locked median | Locked worst | 81 median | 81 worst | Qinghe / Kaifeng positive coverage |','|---|---:|---:|---:|---:|---:|---:|']
+          for h in ['L1','L2','L3']:
+              e=d['heads'][h];la=e['lockedOwner'];pa=e['pose81Owner'];cov=f"locked {la['qinghePositiveCount']}/{la['kaifengPositiveCount']}; 81 {pa['qinghePositiveCount']}/{pa['kaifengPositiveCount']}";lines.append(f"| {h} | {la['positiveCount']}/6 | {pa['positiveCount']}/6 | {la['medianMargin']:+.6f} | {la['worstMargin']:+.6f} | {pa['medianMargin']:+.6f} | {pa['worstMargin']:+.6f} | {cov} |")
+          lines += ['','Only one owner-stage result is positive: **East Cross / L1 / symmetric 81-pose**, margin `+0.025922`, GT rank `1`. East Cross L1 remains negative candidate-locked (`-0.053565`, rank `2`). No Kaifeng control is positive under any head/stage.','', '## General historical/repeat drift','', '| Head | Locked historical | Locked repeat | Locked class | 81 historical | 81 repeat | 81 class |','|---|---:|---:|---|---:|---:|---|']
+          for h in ['L1','L2','L3']:
+              e=d['heads'][h]['generalDrift'];lines.append(f"| {h} | {e['locked']['historicalMargin']:+.6f} | {e['locked']['repeatMargin']:+.6f} | {e['locked']['class']} | {e['pose81']['historicalMargin']:+.6f} | {e['pose81']['repeatMargin']:+.6f} | {e['pose81']['class']} |")
+          lines += ['','All learned heads are `DR-WRONG-STABLE` in both locked and 81-pose evaluation.','', '## Fang independent validation','', '| Head | Locked margin / rank | 81 margin / rank | Independent validation |','|---|---:|---:|---|']
+          for h in ['L1','L2','L3']:
+              e=d['heads'][h]['fang'];lines.append(f"| {h} | {e['locked']['margin']:+.6f} / {e['locked']['gtRank']} | {e['pose81']['margin']:+.6f} / {e['pose81']['gtRank']} | FAIL |")
+          lines += ['','Fang is negative for all three heads under both evaluation modes; independent learned success is absent.','', '## Survivor rule','', '| Clause | L1 | L2 | L3 |','|---|---|---|---|']
+          clauses=['ownerLockedAtLeast4of6','ownerPose81AtLeast4of6','lockedIncludesQingheAndKaifeng','pose81IncludesQingheAndKaifeng','fangLockedPreferred','fangPose81Preferred','generalLockedDriftSafe','generalPose81DriftSafe','vf0Frozen']
+          for k in clauses:lines.append(f"| `{k}` | {d['heads']['L1']['survivorClauses'][k]} | {d['heads']['L2']['survivorClauses'][k]} | {d['heads']['L3']['survivorClauses'][k]} |")
+          lines += ['','`productionGatesOrBeamChanged = false` for all heads. **Local survivors: none.**','', '## Conditional retrieval','', '`SKIPPED_NO_LOCAL_SURVIVORS` — no learned head was eligible for the frozen 424-center Dashen z5 retrieval phase. This is the preregistered valid negative path, not a CI failure.','', '## Conditional 40-frame stress','', '`SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS` — retrieval did not run, so no head could become retrieval-safe. Fixture SHA-256 remains `aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216`. No localization truth claim is made.','', '## Final verdict','', '**LR2 — PARTIAL LEARNED RESCUE**','', 'The learned family materially rescues one narrow case (East Cross L1 after symmetric pose search), but no frozen head satisfies the common owner + region + Fang + drift survivor protocol. Domain mismatch remains heterogeneous.','', '### Architecture implication','', 'A generic frozen visual foundation representation is not sufficient as a common WWMSync HUD/reference representation. A later, separately preregistered fusion/domain-adaptation study is justified; this audit does **not** justify production matcher/model integration.','', '### Production decision','', '- Production task justified: **NO**','- Production change: **NO**','- Structural gate: `0.58`','- Intensity gate: `0.42`','- Coarse beam: `8`',f"- `vision-sync.js`: `{os.environ['VISION_BLOB']}`",f"- `dashen-tile-cache.js`: `{os.environ['CACHE_BLOB']}`",f"- `tools/build_dashen_visual_cache.py`: `{os.environ['CACHE_BUILDER_BLOB']}`",'- `production/wwsync`: untouched','']
+          with open(os.environ['REPORT_PATH'],'w') as f:f.write('\n'.join(lines))
+          PY
+          test "$(jq -r '.verdict' "$EVIDENCE_PATH")" = 'LR2 — PARTIAL LEARNED RESCUE'
+          test "$(jq -r '.productionChange' "$EVIDENCE_PATH")" = NO
+          test "$(jq -r '.localSurvivors | length' "$EVIDENCE_PATH")" = 0
+          grep -Fq '**Final verdict:** **LR2 — PARTIAL LEARNED RESCUE**' "$REPORT_PATH"
+          grep -Fq '**Production change:** **NO**' "$REPORT_PATH"
+
+      - name: Commit accepted evidence and report only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REPORT_PATH" "$EVIDENCE_PATH"
+          mapfile -t changed < <(git diff --cached --name-only)
+          test "${#changed[@]}" -eq 2
+          printf '%s\n' "${changed[@]}" | grep -Fxq "$REPORT_PATH"
+          printf '%s\n' "${changed[@]}" | grep -Fxq "$EVIDENCE_PATH"
+          git commit -m 'docs(wwmsync): accept learned representation v1 outcome'
+          final_head="$(git rev-parse HEAD)"
+          report_blob="$(git rev-parse HEAD:$REPORT_PATH)"
+          evidence_blob="$(git rev-parse HEAD:$EVIDENCE_PATH)"
+          printf 'FINAL_HEAD=%s\nREPORT_BLOB=%s\nEVIDENCE_BLOB=%s\n' "$final_head" "$report_blob" "$evidence_blob" >> "$GITHUB_ENV"
+          git push origin "HEAD:$BRANCH"
+
+      - name: Independently verify final live branch and production state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH"
+          live="$(git rev-parse FETCH_HEAD)"
+          test "$live" = "$FINAL_HEAD"
+          test "$(git rev-parse FETCH_HEAD:$REPORT_PATH)" = "$REPORT_BLOB"
+          test "$(git rev-parse FETCH_HEAD:$EVIDENCE_PATH)" = "$EVIDENCE_BLOB"
+          test "$(git rev-parse FETCH_HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse FETCH_HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse FETCH_HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse FETCH_HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" FETCH_HEAD -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          mkdir -p acceptance
+          jq -n \
+            --arg status 'PASS' --arg finalHead "$FINAL_HEAD" --arg reportBlob "$REPORT_BLOB" --arg evidenceBlob "$EVIDENCE_BLOB" \
+            --arg preregBlob "$PREREG_BLOB" --arg outcomeDigest "$OUTCOME_DIGEST" \
+            --argjson outcomeRun "$OUTCOME_RUN" --argjson outcomeJob "$OUTCOME_JOB" --argjson outcomeArtifact "$OUTCOME_ARTIFACT" \
+            '{schema:"wwmsync-learned-v1-final-live-acceptance-v1",status:$status,finalHead:$finalHead,reportBlob:$reportBlob,evidenceBlob:$evidenceBlob,preregBlob:$preregBlob,outcome:{run:$outcomeRun,job:$outcomeJob,artifact:$outcomeArtifact,digest:$outcomeDigest},productionChange:"NO",productionGuards:{visionSync:"58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",dashenTileCache:"9388960a8bff53a9cfc7471372af144b7a28c34f",cacheBuilder:"1a227d06ae41660ea3e3b832e7f1921cc507c0d7",structural:0.58,intensity:0.42,coarseBeam:8}}' > acceptance/final-live-acceptance.json
+          cp "$REPORT_PATH" "$EVIDENCE_PATH" acceptance/
+          cat acceptance/final-live-acceptance.json
+
+      - name: Upload final live acceptance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-learned-v1-live-acceptance-${{ github.run_id }}
+          path: acceptance/
+          if-no-files-found: error
+          retention-days: 30
