@@ -9,6 +9,7 @@ on:
       - 'app.js'
       - 'vision-sync.css'
       - 'tools/replay-m1-manual-relative.mjs'
+      - '.github/workflows/deploy-wwsync.yml'
       - '.github/workflows/wwmsync-m1-manual-relative-v2.yml'
   workflow_dispatch:
 
