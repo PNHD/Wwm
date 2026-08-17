@@ -1,0 +1,187 @@
+name: WWMSync Descriptor V2 Freeze Materialize
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-descriptor-v2-freeze-materialize.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  TARGET_BRANCH: 'feature/wwm-native-sync-v2'
+  START_HEAD: '69578d239a89f8558b780b6d0f8382d3f737b9d5'
+  PREREG_COMMIT: '9e11969528095ec618599ddcc5d961f53bb01415'
+  PREREG_BLOB: '554bf3318b9b75690589fd3c9275bb20b92e82e5'
+  ORIGINAL_PREREG_BLOB: '29540d6e9b4458cf4681a71351fdd2b0cdd5f423'
+  AMENDMENT_BLOB: '961ed6f2928265dda4fce47b86dd460f462400c7'
+  CANDIDATE_RUN: '31986349537'
+  CANDIDATE_RUN_HEAD: '2d9895880f52d530e89f1d76c9fd7e826da5ab9b'
+  AGGREGATE_ARTIFACT: '9273933374'
+  AGGREGATE_DIGEST: 'sha256:bcde05959c6fc9ff43ab8b666e330d992fb8e6455ba928aa8caddfc926bf36ea'
+  AGGREGATE_PAYLOAD_SHA256: '2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be'
+  FREEZE_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  materialize:
+    name: materialize immutable candidate/D0 freeze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify source state and authoritative aggregate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$START_HEAD" HEAD
+          git merge-base --is-ancestor "$PREREG_COMMIT" HEAD
+          test ! -e "$FREEZE_PATH"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json)" = "$ORIGINAL_PREREG_BLOB"
+          test "$(git rev-parse HEAD:docs/wwmsync/audits/domain-invariant-structural-descriptor-d0-lineage-amendment-2026-08-16.json)" = "$AMENDMENT_BLOB"
+          mkdir -p materialize/source
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > materialize/run.json
+          test "$(jq -r '.head_sha' materialize/run.json)" = "$CANDIDATE_RUN_HEAD"
+          test "$(jq -r '.conclusion' materialize/run.json)" = success
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT" > materialize/artifact.json
+          test "$(jq -r '.workflow_run.id' materialize/artifact.json)" = "$CANDIDATE_RUN"
+          test "$(jq -r '.digest' materialize/artifact.json)" = "$AGGREGATE_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT/zip" > materialize/source/aggregate.zip
+          unzip -q materialize/source/aggregate.zip -d materialize/source/aggregate
+          PAYLOAD="$(find materialize/source/aggregate -name candidate-freeze-payload.json -print -quit)"
+          test -n "$PAYLOAD"
+          test "$(sha256sum "$PAYLOAD" | awk '{print $1}')" = "$AGGREGATE_PAYLOAD_SHA256"
+          cp "$PAYLOAD" materialize/source/candidate-freeze-payload.json
+
+      - name: Build freeze only from accepted aggregate payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          payload=json.load(open('materialize/source/candidate-freeze-payload.json'))
+          assert payload['verdict']=='VF0'
+          assert payload['candidateRunHead']=='2d9895880f52d530e89f1d76c9fd7e826da5ab9b'
+          assert payload['preregCommit']=='9e11969528095ec618599ddcc5d961f53bb01415'
+          assert payload['preregBlobSha1']=='554bf3318b9b75690589fd3c9275bb20b92e82e5'
+          assert payload['descriptorOutcomesInspected'] is False
+          assert payload['D1D4Opened'] is False
+          assert payload['RD']=='PENDING'
+          assert payload['productionChange']=='NO'
+          rep=payload['repeatability']
+          assert rep['verdict']=='VF0' and rep['replicatesFound']==3 and rep['requiredReplicates']==3
+          assert rep['toleranceAbs']==1e-6 and rep['reasons']==[]
+          assert all(float(v)<=1e-6 for v in rep['maxAbsVariation'].values())
+          assert all(len(c['top8'])==8 for c in payload['controls'].values())
+          assert all(z['classification']==('NEAR_GT' if z['gtDistancePx']<=96 else 'WRONG') for c in payload['controls'].values() for z in c['top8'])
+          freeze={
+            'schema':'wwmsync-domain-invariant-structural-descriptor-v2-candidate-freeze-v1',
+            'protocol':'PROSPECTIVE CANONICAL-BROWSER CANDIDATE FREEZE — DESCRIPTOR AUDIT V2',
+            'date':'2026-08-17',
+            'status':'CANDIDATE_D0_FROZEN',
+            'verdict':'VF0 — V2 CANDIDATE FREEZE COMPLETE',
+            'verdictMeaning':'Canonical browser candidate population is complete and reproducible. D1-D4 v2 audit is authorized next.',
+            'startingHead':'69578d239a89f8558b780b6d0f8382d3f737b9d5',
+            'candidateRunHead':payload['candidateRunHead'],
+            'preregPath':'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json',
+            'preregCommit':payload['preregCommit'],
+            'preregBlobSha1':payload['preregBlobSha1'],
+            'sourceAggregatePayloadSha256':'2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be',
+            'prospectiveValidity':{
+              'preregCommittedBeforeCandidateOutputs':True,
+              'descriptorOutcomesInspectedAtPrereg':False,
+              'candidateMembershipUsesDescriptorOutcomes':False,
+              'candidateSetRegeneratedAfterDescriptorOutcomes':False,
+              'historicalGeometryIncompleteV1WrongIdentitiesUsed':False,
+              'noSampleEditingAfterCandidateGeneration':True
+            },
+            'v1Preservation':{
+              'descriptorV1Status':'BL2 — CANONICAL RUNTIME NOT REPRODUCIBLE',
+              'descriptorV1Outcomes':'NOT EXECUTED',
+              'descriptorV1RD':'PENDING / BLOCKED',
+              'legacyNumericD0Superseded':False,
+              'originalPreregBlobSha1':'29540d6e9b4458cf4681a71351fdd2b0cdd5f423',
+              'd0LineageAmendmentBlobSha1':'961ed6f2928265dda4fce47b86dd460f462400c7',
+              'v2RepairsOverwritesOrReinterpretsV1':False
+            },
+            'topK':8,
+            'wrongThresholdPx':96,
+            'classificationRule':{'NEAR_GT':'GT distance <= 96 px','WRONG':'GT distance > 96 px'},
+            'runtime':payload['runtime'],
+            'reference':payload['reference'],
+            'controls':payload['controls'],
+            'repeatability':payload['repeatability'],
+            'semanticInheritance':{
+              'sourcePath':'docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json',
+              'sourceBlobSha1':'29540d6e9b4458cf4681a71351fdd2b0cdd5f423',
+              'equal':True,
+              'inherited':['D1 — LOCAL_CENSUS_ORDINAL','D2 — UNSIGNED_GRADIENT_ORIENTATION','D3 — SYMMETRIC_EDGE_DISTANCE_CHAMFER','D4 — SKELETON_NETWORK_DISTANCE','D5 DISABLED','81-pose grid'],
+              'executedInThisTask':False
+            },
+            'strictStopEvidence':{
+              'D1':False,'D2':False,'D3':False,'D4':False,
+              'pose81DescriptorComparison':False,
+              'generalDescriptorDrift':False,
+              'fangDescriptorValidation':False,
+              'retrievalProxy':False,
+              'stress40Frame':False,
+              'RDClassification':False
+            },
+            'diagnosticOnly':{'ethereal-chamber':'NOT_EVALUABLE_REFERENCE_FAMILY; excluded from v2 evaluable candidate population'},
+            'productionGuards':{
+              'vision-sync.js':'58b5a1babf6a12b944f9b745b8bf7f7df573bf9b',
+              'dashen-tile-cache.js':'9388960a8bff53a9cfc7471372af144b7a28c34f',
+              'tools/build_dashen_visual_cache.py':'1a227d06ae41660ea3e3b832e7f1921cc507c0d7',
+              'structural':0.58,'intensity':0.42,'coarseBeam':8,
+              'productionWwsyncUntouched':True,'productionChange':'NO'
+            },
+            'authoritativeEvidence':{
+              'candidateRun':{'id':31986349537,'workflowId':335873510,'runNumber':2,'name':'WWMSync Descriptor V2 Candidate Freeze','headSha':'2d9895880f52d530e89f1d76c9fd7e826da5ab9b','conclusion':'success'},
+              'candidateJobs':[
+                {'id':95261936507,'name':'candidate replicate 1','replicate':1,'conclusion':'success'},
+                {'id':95261936525,'name':'candidate replicate 2','replicate':2,'conclusion':'success'},
+                {'id':95261936523,'name':'candidate replicate 3','replicate':3,'conclusion':'success'},
+                {'id':95262324193,'name':'repeatability aggregate','conclusion':'success'}
+              ],
+              'replicateArtifacts':[
+                {'replicate':1,'id':9273930819,'name':'wwmsync-descriptor-v2-replicate-31986349537-1','digest':'sha256:c1f7f52ff9fb00f222a5761c8ff03da4f33492df118efde60b3aca6a9a9135ef'},
+                {'replicate':2,'id':9273927666,'name':'wwmsync-descriptor-v2-replicate-31986349537-2','digest':'sha256:e6d8f77b8da8bd441b6a23a734cbcd64da27bd82c926c6b762b6b72353ecf517'},
+                {'replicate':3,'id':9273927681,'name':'wwmsync-descriptor-v2-replicate-31986349537-3','digest':'sha256:59158f8fb02d524f9872f14c64f30a732cc760aa21832b201281e100e009c8d8'}
+              ],
+              'aggregateArtifact':{'id':9273933374,'name':'wwmsync-descriptor-v2-repeatability-31986349537','digest':'sha256:bcde05959c6fc9ff43ab8b666e330d992fb8e6455ba928aa8caddfc926bf36ea'},
+              'aggregatePayloadSha256':'2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be',
+              'bl2':{'run':31985103484,'job':95258619911,'artifact':9273501655,'digest':'sha256:8a614778c67e6b05a26d5fd32b6b52e40298f66dc9372f622d1d843a75cdfbbf'},
+              'fangSource':{'run':31609680755,'artifact':9146646914,'digest':'sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041','roiSha256':'272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30'}
+            },
+            'descriptorOutcomesInspected':False,
+            'D1D4Opened':False,
+            'RD':'PENDING',
+            'descriptorV2Status':'CANDIDATE/D0 FREEZE COMPLETE; D1-D4 NOT EXECUTED',
+            'productionChange':'NO'
+          }
+          out=pathlib.Path('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json')
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_text(json.dumps(freeze,indent=2,ensure_ascii=False)+'\n')
+          PY
+          test "$(sha256sum "$FREEZE_PATH" | awk '{print $1}')" = 6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3
+
+      - name: Commit immutable freeze to live branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$FREEZE_PATH"
+          git diff --cached --quiet && { echo 'freeze file was not materialized'; exit 1; }
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          test "$(git diff --cached --name-only)" = "$FREEZE_PATH"
+          git commit -m 'docs(wwmsync): freeze prospective descriptor v2 candidate D0'
+          git push origin "HEAD:$TARGET_BRANCH"
