@@ -1,0 +1,133 @@
+name: WWMSync D0 Owner Geometry Lineage Search
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths: ['.github/workflows/wwmsync-d0-owner-geometry-lineage-search.yml']
+
+permissions: {contents: read, actions: read}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+
+jobs:
+  lineage-search:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: feature/wwm-native-sync-v2}
+      - name: Guard strict provenance-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          mkdir -p lineage/{git,artifacts,logs,report}
+          printf 'MATCHER_EXECUTED=NO\nDESCRIPTOR_OUTCOMES_EXECUTED=NO\nD1_D4_OPENED=NO\nRD=PENDING\n' > lineage/report/status.txt
+      - name: Search every reachable Git object for frozen owner identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-list --objects --all > lineage/git/objects.txt
+          python - <<'PY'
+          import subprocess,pathlib,json,re
+          needles=['341.4673299142163','808.5269509612594','800.1673795505717','657.974021377956','171.57822420235016','path-of-void:final','buddha-fort:final','general-shrine-repeat:final','prosperity-haven:final','dreamfall-cliff:final']
+          hits=[]
+          for line in pathlib.Path('lineage/git/objects.txt').read_text(errors='ignore').splitlines():
+            a=line.split(' ',1); oid=a[0]; path=a[1] if len(a)>1 else ''
+            try:
+              typ=subprocess.check_output(['git','cat-file','-t',oid],text=True,stderr=subprocess.DEVNULL).strip()
+              if typ!='blob': continue
+              size=int(subprocess.check_output(['git','cat-file','-s',oid],text=True))
+              if size>10_000_000: continue
+              b=subprocess.check_output(['git','cat-file','-p',oid],stderr=subprocess.DEVNULL)
+            except Exception: continue
+            t=b.decode('utf-8','ignore')
+            found=[n for n in needles if n in t]
+            if not found: continue
+            contexts=[]
+            for n in found:
+              for m in re.finditer(re.escape(n),t): contexts.append(t[max(0,m.start()-600):min(len(t),m.end()+600)])
+            hits.append({'object':oid,'path':path,'needles':found,'contexts':contexts})
+          pathlib.Path('lineage/git/hits.json').write_text(json.dumps(hits,indent=2)+'\n')
+          print('GIT_HITS',len(hits))
+          PY
+      - name: Inventory and scan relevant authoritative artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq '.artifacts[] | [.id,.name,.workflow_run.id,.digest,.expired] | @tsv' > lineage/artifacts/all.tsv
+          awk -F '\t' 'BEGIN{IGNORECASE=1} $2 ~ /(owner|gfn|replay|tracer|fine|ss0|acquisition|post-acquisition|separability)/ && $5=="false" {print}' lineage/artifacts/all.tsv > lineage/artifacts/relevant.tsv
+          while IFS=$'\t' read -r aid name run digest expired; do
+            [ -n "$aid" ] || continue
+            d="lineage/artifacts/$aid"; mkdir -p "$d"
+            printf '%s\t%s\t%s\t%s\n' "$aid" "$name" "$run" "$digest" > "$d/meta.tsv"
+            if gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" > "$d/a.zip" 2>"$d/download.err"; then
+              unzip -qq "$d/a.zip" -d "$d/unpacked" || true
+              grep -RInaE --binary-files=text '341\.4673299142163|808\.5269509612594|800\.1673795505717|657\.974021377956|171\.57822420235016|path-of-void:final|buddha-fort:final|general-shrine-repeat:final|prosperity-haven:final|dreamfall-cliff:final' "$d/unpacked" > "$d/hits.txt" || true
+            fi
+          done < lineage/artifacts/relevant.tsv
+          find lineage/artifacts -name hits.txt -size +0c -print -exec cat {} \; > lineage/artifacts/all-hits.txt || true
+      - name: Scan all August 15 workflow job logs for frozen owner identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?branch=feature%2Fwwm-native-sync-v2&created=2026-08-15T00%3A00%3A00Z..2026-08-15T23%3A59%3A59Z&per_page=100" --jq '.workflow_runs[] | [.id,.name,.head_sha,.conclusion] | @tsv' > lineage/logs/runs.tsv
+          while IFS=$'\t' read -r rid rname sha conclusion; do
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$rid/jobs?per_page=100" --jq '.jobs[] | [.id,.name,.conclusion] | @tsv' 2>/dev/null | while IFS=$'\t' read -r jid jname jconclusion; do
+              f="lineage/logs/${jid}.log"
+              if gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$jid/logs" > "$f" 2>/dev/null; then
+                if grep -InaE '341\.4673299142163|808\.5269509612594|800\.1673795505717|657\.974021377956|171\.57822420235016|path-of-void:final|buddha-fort:final|general-shrine-repeat:final|prosperity-haven:final|dreamfall-cliff:final' "$f" > "${f}.hits"; then
+                  printf '%s\t%s\t%s\t%s\t%s\n' "$rid" "$rname" "$jid" "$jname" "$sha" >> lineage/logs/hit-jobs.tsv
+                fi
+              fi
+            done
+          done < lineage/logs/runs.tsv
+          find lineage/logs -name '*.hits' -size +0c -print -exec cat {} \; > lineage/logs/all-hits.txt || true
+      - name: Adjudicate whether historical owner-final x-y exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re
+          needles={
+            'path-of-void':'341.4673299142163','buddha-fort':'808.5269509612594','general-shrine-repeat':'800.1673795505717','prosperity-haven':'657.974021377956','dreamfall-cliff':'171.57822420235016'}
+          sources=[]
+          for p in [pathlib.Path('lineage/git/hits.json'),pathlib.Path('lineage/artifacts/all-hits.txt'),pathlib.Path('lineage/logs/all-hits.txt')]:
+            if p.exists(): sources.append((str(p),p.read_text(errors='ignore')))
+          result={}
+          for cid,n in needles.items():
+            contexts=[]
+            for src,t in sources:
+              for m in re.finditer(re.escape(n),t): contexts.append({'source':src,'context':t[max(0,m.start()-1000):min(len(t),m.end()+1000)]})
+            # A preserved x/y claim requires both coordinate keys/numeric tuple context, not the current adjudication workflow's derived diagnostic prose.
+            xy=[]
+            for c in contexts:
+              s=c['context']
+              if re.search(r'("x"\s*:|\bx\s*[=:])\s*-?\d',s,re.I) and re.search(r'("y"\s*:|\by\s*[=:])\s*-?\d',s,re.I): xy.append(c)
+            result[cid]={'distance':n,'contextsFound':len(contexts),'contextsWithXYSyntax':len(xy),'xyContexts':xy[:20]}
+          out={'schema':'wwmsync-owner-final-xy-lineage-search-v1','searchScope':['all reachable Git blobs','all non-expired relevant owner/GFN/replay/tracer/fine/SS0/acquisition artifacts','all workflow job logs on feature branch for 2026-08-15 UTC'],'result':result,'descriptorOutcomesExecuted':False,'D1D4Opened':False,'RD':'PENDING'}
+          pathlib.Path('lineage/report/adjudication.json').write_text(json.dumps(out,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Upload lineage-search evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-d0-owner-geometry-lineage-search-${{ github.run_id }}
+          path: |
+            lineage/report/
+            lineage/git/hits.json
+            lineage/artifacts/relevant.tsv
+            lineage/artifacts/all-hits.txt
+            lineage/logs/runs.tsv
+            lineage/logs/hit-jobs.tsv
+            lineage/logs/all-hits.txt
+          if-no-files-found: warn
+          retention-days: 30
