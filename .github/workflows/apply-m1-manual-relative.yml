@@ -1,0 +1,51 @@
+name: Apply M1 Manual Relative Runtime
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'tools/apply_m1_manual_relative.py'
+      - '.github/workflows/apply-m1-manual-relative.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wwm-native-sync-v2
+          fetch-depth: 0
+      - name: Apply M1 product architecture
+        run: |
+          set -euo pipefail
+          python tools/apply_m1_manual_relative.py
+          node --check vision-sync.js
+          grep -Fq 'M1_MANUAL_RELATIVE_V1' vision-sync.js
+          grep -Fq "implementation:'EXISTING_REUSED'" vision-sync.js
+          grep -Fq "absoluteLocalization:false" vision-sync.js
+          grep -Fq "best.score<.82" vision-sync.js
+          grep -Fq "energy<5.5" vision-sync.js
+          grep -Fq "magnitude>5.5" vision-sync.js
+          if grep -Fq 'applyAbsoluteFix' vision-sync.js; then
+            echo 'M1 runtime must not expose an absolute fix path' >&2
+            exit 1
+          fi
+          if grep -Fq 'ANCHOR_FREE_STRUCTURAL' vision-sync.js; then
+            echo 'M1 runtime must not load the historical absolute matcher' >&2
+            exit 1
+          fi
+      - name: Commit M1 runtime
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- vision-sync.js; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vision-sync.js
+          git commit -m 'feat(m1): manual seed relative tracking runtime'
+          git push origin HEAD:feature/wwm-native-sync-v2
