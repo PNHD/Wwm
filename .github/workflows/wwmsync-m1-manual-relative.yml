@@ -1,0 +1,113 @@
+name: WWMSync M1 Manual Relative Acceptance
+
+on:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'vision-sync.js'
+      - 'index.html'
+      - 'app.js'
+      - 'vision-sync.css'
+      - 'tools/replay-m1-manual-relative.mjs'
+      - '.github/workflows/wwmsync-m1-manual-relative.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FIXTURE_BASENAME: wwmsync-gfn-motion-20260810-143835.zip
+  FIXTURE_SHA256: aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216
+  FIXTURE_ASSET_ID: '511291145'
+
+jobs:
+  m1-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify M1 runtime contract
+        run: |
+          set -euo pipefail
+          node --check vision-sync.js
+          node --check tools/replay-m1-manual-relative.mjs
+          grep -Fq 'M1_MANUAL_RELATIVE_V1' vision-sync.js
+          grep -Fq "implementation:'EXISTING_REUSED'" vision-sync.js
+          grep -Fq 'manualSeed' vision-sync.js
+          grep -Fq 'trackingState' vision-sync.js
+          grep -Fq "TRACKING:'TRACKING'" vision-sync.js
+          grep -Fq "LOW_CONFIDENCE:'LOW_CONFIDENCE'" vision-sync.js
+          grep -Fq "PAUSED_NO_FRAME:'PAUSED_NO_FRAME'" vision-sync.js
+          grep -Fq "NEEDS_RESEED:'NEEDS_RESEED'" vision-sync.js
+          grep -Fq "best.score<.82" vision-sync.js
+          grep -Fq "energy<5.5" vision-sync.js
+          grep -Fq "magnitude>5.5" vision-sync.js
+          ! grep -Fq 'applyAbsoluteFix' vision-sync.js
+          ! grep -Fq 'ANCHOR_FREE_STRUCTURAL' vision-sync.js
+          ! grep -Fq '__WWMSYNC_ABSOLUTE_REPLAY__' vision-sync.js
+
+      - name: Resolve exact 40-frame GFN fixture
+        id: fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/$FIXTURE_BASENAME"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$FIXTURE_ASSET_ID" > "$archive"
+          test -s "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$FIXTURE_SHA256"
+          rm -rf "$RUNNER_TEMP/m1-fixture"
+          mkdir -p "$RUNNER_TEMP/m1-fixture"
+          unzip -q "$archive" -d "$RUNNER_TEMP/m1-fixture"
+          capture="$(find "$RUNNER_TEMP/m1-fixture" -type f -name capture.json -print -quit)"
+          test -n "$capture"
+          fixture_dir="$(dirname "$capture")"
+          test "$(jq '.frames|length' "$capture")" = '40'
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "fixture_dir=$fixture_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare deterministic browser runtime
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@latest leaflet@1.9.4 >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -x "$CHROME_BIN"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          rm -rf m1-site m1-output
+          mkdir -p m1-site m1-output
+          cp index.html styles.css vision-sync.css app.js vision-sync.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt m1-site/
+          cp node_modules/leaflet/dist/leaflet.js m1-site/leaflet.js
+          cp node_modules/leaflet/dist/leaflet.css m1-site/leaflet.css
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('m1-site/index.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css','/leaflet.css')
+          s=s.replace('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','/leaflet.js')
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -Fq '/leaflet.js' m1-site/index.html
+          grep -Fq '/leaflet.css' m1-site/index.html
+
+      - name: Run M1 manual seed + relative motion acceptance
+        run: |
+          set -euo pipefail
+          node tools/replay-m1-manual-relative.mjs \
+            --site m1-site \
+            --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
+            --archive '${{ steps.fixture.outputs.archive }}' \
+            --report m1-output/wwmsync-m1-manual-relative.json
+          jq '{verdict,motionSource,zeroMotion,signControl:{pass:.signControl.pass},realReplay:{summary:.realReplay.runA.summary,deterministic:.realReplay.deterministic},uiIntegration:{pass:.uiIntegration.pass,initialLabel:.uiIntegration.initialLabel,resyncLabel:.uiIntegration.resyncLabel},absoluteMatcher}' m1-output/wwmsync-m1-manual-relative.json
+          test "$(jq -r '.verdict' m1-output/wwmsync-m1-manual-relative.json)" = 'M1-PASS'
+
+      - name: Upload authoritative M1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-m1-manual-relative-${{ github.run_id }}
+          path: m1-output/
+          if-no-files-found: error
+          retention-days: 90
