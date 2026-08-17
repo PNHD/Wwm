@@ -1,0 +1,302 @@
+name: WWMSync Learned Representation V1 Outcomes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-learned-v1-outcomes.yml'
+      - 'tools/research/learned-domain-invariant/v1-learned-render-instrument.mjs'
+      - 'tools/research/learned-domain-invariant/v1-learned-render-runner.mjs'
+      - 'tools/research/learned-domain-invariant/v1-learned-score.py'
+      - 'tools/research/learned-domain-invariant/v1-learned-aggregate.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  AUDIT_START_HEAD: 'd8eed21f8913473ab89d2730bf75968e960573af'
+  PREREG_COMMIT: '2180828353d8ffed06acf60e35e01da77701f5fc'
+  PREREG_BLOB: '27c9b30a4f84e3de3433678835ea7343176e99ad'
+  PREREG_PATH: 'docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json'
+  V2_REPORT_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md'
+  V2_REPORT_BLOB: '79287c1657327f03c0861fa0e629e3720edb8e9b'
+  FREEZE_COMMIT: '72a91762dba0efb8106b7afb45124721ff1a7a01'
+  FREEZE_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  FREEZE_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  FREEZE_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  DINO_REPO: 'facebookresearch/dinov2'
+  DINO_COMMIT: '7764ea0f912e53c92e82eb78a2a1631e92725fc8'
+  DINO_BACKBONES_BLOB: 'af5fd95d38eb33f73a85b92a94a715773a4e70bc'
+  DINO_UTILS_BLOB: 'c6fa705f31736069cd68c5f642253cb5ad7fbe10'
+  DINO_TRANSFORMS_BLOB: 'eb5f252b50c54d58f160528c9f2b00fad47103c7'
+  DINO_WEIGHT_URL: 'https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_reg4_pretrain.pth'
+  DINO_WEIGHT_SHA256: 'f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb'
+  DINO_WEIGHT_SIZE: '88291785'
+  FANG_RUN: '31609680755'
+  FANG_ARTIFACT: '9146646914'
+  FANG_DIGEST: 'sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041'
+  PYTHONHASHSEED: '0'
+  OMP_NUM_THREADS: '2'
+  MKL_NUM_THREADS: '2'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  control:
+    name: learned v1 ${{ matrix.control }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        control: [east-cross, general-shrine, path-of-void, buddha-fort, prosperity-haven, dreamfall-cliff, general-shrine-repeat, fang-xu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify prospective prereg, V2 authority, VF0, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$AUDIT_START_HEAD" HEAD
+          git merge-base --is-ancestor "$FREEZE_COMMIT" "$AUDIT_START_HEAD"
+          git merge-base --is-ancestor "$PREREG_COMMIT" HEAD
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:$V2_REPORT_PATH)" = "$V2_REPORT_BLOB"
+          test "$(git rev-parse HEAD:$FREEZE_PATH)" = "$FREEZE_BLOB"
+          test "$(sha256sum "$FREEZE_PATH" | awk '{print $1}')" = "$FREEZE_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          test -z "$(git ls-tree -r --name-only "$PREREG_COMMIT" | grep -E 'learned-v1-(control-outcome|local-evidence|final-evidence|final-report)|learned-domain-invariant-representation-v1-outcome' || true)"
+          python - <<'PY'
+          import json
+          p=json.load(open('docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json'))
+          f=json.load(open('docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'))
+          assert p['frozenBeforeLearnedGtWrongOutcomes'] is True and p['learnedOutcomesInspected'] is False
+          assert p['modelProvenance']['modelIdentity']=='dinov2_vits14_reg'
+          assert p['modelProvenance']['sourceCommit']=='7764ea0f912e53c92e82eb78a2a1631e92725fc8'
+          assert p['modelProvenance']['weight']['sha256']=='f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb'
+          assert p['modelProvenance']['weight']['byteSize']==88291785
+          assert p['runtime']['python']=='3.12.13' and p['runtime']['pytorch']=='2.7.1+cpu' and p['runtime']['torchvision']=='0.22.1+cpu'
+          assert p['modelInput']['resize']['width']==196 and p['modelInput']['resize']['height']==196
+          assert p['modelInput']['resize']['interpolation']=='InterpolationMode.BICUBIC' and p['modelInput']['resize']['antialias'] is True
+          assert p['modelInput']['normalization']['mean']==[.485,.456,.406] and p['modelInput']['normalization']['std']==[.229,.224,.225]
+          assert list(p['heads'])==['L1','L2','L3']
+          assert p['poseGrid']['combinationsPerCandidate']==81
+          assert p['poseGrid']['angleDeltaDeg']==[-15,0,15] and p['poseGrid']['radiusFactor']==[.9,1.0,1.1]
+          assert p['poseGrid']['xOffsetPx']==[-8,0,8] and p['poseGrid']['yOffsetPx']==[-8,0,8]
+          assert p['generalDrift']['materialMarginChangeAbs']==.10
+          assert f['verdict']=='VF0 — V2 CANDIDATE FREEZE COMPLETE'
+          assert len(f['controls'])==8 and sum(len(c['top8']) for c in f['controls'].values())==64
+          assert all(len(c['top8'])==8 and all(x['classification']=='WRONG' for x in c['top8']) for c in f['controls'].values())
+          assert sum(len(c['nearGtCandidateIds']) for c in f['controls'].values())==0
+          assert p['productionGuards']['structural']==.58 and p['productionGuards']['intensity']==.42 and p['productionGuards']['coarseBeam']==8 and p['productionGuards']['productionChange']=='NO'
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.13'
+
+      - name: Install exact frozen CPU inference runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.7.1 torchvision==0.22.1 numpy==2.5.2 pillow==12.3.0
+          python - <<'PY'
+          import platform, torch, torchvision, PIL, numpy
+          assert platform.python_version()=='3.12.13'
+          assert torch.__version__=='2.7.1+cpu'
+          assert torchvision.__version__=='0.22.1+cpu'
+          assert PIL.__version__=='12.3.0'
+          assert numpy.__version__=='2.5.2'
+          print(platform.python_version(),torch.__version__,torchvision.__version__,PIL.__version__,numpy.__version__)
+          PY
+
+      - name: Fetch exact official DINOv2 source and weight bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          dino="$RUNNER_TEMP/dinov2"
+          git init "$dino" >/dev/null
+          git -C "$dino" remote add origin "https://github.com/$DINO_REPO.git"
+          git -C "$dino" fetch --depth=1 origin "$DINO_COMMIT" >/dev/null
+          git -C "$dino" checkout --detach FETCH_HEAD >/dev/null
+          test "$(git -C "$dino" rev-parse HEAD)" = "$DINO_COMMIT"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/backbones.py)" = "$DINO_BACKBONES_BLOB"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/hub/utils.py)" = "$DINO_UTILS_BLOB"
+          test "$(git -C "$dino" rev-parse HEAD:dinov2/data/transforms.py)" = "$DINO_TRANSFORMS_BLOB"
+          weight="$RUNNER_TEMP/dinov2_vits14_reg4_pretrain.pth"
+          curl --fail --location --retry 4 --retry-delay 2 "$DINO_WEIGHT_URL" --output "$weight"
+          test "$(stat -c %s "$weight")" = "$DINO_WEIGHT_SIZE"
+          test "$(sha256sum "$weight" | awk '{print $1}')" = "$DINO_WEIGHT_SHA256"
+          echo "DINOV2_DIR=$dino" >> "$GITHUB_ENV"
+          echo "DINO_WEIGHT_PATH=$weight" >> "$GITHUB_ENV"
+
+      - name: Prepare exact canonical controls and browser replay runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p learned-site/controls learned-input learned-render learned-output
+          npm install --no-save --no-package-lock playwright-core@1.62.1 >/dev/null 2>&1
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"; test -x "$CHROME_BIN"; echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+          cat fixtures/owner-gfn-controls/base64/east-cross-top-left-216.webp.b64.* | base64 -d > learned-site/controls/east-cross.webp
+          cat fixtures/owner-gfn-controls/base64/general-shrine-top-left-216.webp.b64.* | base64 -d > learned-site/controls/general-shrine.webp
+          test "$(sha256sum learned-site/controls/east-cross.webp | awk '{print $1}')" = 144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792
+          test "$(sha256sum learned-site/controls/general-shrine.webp | awk '{print $1}')" = 261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55
+          cp fixtures/owner-gfn-center-hud/{path-of-void,buddha-fort,general-shrine-repeat,prosperity-haven,dreamfall-cliff}.webp learned-site/controls/
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT" > learned-input/fang-meta.json
+          test "$(jq -r '.workflow_run.id' learned-input/fang-meta.json)" = "$FANG_RUN"
+          test "$(jq -r '.digest' learned-input/fang-meta.json)" = "$FANG_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$FANG_ARTIFACT/zip" > learned-input/fang.zip
+          mkdir learned-input/fang; unzip -q learned-input/fang.zip -d learned-input/fang
+          F="$(find learned-input/fang -name steam-general-shrine-1-roi.png -print -quit)"; test -n "$F"
+          test "$(sha256sum "$F" | awk '{print $1}')" = 272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30
+          cp "$F" learned-site/controls/fang-xu.png
+          cat > learned-input/config.json <<'JSON'
+          {"controls":[
+            {"id":"east-cross","name":"East Cross","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/east-cross.webp","sourceCropSize":215.75},
+            {"id":"general-shrine","name":"General Shrine historical","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/general-shrine.webp","sourceCropSize":215.75},
+            {"id":"path-of-void","name":"Path of Void","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/path-of-void.webp","sourceCropSize":null},
+            {"id":"buddha-fort","name":"Buddha Fort","role":"OWNER_UNIQUE","region":"Qinghe","mapId":1,"image":"controls/buddha-fort.webp","sourceCropSize":null},
+            {"id":"prosperity-haven","name":"Prosperity Haven","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/prosperity-haven.webp","sourceCropSize":null},
+            {"id":"dreamfall-cliff","name":"Dreamfall Cliff","role":"OWNER_UNIQUE","region":"Kaifeng","mapId":2,"image":"controls/dreamfall-cliff.webp","sourceCropSize":null},
+            {"id":"general-shrine-repeat","name":"General Shrine repeat","role":"SAME_LOCATION_DRIFT","region":"Qinghe","mapId":1,"image":"controls/general-shrine-repeat.webp","sourceCropSize":null},
+            {"id":"fang-xu","name":"Steam Fang Xu Global-PC HUD","role":"INDEPENDENT_VALIDATION","region":"Qinghe","mapId":1,"image":"controls/fang-xu.png","sourceCropSize":null}
+          ]}
+          JSON
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js sw.js manifest.webmanifest _redirects _headers robots.txt learned-site/
+          python tools/build_dashen_reference_audit_cache.py learned-site/dashen-cache --workers 24
+          node tools/instrument-real-gfn-production-replay.mjs learned-site/vision-sync.js
+          node tools/research/learned-domain-invariant/v1-learned-render-instrument.mjs learned-site/vision-sync.js
+          node --check learned-site/vision-sync.js
+
+      - name: Reproduce VF0 query and exact symmetric reference candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/research/learned-domain-invariant/v1-learned-render-runner.mjs \
+            --site learned-site --freeze "$FREEZE_PATH" --config learned-input/config.json \
+            --control '${{ matrix.control }}' --output learned-render
+
+      - name: Execute frozen DINOv2 L1 L2 L3 candidate-locked and 81-pose evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/research/learned-domain-invariant/v1-learned-score.py \
+            --render-dir learned-render --prereg "$PREREG_PATH" --dinov2-repo "$DINOV2_DIR" \
+            --weights "$DINO_WEIGHT_PATH" --control '${{ matrix.control }}' --output learned-output
+          cp learned-render/render-manifest.json learned-output/render-manifest.json
+          cp learned-render/query.rgb learned-output/query.rgb
+          rm -f learned-render/references.rgbpack
+
+      - name: Verify control evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob
+          p=json.load(open(glob.glob('learned-output/*.json')[0]))
+          assert p['status']=='PASS' and p['productionChange']=='NO'
+          assert set(p['heads'])=={'L1','L2','L3'}
+          assert p['conformance']['status']=='PASS' and p['conformance']['patchTokenCount']==196
+          assert p['conformance']['registerTokenCount']==4 and p['conformance']['registerTokensExcludedFromSimilaritySamples'] is True
+          assert p['query']['pre196HashRepeatStable'] is True and len(p['query']['pre196RgbSha256'])==64
+          assert len(p['candidateResults'])==9 and all(len(x['poses'])==81 for x in p['candidateResults'])
+          for h in ['L1','L2','L3']:
+              assert p['heads'][h]['locked']['gtRank'] is not None and p['heads'][h]['pose81']['gtRank'] is not None
+              assert len(p['heads'][h]['locked']['rows'])==9 and len(p['heads'][h]['pose81']['rows'])==9
+          PY
+
+      - name: Upload learned control evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: learned-v1-control-${{ github.run_id }}-${{ matrix.control }}
+          path: learned-output/
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    name: Learned V1 local survivor and conditional routing
+    if: always()
+    needs: [control]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: learned-v1-control-${{ github.run_id }}-*
+          path: control-artifacts
+      - name: Aggregate owner, General drift, Fang, and frozen survivor clauses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-evidence
+          python tools/research/learned-domain-invariant/v1-learned-aggregate.py \
+            --root control-artifacts --freeze "$FREEZE_PATH" --prereg "$PREREG_PATH" --output final-evidence
+      - name: Verify conditional phases, verdict routing, and production immutability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$AUDIT_START_HEAD" -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          python - <<'PY'
+          import json
+          p=json.load(open('final-evidence/learned-v1-local-evidence.json'))
+          assert p['productionChange']=='NO'
+          assert set(p['heads'])=={'L1','L2','L3'} and len(p['controls'])==8
+          assert p['vf0']['sha256']=='6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+          if not p['localSurvivors']:
+              assert p['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+              assert p['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+              assert p['LR'] in ('LR0 — LEARNED REPRESENTATION NON-SEPARABLE','LR2 — PARTIAL LEARNED RESCUE')
+          else:
+              assert p['status']=='RETRIEVAL_REQUIRED' and p['LR']=='PENDING_RETRIEVAL'
+              assert p['retrieval']['status']=='REQUIRED'
+          PY
+      - name: Upload authoritative learned V1 local evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-learned-v1-final-${{ github.run_id }}
+          path: |
+            final-evidence/
+            control-artifacts/
+            docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce survivor-only conditional retrieval
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          p=json.load(open('final-evidence/learned-v1-local-evidence.json'))
+          if p['localSurvivors']:
+              print('LOCAL_SURVIVOR_REQUIRES_FROZEN_RETRIEVAL_IMPLEMENTATION: '+','.join(p['localSurvivors']))
+              sys.exit(2)
+          assert p['LR'] in ('LR0 — LEARNED REPRESENTATION NON-SEPARABLE','LR2 — PARTIAL LEARNED RESCUE')
+          print('LOCAL_PROTOCOL_COMPLETE_WITH_CONDITIONAL_RETRIEVAL_SKIPPED')
+          PY
