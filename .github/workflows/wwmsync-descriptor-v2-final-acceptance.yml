@@ -1,0 +1,168 @@
+name: WWMSync Descriptor Audit V2 Final Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - '.github/workflows/wwmsync-descriptor-v2-final-acceptance.yml'
+      - 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  START_LIVE_HEAD: 'ddabe5f40670eae7286e98d17eebf6ceca17adb0'
+  OUTCOME_HEAD: '49b90c2213b799759ae6e3b4297e58b37898b97b'
+  OUTCOME_RUN: '31989337212'
+  OUTCOME_JOB: '95270023809'
+  OUTCOME_ARTIFACT: '9274795303'
+  OUTCOME_ARTIFACT_NAME: 'wwmsync-descriptor-v2-final-31989337212'
+  OUTCOME_DIGEST: 'sha256:549c5a1e7302dd78adb0c2ef0862d31c9a366ce9aaf39ac81e8812ae135a94b7'
+  VF0_RUN: '31986849103'
+  VF0_JOB: '95263230345'
+  VF0_ARTIFACT: '9274031553'
+  VF0_DIGEST: 'sha256:64749cb832b8e8751d6115929b6ebd0c68f026f80811cbbd1aeefe8545ff75e7'
+  PREREG_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json'
+  PREREG_BLOB: '554bf3318b9b75690589fd3c9275bb20b92e82e5'
+  FREEZE_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json'
+  FREEZE_BLOB: '51adf1da2cfc201f8f67cd575e271a2461640eeb'
+  FREEZE_SHA256: '6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3'
+  REPORT_PATH: 'docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md'
+  VISION_BLOB: '58b5a1babf6a12b944f9b745b8bf7f7df573bf9b'
+  CACHE_BLOB: '9388960a8bff53a9cfc7471372af144b7a28c34f'
+  CACHE_BUILDER_BLOB: '1a227d06ae41660ea3e3b832e7f1921cc507c0d7'
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  accept:
+    name: Final live V2 acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify live ancestry, immutable prereg/freeze, and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$START_LIVE_HEAD" HEAD
+          git merge-base --is-ancestor "$OUTCOME_HEAD" HEAD
+          test "$(git rev-parse HEAD:$PREREG_PATH)" = "$PREREG_BLOB"
+          test "$(git rev-parse HEAD:$FREEZE_PATH)" = "$FREEZE_BLOB"
+          test "$(sha256sum "$FREEZE_PATH" | awk '{print $1}')" = "$FREEZE_SHA256"
+          test "$(git rev-parse HEAD:vision-sync.js)" = "$VISION_BLOB"
+          test "$(git rev-parse HEAD:dashen-tile-cache.js)" = "$CACHE_BLOB"
+          test "$(git rev-parse HEAD:tools/build_dashen_visual_cache.py)" = "$CACHE_BUILDER_BLOB"
+          git diff --exit-code "$START_LIVE_HEAD"..HEAD -- vision-sync.js dashen-tile-cache.js tools/build_dashen_visual_cache.py production/wwsync
+          grep -Fq 'if(fine.scaleScore<.58)' vision-sync.js
+          grep -Fq 'if(fine.intensityScore<.42)' vision-sync.js
+          grep -Fq 'COARSE_BEAM=8;' vision-sync.js
+          test -s "$REPORT_PATH"
+          grep -Fq 'V2-RD2 — PARTIAL REPRESENTATION RESCUE' "$REPORT_PATH"
+          grep -Fq 'Retrieval proxy: `SKIPPED_NO_LOCAL_SURVIVORS`' "$REPORT_PATH"
+          grep -Fq 'Exact 40-frame stress: `SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS`' "$REPORT_PATH"
+          grep -Fq 'Production task justified: **NO**. Production change: **NO**.' "$REPORT_PATH"
+
+      - name: Independently verify authoritative outcome and VF0 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p acceptance/input acceptance/unpacked
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$OUTCOME_RUN" > acceptance/input/outcome-run.json
+          test "$(jq -r '.head_sha' acceptance/input/outcome-run.json)" = "$OUTCOME_HEAD"
+          test "$(jq -r '.conclusion' acceptance/input/outcome-run.json)" = 'success'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$OUTCOME_RUN/jobs?per_page=100" > acceptance/input/outcome-jobs.json
+          test "$(jq -r --argjson id "$OUTCOME_JOB" '.jobs[] | select(.id==$id) | .conclusion' acceptance/input/outcome-jobs.json)" = 'success'
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT" > acceptance/input/outcome-artifact.json
+          test "$(jq -r '.name' acceptance/input/outcome-artifact.json)" = "$OUTCOME_ARTIFACT_NAME"
+          test "$(jq -r '.workflow_run.id' acceptance/input/outcome-artifact.json)" = "$OUTCOME_RUN"
+          test "$(jq -r '.workflow_run.head_sha' acceptance/input/outcome-artifact.json)" = "$OUTCOME_HEAD"
+          test "$(jq -r '.digest' acceptance/input/outcome-artifact.json)" = "$OUTCOME_DIGEST"
+          gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/artifacts/$OUTCOME_ARTIFACT/zip" > acceptance/input/outcome.zip
+          unzip -q acceptance/input/outcome.zip -d acceptance/unpacked
+          test -s acceptance/unpacked/final-evidence/descriptor-v2-final-evidence.json
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VF0_RUN" > acceptance/input/vf0-run.json
+          test "$(jq -r '.conclusion' acceptance/input/vf0-run.json)" = 'success'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VF0_RUN/jobs?per_page=100" > acceptance/input/vf0-jobs.json
+          test "$(jq -r --argjson id "$VF0_JOB" '.jobs[] | select(.id==$id) | .conclusion' acceptance/input/vf0-jobs.json)" = 'success'
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$VF0_ARTIFACT" > acceptance/input/vf0-artifact.json
+          test "$(jq -r '.digest' acceptance/input/vf0-artifact.json)" = "$VF0_DIGEST"
+
+      - name: Validate machine-readable V2 decision without reinterpreting outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p=json.load(open('acceptance/unpacked/final-evidence/descriptor-v2-final-evidence.json'))
+          assert p['status']=='PASS'
+          assert p['RD']=='V2-RD2'
+          assert p['productionChange']=='NO'
+          assert p['localSurvivors']==[]
+          assert p['retrieval']['status']=='SKIPPED_NO_LOCAL_SURVIVORS'
+          assert p['stress40Frame']['status']=='SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS'
+          assert p['stress40Frame']['fixtureSha256']=='aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216'
+          assert set(p['descriptors'])=={'D1','D2','D3','D4'}
+          assert len(p['controls'])==8
+          assert all(len(c['candidateIds'])==9 for c in p['controls'].values())
+          assert all(c['runtime']['contract']['poseCount']==81 for c in p['controls'].values())
+          assert all(c['conformance']['ok'] for c in p['controls'].values())
+          d1,d2,d3,d4=(p['descriptors'][k] for k in ('D1','D2','D3','D4'))
+          assert d1['lockedOwner']['positiveCount']==0 and d1['pose81Owner']['positiveCount']==0
+          assert d3['lockedOwner']['positiveCount']==0 and d3['pose81Owner']['positiveCount']==0
+          assert d4['lockedOwner']['positiveCount']==0 and d4['pose81Owner']['positiveCount']==0
+          assert d2['lockedOwner']['positiveCount']==1 and d2['pose81Owner']['positiveCount']==0
+          assert d2['lockedOwner']['kaifengPositiveCount']==0 and d2['pose81Owner']['kaifengPositiveCount']==0
+          assert d2['fang']['locked']['positive'] is True and d2['fang']['pose81']['positive'] is True
+          assert d2['fang']['locked']['gtRank']==1 and d2['fang']['pose81']['gtRank']==1
+          assert d2['generalDrift']['locked']['class']=='DR-FLIP'
+          assert d2['generalDrift']['pose81']['class']=='DR-WRONG-STABLE'
+          assert all(not p['descriptors'][k]['localSurvivor'] for k in ('D1','D2','D3','D4'))
+          assert p['vf0']['verdict']=='VF0 — V2 CANDIDATE FREEZE COMPLETE'
+          PY
+
+      - name: Write final live acceptance record
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > acceptance/final-live-acceptance.json <<JSON
+          {
+            "schema": "wwmsync-descriptor-v2-final-live-acceptance-v1",
+            "finalHead": "$GITHUB_SHA",
+            "authoritativeOutcomeRun": $OUTCOME_RUN,
+            "authoritativeOutcomeJob": $OUTCOME_JOB,
+            "authoritativeOutcomeArtifact": $OUTCOME_ARTIFACT,
+            "authoritativeOutcomeDigest": "$OUTCOME_DIGEST",
+            "vf0Run": $VF0_RUN,
+            "vf0Job": $VF0_JOB,
+            "vf0Artifact": $VF0_ARTIFACT,
+            "vf0Digest": "$VF0_DIGEST",
+            "RD": "V2-RD2",
+            "localSurvivors": [],
+            "retrieval": "SKIPPED_NO_LOCAL_SURVIVORS",
+            "stress40Frame": "SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS",
+            "productionChange": "NO",
+            "productionTaskJustified": false
+          }
+          JSON
+          cat acceptance/final-live-acceptance.json
+
+      - name: Upload final live acceptance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-descriptor-v2-final-live-${{ github.run_id }}
+          path: |
+            acceptance/final-live-acceptance.json
+            acceptance/input/outcome-run.json
+            acceptance/input/outcome-artifact.json
+            acceptance/input/vf0-run.json
+            acceptance/input/vf0-artifact.json
+            docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md
+          if-no-files-found: error
+          retention-days: 30
