@@ -29,7 +29,7 @@ function __lrV1RenderOne(rgba,w,h,cx,cy,radius,angle){
 async function __lrV1RenderBatch(mapId,base,poses){
   if(!base||!Array.isArray(poses)||!poses.length)throw new Error('learned-v1 render input missing');
   const cfg=MAPS[Number(mapId)];if(!cfg)throw new Error('learned-v1 unknown map');
-  const maxRadius=Math.max(24,base.radius*1.12),grid=await fineFieldAround(cfg,base.x,base.y,maxRadius,64),ctx=grid.canvas.getContext('2d',{willReadFrequently:true}),rgba=ctx.getImageData(0,0,grid.canvas.width,grid.canvas.height).data;
+  const maxExtent=Math.max(24,base.radius*1.1*Math.SQRT2+16),grid=await fineFieldAround(cfg,base.x,base.y,maxExtent,64),ctx=grid.canvas.getContext('2d',{willReadFrequently:true}),rgba=ctx.getImageData(0,0,grid.canvas.width,grid.canvas.height).data;
   const rows=[];
   for(const spec of poses){
     const p=__lrV1Pose(base,spec),cx=p.x-grid.minX*256,cy=p.y-grid.minY*256;
