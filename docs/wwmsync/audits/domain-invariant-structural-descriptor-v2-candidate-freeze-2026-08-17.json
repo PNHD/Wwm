@@ -1,0 +1,2180 @@
+{
+  "schema": "wwmsync-domain-invariant-structural-descriptor-v2-candidate-freeze-v1",
+  "protocol": "PROSPECTIVE CANONICAL-BROWSER CANDIDATE FREEZE — DESCRIPTOR AUDIT V2",
+  "date": "2026-08-17",
+  "status": "CANDIDATE_D0_FROZEN",
+  "verdict": "VF0 — V2 CANDIDATE FREEZE COMPLETE",
+  "verdictMeaning": "Canonical browser candidate population is complete and reproducible. D1-D4 v2 audit is authorized next.",
+  "startingHead": "69578d239a89f8558b780b6d0f8382d3f737b9d5",
+  "candidateRunHead": "2d9895880f52d530e89f1d76c9fd7e826da5ab9b",
+  "preregPath": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-preregistration-2026-08-17.json",
+  "preregCommit": "9e11969528095ec618599ddcc5d961f53bb01415",
+  "preregBlobSha1": "554bf3318b9b75690589fd3c9275bb20b92e82e5",
+  "sourceAggregatePayloadSha256": "2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be",
+  "prospectiveValidity": {
+    "preregCommittedBeforeCandidateOutputs": true,
+    "descriptorOutcomesInspectedAtPrereg": false,
+    "candidateMembershipUsesDescriptorOutcomes": false,
+    "candidateSetRegeneratedAfterDescriptorOutcomes": false,
+    "historicalGeometryIncompleteV1WrongIdentitiesUsed": false,
+    "noSampleEditingAfterCandidateGeneration": true
+  },
+  "v1Preservation": {
+    "descriptorV1Status": "BL2 — CANONICAL RUNTIME NOT REPRODUCIBLE",
+    "descriptorV1Outcomes": "NOT EXECUTED",
+    "descriptorV1RD": "PENDING / BLOCKED",
+    "legacyNumericD0Superseded": false,
+    "originalPreregBlobSha1": "29540d6e9b4458cf4681a71351fdd2b0cdd5f423",
+    "d0LineageAmendmentBlobSha1": "961ed6f2928265dda4fce47b86dd460f462400c7",
+    "v2RepairsOverwritesOrReinterpretsV1": false
+  },
+  "topK": 8,
+  "wrongThresholdPx": 96,
+  "classificationRule": {
+    "NEAR_GT": "GT distance <= 96 px",
+    "WRONG": "GT distance > 96 px"
+  },
+  "runtime": {
+    "runner": "ubuntu-24.04",
+    "imageOS": "ubuntu24",
+    "imageVersion": "20260810.271.1",
+    "chromeVersion": "Google Chrome 151.0.7922.108 ",
+    "playwrightCoreVersion": "1.62.1",
+    "port": 40885,
+    "browser": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+      "devicePixelRatio": 1,
+      "canvas": {
+        "alpha": false,
+        "imageSmoothingEnabled": true,
+        "imageSmoothingQuality": "high",
+        "attributes": {
+          "alpha": false,
+          "colorSpace": "srgb",
+          "colorType": "unorm8",
+          "desynchronized": false,
+          "toneMapping": {
+            "mode": "standard"
+          },
+          "willReadFrequently": false
+        }
+      },
+      "readback": {
+        "constructor": "Uint8ClampedArray",
+        "colorSpace": "srgb",
+        "pixelFormat": "rgba-unorm8"
+      }
+    }
+  },
+  "reference": {
+    "lineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+    "manifestSha256": "e0a6f31950b1ebab36f97c4eb3cf11cdc8715610f237bc58badb5fb1f66d72c6"
+  },
+  "controls": {
+    "east-cross": {
+      "name": "East Cross",
+      "role": "OWNER_UNIQUE",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/east-cross.webp",
+        "sourceSha256": "144ff5c7ad8f9c788f69cec049d58bad79d8390abdca7d28bde62fdc8c609792",
+        "workCanvasPngSha256": "0551d584aec4df0fff3b6ccd115ddead1281be84e98239621148d3382c6e442c",
+        "workCanvasRgba8Sha256": "5ca59b6761758c56bcc3d885e8c4f28cc0ee67e44f2574bb5e42732d284df880",
+        "workCanvasRgb8Sha256": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+        "sourceNatural": [
+          216,
+          216
+        ],
+        "sourceCropSize": 215.75,
+        "canvas": {
+          "sourceNatural": [
+            216,
+            216
+          ],
+          "sourceCropSize": 215.75,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "east-cross:gt",
+        "role": "GT",
+        "x": 5219.931321637427,
+        "y": 4648.817136173768,
+        "angle": 315,
+        "radius": 108,
+        "scale": 2.7,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5135916331749515,
+        "intensityNcc": 0.21170319435229076,
+        "intensityScore": 0.31452451682807897,
+        "productionCombined": 0.4976662638672017,
+        "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "east-cross:v2-top:1:8e7a6f66690d7d7e28c8",
+          "productionRank": 1,
+          "x": 6239.3,
+          "y": 3744.3,
+          "angle": 270.5,
+          "radius": 282.3240096,
+          "scale": 7.05810024,
+          "gtDistancePx": 1362.814643324122,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5624560514802611,
+          "intensityNcc": 0.5648581556734606,
+          "intensityScore": 0.6216157875421398,
+          "productionCombined": 0.5671888303652115,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:2:636058123950362314f7",
+          "productionRank": 2,
+          "x": 5478.3,
+          "y": 3871.8,
+          "angle": 108,
+          "radius": 425.8127999999999,
+          "scale": 10.645319999999998,
+          "gtDistancePx": 818.8467523697619,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5506492375086182,
+          "intensityNcc": 0.5533814544259722,
+          "intensityScore": 0.6116360473269324,
+          "productionCombined": 0.5555281822940834,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:3:4e120ba1c0619cb42dd2",
+          "productionRank": 3,
+          "x": 5611.3,
+          "y": 3471.8,
+          "angle": 100,
+          "radius": 483.428042832,
+          "scale": 12.0857010708,
+          "gtDistancePx": 1240.3784830647314,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5498742105097572,
+          "intensityNcc": 0.5477809478407086,
+          "intensityScore": 0.6067660416006163,
+          "productionCombined": 0.5544255569970259,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:4:b6a1e0f9dbd2b40af5d3",
+          "productionRank": 4,
+          "x": 5593.3,
+          "y": 4170.3,
+          "angle": 309.5,
+          "radius": 626.50723968,
+          "scale": 15.662680992,
+          "gtDistancePx": 606.945483214233,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5460139852403624,
+          "intensityNcc": 0.5522093410275336,
+          "intensityScore": 0.6106168182848118,
+          "productionCombined": 0.5511822118839184,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:5:d57f4e8ac811aeb24454",
+          "productionRank": 5,
+          "x": 5715.3,
+          "y": 3274.8,
+          "angle": 6,
+          "radius": 154.97382801599997,
+          "scale": 3.8743457003999993,
+          "gtDistancePx": 1460.5866006512056,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5422263081757583,
+          "intensityNcc": 0.5820759685746333,
+          "intensityScore": 0.6365877987605507,
+          "productionCombined": 0.5497752274225417,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:6:7af4839660ca6d5d8752",
+          "productionRank": 6,
+          "x": 6058.3,
+          "y": 3959.3,
+          "angle": 318,
+          "radius": 495.174912,
+          "scale": 12.3793728,
+          "gtDistancePx": 1085.4934002271418,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5368618818788307,
+          "intensityNcc": 0.5695364196833774,
+          "intensityScore": 0.6256838432029369,
+          "productionCombined": 0.5439676387847592,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:7:11e5d9bbf6b1a350b022",
+          "productionRank": 7,
+          "x": 5846.8,
+          "y": 3281.3,
+          "angle": 1,
+          "radius": 218.60298532800002,
+          "scale": 5.4650746332,
+          "gtDistancePx": 1504.3495131255045,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5296574001776951,
+          "intensityNcc": 0.5983091366170037,
+          "intensityScore": 0.6507035970582642,
+          "productionCombined": 0.5393410959281406,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "east-cross:v2-top:8:a034f1ee8d3e0694a549",
+          "productionRank": 8,
+          "x": 6180.8,
+          "y": 3771.3,
+          "angle": 267.5,
+          "radius": 389.4727587599999,
+          "scale": 9.736818968999998,
+          "gtDistancePx": 1301.2705104384902,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5235380375321087,
+          "intensityNcc": 0.5980693486874594,
+          "intensityScore": 0.6504950858151822,
+          "productionCombined": 0.5336946013947546,
+          "inputHash": "89d1f40ac065dcb10f0f53e8385b23628f1374de5c7bb1b5e43c7f08782a8fdf",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "east-cross:v2-top:1:8e7a6f66690d7d7e28c8",
+        "east-cross:v2-top:2:636058123950362314f7",
+        "east-cross:v2-top:3:4e120ba1c0619cb42dd2",
+        "east-cross:v2-top:4:b6a1e0f9dbd2b40af5d3",
+        "east-cross:v2-top:5:d57f4e8ac811aeb24454",
+        "east-cross:v2-top:6:7af4839660ca6d5d8752",
+        "east-cross:v2-top:7:11e5d9bbf6b1a350b022",
+        "east-cross:v2-top:8:a034f1ee8d3e0694a549"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "east-cross:v2-top:1:8e7a6f66690d7d7e28c8"
+    },
+    "general-shrine": {
+      "name": "General Shrine historical",
+      "role": "OWNER_UNIQUE",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/general-shrine.webp",
+        "sourceSha256": "261f910e416028b272f58abcf31f0bf3ac09e19d65490daf7acf6004e89b0d55",
+        "workCanvasPngSha256": "f0acddeef0e5d1c6f433e2e9347a48631bf7cbe84057f2c3adb1c8a01cc32999",
+        "workCanvasRgba8Sha256": "83cd7f73f074b751bb2f2c42ea4d79d05b015360ebc66fb6c4661067256937d1",
+        "workCanvasRgb8Sha256": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+        "sourceNatural": [
+          216,
+          216
+        ],
+        "sourceCropSize": 215.75,
+        "canvas": {
+          "sourceNatural": [
+            216,
+            216
+          ],
+          "sourceCropSize": 215.75,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "general-shrine:gt",
+        "role": "GT",
+        "x": 6015.017126148705,
+        "y": 3889.360588972433,
+        "angle": 0,
+        "radius": 120,
+        "scale": 3,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5998666758116005,
+        "intensityNcc": 0.2646043092840628,
+        "intensityScore": 0.36052548633396764,
+        "productionCombined": 0.5807193806533899,
+        "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "general-shrine:v2-top:1:d95cd7fbf0f69d9d2fb0",
+          "productionRank": 1,
+          "x": 5407.3,
+          "y": 4133.3,
+          "angle": 114.5,
+          "radius": 493.8626932063999,
+          "scale": 12.346567330159997,
+          "gtDistancePx": 654.8484875655719,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5887905476005326,
+          "intensityNcc": 0.43458774488186686,
+          "intensityScore": 0.508337169462493,
+          "productionCombined": 0.5823542773494895,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:2:00e7629dd1ed9107b0e5",
+          "productionRank": 2,
+          "x": 5354.3,
+          "y": 3899.8,
+          "angle": 208.5,
+          "radius": 174.796061832,
+          "scale": 4.3699015457999995,
+          "gtDistancePx": 660.7995929847458,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5598693158614243,
+          "intensityNcc": 0.6090907288803098,
+          "intensityScore": 0.6600788946785303,
+          "productionCombined": 0.5678860821667928,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:3:401497f1840cab47bf56",
+          "productionRank": 3,
+          "x": 5612.3,
+          "y": 3573.3,
+          "angle": 181,
+          "radius": 374.1289999999999,
+          "scale": 9.353224999999998,
+          "gtDistancePx": 511.9329834998648,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5552314120686349,
+          "intensityNcc": 0.6348915666275389,
+          "intensityScore": 0.6825144057630773,
+          "productionCombined": 0.5654140515641903,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:4:41ff0f1457a24030bc38",
+          "productionRank": 4,
+          "x": 6028.3,
+          "y": 3416.8,
+          "angle": 74,
+          "radius": 92.443685736,
+          "scale": 2.3110921434000002,
+          "gtDistancePx": 472.74723160238824,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5591225292395882,
+          "intensityNcc": 0.5744333316889908,
+          "intensityScore": 0.6299420275556442,
+          "productionCombined": 0.5647880891048727,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:5:1a5b7a1f6deddb751fa1",
+          "productionRank": 5,
+          "x": 5500.3,
+          "y": 3456.8,
+          "angle": 194,
+          "radius": 229.05792,
+          "scale": 5.7264479999999995,
+          "gtDistancePx": 672.3409723369234,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.549185021377315,
+          "intensityNcc": 0.5601923567249361,
+          "intensityScore": 0.6175585710651619,
+          "productionCombined": 0.5546549053523427,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:6:b6af9195a7c8c83f3d4d",
+          "productionRank": 6,
+          "x": 5903.3,
+          "y": 4086.3,
+          "angle": 21,
+          "radius": 139.63420203199996,
+          "scale": 3.490855050799999,
+          "gtDistancePx": 226.4196278832968,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.538811631844347,
+          "intensityNcc": 0.5133193943749844,
+          "intensityScore": 0.5767994733695517,
+          "productionCombined": 0.5418506591663634,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:7:daab1b5bba5042e4d8a9",
+          "productionRank": 7,
+          "x": 5664.3,
+          "y": 3609.3,
+          "angle": 188.5,
+          "radius": 108.69334559999997,
+          "scale": 2.717333639999999,
+          "gtDistancePx": 448.81670654020047,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5327286414982123,
+          "intensityNcc": 0.5318226516997285,
+          "intensityScore": 0.5928892623475901,
+          "productionCombined": 0.5375414911661626,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "general-shrine:v2-top:8:2383a8a00c02a21fb701",
+          "productionRank": 8,
+          "x": 6131.3,
+          "y": 3832.8,
+          "angle": 309.5,
+          "radius": 465.15413055999994,
+          "scale": 11.628853263999998,
+          "gtDistancePx": 129.3089593803336,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5060915790008603,
+          "intensityNcc": 0.5420882023390553,
+          "intensityScore": 0.6018158281209177,
+          "productionCombined": 0.5137495189304649,
+          "inputHash": "7fdab574d8d093ec11f77fbff6075ac23a8b5117d51c3ae14354d756e233d4a2",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        }
+      ],
+      "wrongCandidateIds": [
+        "general-shrine:v2-top:1:d95cd7fbf0f69d9d2fb0",
+        "general-shrine:v2-top:2:00e7629dd1ed9107b0e5",
+        "general-shrine:v2-top:3:401497f1840cab47bf56",
+        "general-shrine:v2-top:4:41ff0f1457a24030bc38",
+        "general-shrine:v2-top:5:1a5b7a1f6deddb751fa1",
+        "general-shrine:v2-top:6:b6af9195a7c8c83f3d4d",
+        "general-shrine:v2-top:7:daab1b5bba5042e4d8a9",
+        "general-shrine:v2-top:8:2383a8a00c02a21fb701"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "general-shrine:v2-top:1:d95cd7fbf0f69d9d2fb0"
+    },
+    "path-of-void": {
+      "name": "Path of Void",
+      "role": "OWNER_UNIQUE",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/path-of-void.webp",
+        "sourceSha256": "7e1e3624c35faf6b6bd1985b01305ddddae8908ab39015789849a26f1b4b3312",
+        "workCanvasPngSha256": "1cdefcd03f4db677c249396c33a65b929c42614be609e4278485a1c909981f3f",
+        "workCanvasRgba8Sha256": "ffc7e01e1d3cb7321adc32dfc150491f35cc7ca19b5e362927aa6e2f4d673630",
+        "workCanvasRgb8Sha256": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "path-of-void:gt",
+        "role": "GT",
+        "x": 5662.35270309106,
+        "y": 3599.42210726817,
+        "angle": 0,
+        "radius": 112,
+        "scale": 2.8,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5367448424989051,
+        "intensityNcc": 0.35486788708941974,
+        "intensityScore": 0.43901555399079983,
+        "productionCombined": 0.5289264994182566,
+        "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "path-of-void:v2-top:1:561d755a41045642e67b",
+          "productionRank": 1,
+          "x": 6273.3,
+          "y": 3796.3,
+          "angle": 89.5,
+          "radius": 334.39392,
+          "scale": 8.359848,
+          "gtDistancePx": 641.8858965944546,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6187001257017503,
+          "intensityNcc": 0.600928483404923,
+          "intensityScore": 0.6529812899173244,
+          "productionCombined": 0.6214426188389962,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:2:e8fbdca01bf939df8030",
+          "productionRank": 2,
+          "x": 5347.8,
+          "y": 3732.3,
+          "angle": 295.5,
+          "radius": 440.19065599999993,
+          "scale": 11.004766399999998,
+          "gtDistancePx": 341.4673299142163,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6166158503678795,
+          "intensityNcc": 0.5965630821151666,
+          "intensityScore": 0.6491852887957972,
+          "productionCombined": 0.6192214054421129,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:3:e90fb5f7b1fbe11f13f7",
+          "productionRank": 3,
+          "x": 6274.3,
+          "y": 3797.3,
+          "angle": 89.5,
+          "radius": 332.30400000000003,
+          "scale": 8.3076,
+          "gtDistancePx": 643.1447384735012,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6143111995330109,
+          "intensityNcc": 0.6020647628789572,
+          "intensityScore": 0.6539693590251802,
+          "productionCombined": 0.6174838522923846,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:4:84048b3be0215ca16df1",
+          "productionRank": 4,
+          "x": 5312.8,
+          "y": 3650.8,
+          "angle": 308,
+          "radius": 111.0342356352,
+          "scale": 2.77585589088,
+          "gtDistancePx": 353.3083357349924,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6038707599197002,
+          "intensityNcc": 0.5562493131216458,
+          "intensityScore": 0.6141298374970834,
+          "productionCombined": 0.6046914861258909,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:5:848b247ba103aa39e0c5",
+          "productionRank": 5,
+          "x": 5482.3,
+          "y": 4716.3,
+          "angle": 100,
+          "radius": 182.75138335999998,
+          "scale": 4.568784583999999,
+          "gtDistancePx": 1131.2980169537518,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.593835117065447,
+          "intensityNcc": 0.6378299246297208,
+          "intensityScore": 0.6850694996780181,
+          "productionCombined": 0.6011338676744526,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:6:14dcc04e95be3a433463",
+          "productionRank": 6,
+          "x": 6275.8,
+          "y": 3797.8,
+          "angle": 94.5,
+          "radius": 253.63787904,
+          "scale": 6.340946976,
+          "gtDistancePx": 644.7258133575907,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5755379786956555,
+          "intensityNcc": 0.5991380542290506,
+          "intensityScore": 0.6514243949817833,
+          "productionCombined": 0.5816088919985458,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:7:442cd6bc54241a019664",
+          "productionRank": 7,
+          "x": 6275.8,
+          "y": 3797.8,
+          "angle": 94.5,
+          "radius": 253.63787904,
+          "scale": 6.340946976,
+          "gtDistancePx": 644.7258133575907,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5755379786956555,
+          "intensityNcc": 0.5991380542290506,
+          "intensityScore": 0.6514243949817833,
+          "productionCombined": 0.5816088919985458,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "path-of-void:v2-top:8:4fcf3329caeb1c18c25a",
+          "productionRank": 8,
+          "x": 5127.3,
+          "y": 4003.3,
+          "angle": 338.5,
+          "radius": 219.07557584639997,
+          "scale": 5.476889396159999,
+          "gtDistancePx": 670.3720961693988,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5599175054423854,
+          "intensityNcc": 0.6377913640705356,
+          "intensityScore": 0.6850359687569876,
+          "productionCombined": 0.5699269825075536,
+          "inputHash": "afe54c274ad60a08053f074dea41d111af4270f5ba31b0427194071e0e119256",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "path-of-void:v2-top:1:561d755a41045642e67b",
+        "path-of-void:v2-top:2:e8fbdca01bf939df8030",
+        "path-of-void:v2-top:3:e90fb5f7b1fbe11f13f7",
+        "path-of-void:v2-top:4:84048b3be0215ca16df1",
+        "path-of-void:v2-top:5:848b247ba103aa39e0c5",
+        "path-of-void:v2-top:6:14dcc04e95be3a433463",
+        "path-of-void:v2-top:7:442cd6bc54241a019664",
+        "path-of-void:v2-top:8:4fcf3329caeb1c18c25a"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "path-of-void:v2-top:1:561d755a41045642e67b"
+    },
+    "buddha-fort": {
+      "name": "Buddha Fort",
+      "role": "OWNER_UNIQUE",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/buddha-fort.webp",
+        "sourceSha256": "3287e05bee1ad49a4428f99566efad1d4ef9c417c893445478d44a274900eb3d",
+        "workCanvasPngSha256": "8063ccf7e9087571ac6dc0dd53df493a8c5fbc65f9178d7c733dd818d659fe60",
+        "workCanvasRgba8Sha256": "170659933057555db68c7f7e027e7c63da0d8388db9e88abe8098bb0382fdbed",
+        "workCanvasRgb8Sha256": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "buddha-fort:gt",
+        "role": "GT",
+        "x": 6150.319157894736,
+        "y": 3719.750105931495,
+        "angle": 180,
+        "radius": 48,
+        "scale": 1.2,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.530475129523743,
+        "intensityNcc": 0.27961186395069704,
+        "intensityScore": 0.3735755338701714,
+        "productionCombined": 0.5179231618714573,
+        "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "buddha-fort:v2-top:1:3c5a4b6122fb8134d06c",
+          "productionRank": 1,
+          "x": 5593.3,
+          "y": 3191.8,
+          "angle": 259,
+          "radius": 173.8028673472,
+          "scale": 4.34507168368,
+          "gtDistancePx": 767.4644334526763,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6214955328348003,
+          "intensityNcc": 0.7759646463734297,
+          "intensityScore": 0.8051866490203737,
+          "productionCombined": 0.6361908221296463,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:2:e0cb7a7d71a2ee06e4d3",
+          "productionRank": 2,
+          "x": 5484.3,
+          "y": 4706.8,
+          "angle": 99.5,
+          "radius": 179.17821375999998,
+          "scale": 4.479455344,
+          "gtDistancePx": 1190.734652247704,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6220392853913649,
+          "intensityNcc": 0.7471569172320996,
+          "intensityScore": 0.7801364497670432,
+          "productionCombined": 0.6346870585414193,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:3:04e2c6ad19a76eb510b0",
+          "productionRank": 3,
+          "x": 5353.3,
+          "y": 3741.3,
+          "angle": 297,
+          "radius": 458.07056511999997,
+          "scale": 11.451764127999999,
+          "gtDistancePx": 797.3104389041937,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6069320095606838,
+          "intensityNcc": 0.7045130409188779,
+          "intensityScore": 0.7430548181903287,
+          "productionCombined": 0.6178218342510555,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:4:9df3d6bbb3a8a8c99f9f",
+          "productionRank": 4,
+          "x": 5912.3,
+          "y": 4165.3,
+          "angle": 139.5,
+          "radius": 167.49267808,
+          "scale": 4.187316952,
+          "gtDistancePx": 505.14139370019507,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6019912812419279,
+          "intensityNcc": 0.7463675978948308,
+          "intensityScore": 0.7794500851259398,
+          "productionCombined": 0.6161879855526489,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:5:1714baf24ca8bf4a4629",
+          "productionRank": 5,
+          "x": 5354.3,
+          "y": 3730.3,
+          "angle": 301,
+          "radius": 457.73087111999996,
+          "scale": 11.443271778,
+          "gtDistancePx": 796.0890653691341,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6028702372287668,
+          "intensityNcc": 0.7026471130588334,
+          "intensityScore": 0.7414322722250726,
+          "productionCombined": 0.6139552000284711,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:6:718ba3ec8006e51a355c",
+          "productionRank": 6,
+          "x": 5354.3,
+          "y": 3730.3,
+          "angle": 301,
+          "radius": 457.73087111999996,
+          "scale": 11.443271778,
+          "gtDistancePx": 796.0890653691341,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6028702372287668,
+          "intensityNcc": 0.7026471130588334,
+          "intensityScore": 0.7414322722250726,
+          "productionCombined": 0.6139552000284711,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:7:0bfe8729736007e160eb",
+          "productionRank": 7,
+          "x": 5911.3,
+          "y": 4164.3,
+          "angle": 140.5,
+          "radius": 178.0249536,
+          "scale": 4.45062384,
+          "gtDistancePx": 504.7323708234176,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5978730867393321,
+          "intensityNcc": 0.7437208216529076,
+          "intensityScore": 0.7771485405677458,
+          "productionCombined": 0.6122151230456052,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "buddha-fort:v2-top:8:118d59d1e4eb754b6506",
+          "productionRank": 8,
+          "x": 6280.3,
+          "y": 3815.3,
+          "angle": 95.5,
+          "radius": 342.28147967999996,
+          "scale": 8.557036991999999,
+          "gtDistancePx": 161.32204304091897,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5817016230788907,
+          "intensityNcc": 0.68825286752807,
+          "intensityScore": 0.7289155369809305,
+          "productionCombined": 0.5934787361910538,
+          "inputHash": "0849b4c9e90fbc9cacb1076dfed619ac2dd92edb668206a561c93b08aabe70ec",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "buddha-fort:v2-top:1:3c5a4b6122fb8134d06c",
+        "buddha-fort:v2-top:2:e0cb7a7d71a2ee06e4d3",
+        "buddha-fort:v2-top:3:04e2c6ad19a76eb510b0",
+        "buddha-fort:v2-top:4:9df3d6bbb3a8a8c99f9f",
+        "buddha-fort:v2-top:5:1714baf24ca8bf4a4629",
+        "buddha-fort:v2-top:6:718ba3ec8006e51a355c",
+        "buddha-fort:v2-top:7:0bfe8729736007e160eb",
+        "buddha-fort:v2-top:8:118d59d1e4eb754b6506"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "buddha-fort:v2-top:1:3c5a4b6122fb8134d06c"
+    },
+    "prosperity-haven": {
+      "name": "Prosperity Haven",
+      "role": "OWNER_UNIQUE",
+      "region": "Kaifeng",
+      "mapId": 2,
+      "input": {
+        "sourcePath": "controls/prosperity-haven.webp",
+        "sourceSha256": "27a60aaeecb8cd23f5e6b2606cada4870c0188b982a5ab6a4e630d6b829ede04",
+        "workCanvasPngSha256": "e93054fd8f825f21e1433917ab68876b8fe9a0c9d3f4e3a0723fc8b79729f2f8",
+        "workCanvasRgba8Sha256": "a654ab0248a0bfffcbbf103cdb16129c461fe6847aaa17a90c3398f9a9650b99",
+        "workCanvasRgb8Sha256": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "prosperity-haven:gt",
+        "role": "GT",
+        "x": 4959.193804824561,
+        "y": 4487.057644110276,
+        "angle": 180,
+        "radius": 32,
+        "scale": 0.8,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5514581349408358,
+        "intensityNcc": 0.357750222186482,
+        "intensityScore": 0.44152193233607134,
+        "productionCombined": 0.5426632387324547,
+        "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "prosperity-haven:v2-top:1:c68104a53001bbeba6e8",
+          "productionRank": 1,
+          "x": 4896.3,
+          "y": 5140.3,
+          "angle": 173,
+          "radius": 144.13383648,
+          "scale": 3.6033459120000004,
+          "gtDistancePx": 656.2630617470918,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6642435096312154,
+          "intensityNcc": 0.7774963916299593,
+          "intensityScore": 0.806518601417356,
+          "productionCombined": 0.6756255169741066,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:2:ab4a9999f36ddfa6ff0a",
+          "productionRank": 2,
+          "x": 4886.8,
+          "y": 5140.8,
+          "angle": 174,
+          "radius": 153.92564969599997,
+          "scale": 3.848141242399999,
+          "gtDistancePx": 657.7384973233843,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.66420174216596,
+          "intensityNcc": 0.776770965012139,
+          "intensityScore": 0.8058877956627297,
+          "productionCombined": 0.6755366264457016,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:3:5996f0b8db58e55ae627",
+          "productionRank": 3,
+          "x": 4890.3,
+          "y": 5142.3,
+          "angle": 173,
+          "radius": 104.11970688,
+          "scale": 2.602992672,
+          "gtDistancePx": 658.8542337233032,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6598416389807987,
+          "intensityNcc": 0.7964128806468693,
+          "intensityScore": 0.8229677223016256,
+          "productionCombined": 0.6728917256464648,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:4:1ef0b380e89dc83caea5",
+          "productionRank": 4,
+          "x": 5502.3,
+          "y": 4970.3,
+          "angle": 77,
+          "radius": 231.91293887999998,
+          "scale": 5.797823471999999,
+          "gtDistancePx": 726.9714669529975,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6498991854769853,
+          "intensityNcc": 0.7460632812529844,
+          "intensityScore": 0.779185461959117,
+          "productionCombined": 0.6602420875955559,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:5:1c2f01514827d235bd79",
+          "productionRank": 5,
+          "x": 5500.3,
+          "y": 4967.8,
+          "angle": 77,
+          "radius": 213.19150943999995,
+          "scale": 5.329787735999998,
+          "gtDistancePx": 723.8156721180075,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6490127779790038,
+          "intensityNcc": 0.7565600694311929,
+          "intensityScore": 0.7883131038532113,
+          "productionCombined": 0.6601568040489404,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:6:b71bfd9c7be3a55359ad",
+          "productionRank": 6,
+          "x": 5509.3,
+          "y": 5269.3,
+          "angle": 161,
+          "radius": 208.78952016,
+          "scale": 5.219738004,
+          "gtDistancePx": 956.3053535970112,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.645828406310113,
+          "intensityNcc": 0.7680793801797622,
+          "intensityScore": 0.7983298958084889,
+          "productionCombined": 0.658028525469983,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:7:06ca2568ac2cbe2c68fc",
+          "productionRank": 7,
+          "x": 4986.8,
+          "y": 5128.8,
+          "angle": 173,
+          "radius": 238.7195568,
+          "scale": 5.96798892,
+          "gtDistancePx": 642.3358571300206,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.620965728398472,
+          "intensityNcc": 0.7022661679087137,
+          "intensityScore": 0.7411010155727945,
+          "productionCombined": 0.6305765513724177,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "prosperity-haven:v2-top:8:495feba1a92408aaf7a1",
+          "productionRank": 8,
+          "x": 5359.3,
+          "y": 3736.3,
+          "angle": 301.5,
+          "radius": 469.8241094399999,
+          "scale": 11.745602735999999,
+          "gtDistancePx": 850.7185243121122,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6016357381791092,
+          "intensityNcc": 0.676216588649721,
+          "intensityScore": 0.7184492075214965,
+          "productionCombined": 0.6109808157265002,
+          "inputHash": "f80b6075a36a9d4b84e8110dbb6dde92a7c8275bb7b3854dd0a8924d85021b73",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "prosperity-haven:v2-top:1:c68104a53001bbeba6e8",
+        "prosperity-haven:v2-top:2:ab4a9999f36ddfa6ff0a",
+        "prosperity-haven:v2-top:3:5996f0b8db58e55ae627",
+        "prosperity-haven:v2-top:4:1ef0b380e89dc83caea5",
+        "prosperity-haven:v2-top:5:1c2f01514827d235bd79",
+        "prosperity-haven:v2-top:6:b71bfd9c7be3a55359ad",
+        "prosperity-haven:v2-top:7:06ca2568ac2cbe2c68fc",
+        "prosperity-haven:v2-top:8:495feba1a92408aaf7a1"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "prosperity-haven:v2-top:1:c68104a53001bbeba6e8"
+    },
+    "dreamfall-cliff": {
+      "name": "Dreamfall Cliff",
+      "role": "OWNER_UNIQUE",
+      "region": "Kaifeng",
+      "mapId": 2,
+      "input": {
+        "sourcePath": "controls/dreamfall-cliff.webp",
+        "sourceSha256": "8e3b6ac88496b69460fc67c2906e57fcaf83290746c3efa76d8464efc7c38ec0",
+        "workCanvasPngSha256": "efb32328fadd2ad3396fbab6a468e701e7f22f892c1d1a35dd924b316b0be74a",
+        "workCanvasRgba8Sha256": "4286c32161c706bd7f8214117b384b9f5218d7b309769887680ce40658cd1706",
+        "workCanvasRgb8Sha256": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "dreamfall-cliff:gt",
+        "role": "GT",
+        "x": 5054.117319966583,
+        "y": 5032.292689055973,
+        "angle": 270,
+        "radius": 64,
+        "scale": 1.6,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5041491301386956,
+        "intensityNcc": 0.030211122413902478,
+        "intensityScore": 0.15670532383817606,
+        "productionCombined": 0.476353625634654,
+        "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "dreamfall-cliff:v2-top:1:ea588312c05a7298355a",
+          "productionRank": 1,
+          "x": 5415.3,
+          "y": 5312.3,
+          "angle": 154.5,
+          "radius": 239.194610928,
+          "scale": 5.9798652732,
+          "gtDistancePx": 457.00877730983154,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6780925892572066,
+          "intensityNcc": 0.7659096004180168,
+          "intensityScore": 0.7964431307982756,
+          "productionCombined": 0.6875606325804922,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:2:6cf771f21548b5044c3c",
+          "productionRank": 2,
+          "x": 4882.8,
+          "y": 5140.8,
+          "angle": 174,
+          "radius": 162.4678977376,
+          "scale": 4.06169744344,
+          "gtDistancePx": 202.78920249568574,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.66582446915473,
+          "intensityNcc": 0.7863829311538051,
+          "intensityScore": 0.8142460270902654,
+          "productionCombined": 0.6776981937895729,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:3:e1c071f7a2b29754c326",
+          "productionRank": 3,
+          "x": 4972.3,
+          "y": 5128.3,
+          "angle": 169,
+          "radius": 144.3980412,
+          "scale": 3.60995103,
+          "gtDistancePx": 126.14070556809678,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6630671444735838,
+          "intensityNcc": 0.8006235749053402,
+          "intensityScore": 0.8266291955698611,
+          "productionCombined": 0.676152108561286,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:4:85d237652c2a4030aecf",
+          "productionRank": 4,
+          "x": 4925.3,
+          "y": 5139.8,
+          "angle": 173,
+          "radius": 90.48746111999999,
+          "scale": 2.262186528,
+          "gtDistancePx": 167.78475446174681,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6574058554207686,
+          "intensityNcc": 0.8081687545890925,
+          "intensityScore": 0.8331902213818196,
+          "productionCombined": 0.6714686046976527,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:5:d3daf6e253ab947b310b",
+          "productionRank": 5,
+          "x": 4581.3,
+          "y": 4219.3,
+          "angle": 294.5,
+          "radius": 187.5328,
+          "scale": 4.68832,
+          "gtDistancePx": 940.4856886305305,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6598966728062653,
+          "intensityNcc": 0.7736862384510708,
+          "intensityScore": 0.8032054247400616,
+          "productionCombined": 0.671361372960969,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:6:8cb8dcbd078be6a83ac1",
+          "productionRank": 6,
+          "x": 5495.8,
+          "y": 4944.3,
+          "angle": 75.5,
+          "radius": 165.34307712,
+          "scale": 4.133576928,
+          "gtDistancePx": 450.36241313946624,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6326965383366542,
+          "intensityNcc": 0.75367919253323,
+          "intensityScore": 0.7858079935071566,
+          "productionCombined": 0.6449454547502944,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:7:01b0d8b91503face0a64",
+          "productionRank": 7,
+          "x": 5494.8,
+          "y": 4923.3,
+          "angle": 74.5,
+          "radius": 145.39686494400001,
+          "scale": 3.6349216236000004,
+          "gtDistancePx": 453.96104540928104,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6311110549654981,
+          "intensityNcc": 0.7660252052429565,
+          "intensityScore": 0.7965436567330058,
+          "productionCombined": 0.6443456631068987,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "dreamfall-cliff:v2-top:8:1a5fa3c346b52d85ee9b",
+          "productionRank": 8,
+          "x": 5502.8,
+          "y": 4971.3,
+          "angle": 77,
+          "radius": 251.3952,
+          "scale": 6.284879999999999,
+          "gtDistancePx": 452.8092926169345,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6021658557393846,
+          "intensityNcc": 0.7565637542722469,
+          "intensityScore": 0.7883163080628235,
+          "productionCombined": 0.6170578919252598,
+          "inputHash": "623065c60076d08330a986a6d7dcc96fda148c0fdcba6ed2a66828fabed64b6e",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "dreamfall-cliff:v2-top:1:ea588312c05a7298355a",
+        "dreamfall-cliff:v2-top:2:6cf771f21548b5044c3c",
+        "dreamfall-cliff:v2-top:3:e1c071f7a2b29754c326",
+        "dreamfall-cliff:v2-top:4:85d237652c2a4030aecf",
+        "dreamfall-cliff:v2-top:5:d3daf6e253ab947b310b",
+        "dreamfall-cliff:v2-top:6:8cb8dcbd078be6a83ac1",
+        "dreamfall-cliff:v2-top:7:01b0d8b91503face0a64",
+        "dreamfall-cliff:v2-top:8:1a5fa3c346b52d85ee9b"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "dreamfall-cliff:v2-top:1:ea588312c05a7298355a"
+    },
+    "general-shrine-repeat": {
+      "name": "General Shrine repeat",
+      "role": "SAME_LOCATION_DRIFT",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/general-shrine-repeat.webp",
+        "sourceSha256": "981c3f7f003afed7220fba642c13638ae7f2b693bd7c64729a2f2418db528aae",
+        "workCanvasPngSha256": "3dae8af15b2f500d30a9f0206dcba78e975861966e21b7deaa5ac816b8aab7b9",
+        "workCanvasRgba8Sha256": "96db970f263ad716f8b78dcacc4771ffb8b8531fc9d35d0282c94512c558c476",
+        "workCanvasRgb8Sha256": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "general-shrine-repeat:gt",
+        "role": "GT",
+        "x": 6015.017126148705,
+        "y": 3889.360588972433,
+        "angle": 180,
+        "radius": 32,
+        "scale": 0.8,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.5007966614324114,
+        "intensityNcc": 0.391710437419323,
+        "intensityScore": 0.47105255427767223,
+        "productionCombined": 0.49841713286003225,
+        "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "general-shrine-repeat:v2-top:1:e57e11a53a75727b5bcd",
+          "productionRank": 1,
+          "x": 6288.8,
+          "y": 3785.3,
+          "angle": 110.5,
+          "radius": 68.432939616,
+          "scale": 1.7108234904,
+          "gtDistancePx": 292.89190530221885,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6603560949379826,
+          "intensityNcc": 0.907922465775005,
+          "intensityScore": 0.9199325789347871,
+          "productionCombined": 0.6811222136577271,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:2:b457c858015f830d634a",
+          "productionRank": 2,
+          "x": 5596.3,
+          "y": 3208.8,
+          "angle": 260,
+          "radius": 116.69233161599998,
+          "scale": 2.9173082903999994,
+          "gtDistancePx": 799.0536571424569,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6518763629910477,
+          "intensityNcc": 0.9084267412680928,
+          "intensityScore": 0.920371079363559,
+          "productionCombined": 0.6733559403008487,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:3:bafcae5db3db449b2905",
+          "productionRank": 3,
+          "x": 6284.3,
+          "y": 3838.8,
+          "angle": 95,
+          "radius": 265.669419456,
+          "scale": 6.6417354864,
+          "gtDistancePx": 273.9883926498565,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6470434900569592,
+          "intensityNcc": 0.8477124365541416,
+          "intensityScore": 0.8675760317862102,
+          "productionCombined": 0.6646860933952993,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:4:c68c0ddd30773dc1f9f3",
+          "productionRank": 4,
+          "x": 5810.3,
+          "y": 4216.8,
+          "angle": 145,
+          "radius": 385.35286999999994,
+          "scale": 9.63382175,
+          "gtDistancePx": 386.1679293165924,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6276994260654322,
+          "intensityNcc": 0.8672232054990476,
+          "intensityScore": 0.8845419178252588,
+          "productionCombined": 0.6482468254062184,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:5:0f602b5036d9cd7492b4",
+          "productionRank": 5,
+          "x": 5538.3,
+          "y": 3275.8,
+          "angle": 287,
+          "radius": 588.336,
+          "scale": 14.708400000000001,
+          "gtDistancePx": 776.9915152070058,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6316849861583692,
+          "intensityNcc": 0.7967101594680834,
+          "intensityScore": 0.8232262256244205,
+          "productionCombined": 0.6470082853156534,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:6:f7367154d57311ceb142",
+          "productionRank": 6,
+          "x": 6283.3,
+          "y": 3780.8,
+          "angle": 97,
+          "radius": 218.85338966399996,
+          "scale": 5.471334741599999,
+          "gtDistancePx": 289.41510306124593,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6129239807233668,
+          "intensityNcc": 0.8645139911958607,
+          "intensityScore": 0.8821860793007485,
+          "productionCombined": 0.6344649486095574,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:7:ebb1968849ea6bb53b42",
+          "productionRank": 7,
+          "x": 6283.3,
+          "y": 3780.8,
+          "angle": 97,
+          "radius": 218.85338966399996,
+          "scale": 5.471334741599999,
+          "gtDistancePx": 289.41510306124593,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6129239807233668,
+          "intensityNcc": 0.8645139911958607,
+          "intensityScore": 0.8821860793007485,
+          "productionCombined": 0.6344649486095574,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "general-shrine-repeat:v2-top:8:e18c1125e73e3caac0da",
+          "productionRank": 8,
+          "x": 5359.3,
+          "y": 3735.3,
+          "angle": 297,
+          "radius": 455.72938615679993,
+          "scale": 11.393234653919999,
+          "gtDistancePx": 673.5722786748645,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5886270114748039,
+          "intensityNcc": 0.8563124689801255,
+          "intensityScore": 0.8750543208522831,
+          "productionCombined": 0.6115411962250024,
+          "inputHash": "773b7f7a86d122e89145dc026019905518d0373aaf0776b1a7b62857d0741063",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        }
+      ],
+      "wrongCandidateIds": [
+        "general-shrine-repeat:v2-top:1:e57e11a53a75727b5bcd",
+        "general-shrine-repeat:v2-top:2:b457c858015f830d634a",
+        "general-shrine-repeat:v2-top:3:bafcae5db3db449b2905",
+        "general-shrine-repeat:v2-top:4:c68c0ddd30773dc1f9f3",
+        "general-shrine-repeat:v2-top:5:0f602b5036d9cd7492b4",
+        "general-shrine-repeat:v2-top:6:f7367154d57311ceb142",
+        "general-shrine-repeat:v2-top:7:ebb1968849ea6bb53b42",
+        "general-shrine-repeat:v2-top:8:e18c1125e73e3caac0da"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "general-shrine-repeat:v2-top:1:e57e11a53a75727b5bcd"
+    },
+    "fang-xu": {
+      "name": "Steam Fang Xu Global-PC HUD",
+      "role": "INDEPENDENT_VALIDATION",
+      "region": "Qinghe",
+      "mapId": 1,
+      "input": {
+        "sourcePath": "controls/fang-xu.png",
+        "sourceSha256": "272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30",
+        "workCanvasPngSha256": "9a696bfc2fd7b3a0188caad99f7186a00f70814ac7493fb29bd9e3b3f9471df3",
+        "workCanvasRgba8Sha256": "d2397a43ffb6053ea166765db34fec2fe00d8b1337b65aa1aaf25c4ede58f0d8",
+        "workCanvasRgb8Sha256": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+        "sourceNatural": [
+          270,
+          270
+        ],
+        "sourceCropSize": null,
+        "canvas": {
+          "sourceNatural": [
+            270,
+            270
+          ],
+          "sourceCropSize": null,
+          "destination": [
+            192,
+            192
+          ],
+          "alpha": false,
+          "imageSmoothingEnabled": true,
+          "imageSmoothingQuality": "high",
+          "devicePixelRatio": 1,
+          "readback": {
+            "constructor": "Uint8ClampedArray",
+            "length": 147456,
+            "colorSpace": "srgb",
+            "pixelFormat": "rgba-unorm8"
+          }
+        }
+      },
+      "gt": {
+        "candidateId": "fang-xu:gt",
+        "role": "GT",
+        "x": 5983.1277673350005,
+        "y": 3862.4348370927314,
+        "angle": 65,
+        "radius": 96,
+        "scale": 2.4,
+        "gtDistancePx": 0,
+        "scaleAwareStructure": 0.6091509755786808,
+        "intensityNcc": 0.5191574689328218,
+        "intensityScore": 0.5818760599415842,
+        "productionCombined": 0.6069689823277131,
+        "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+        "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only"
+      },
+      "top8": [
+        {
+          "candidateId": "fang-xu:v2-top:1:544e26747edbf4ae3ae3",
+          "productionRank": 1,
+          "x": 5218.3,
+          "y": 4015.3,
+          "angle": 100.5,
+          "radius": 107.13453206400001,
+          "scale": 2.6783633016,
+          "gtDistancePx": 779.954660039484,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6354474105211723,
+          "intensityNcc": 0.7622771782736358,
+          "intensityScore": 0.79328450284664,
+          "productionCombined": 0.6480743779072098,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "fang-xu:v2-top:2:4bd32bec519bf85675a6",
+          "productionRank": 2,
+          "x": 6220.3,
+          "y": 4003.3,
+          "angle": 342.5,
+          "radius": 143.23173408,
+          "scale": 3.5807933519999997,
+          "gtDistancePx": 275.8507967510555,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6244613314726634,
+          "intensityNcc": 0.7473817921908056,
+          "intensityScore": 0.7803319932093963,
+          "productionCombined": 0.636930984411602,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": true
+        },
+        {
+          "candidateId": "fang-xu:v2-top:3:a1b10e84876563106d62",
+          "productionRank": 3,
+          "x": 5469.3,
+          "y": 4586.8,
+          "angle": 290,
+          "radius": 91.681296,
+          "scale": 2.2920324,
+          "gtDistancePx": 888.101268841648,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.6061082595650266,
+          "intensityNcc": 0.7421547546752489,
+          "intensityScore": 0.7757867431958687,
+          "productionCombined": 0.619682538255494,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "fang-xu:v2-top:4:87030cc47469a9571647",
+          "productionRank": 4,
+          "x": 5547.8,
+          "y": 3539.3,
+          "angle": 197.5,
+          "radius": 255.57752448000002,
+          "scale": 6.389438112000001,
+          "gtDistancePx": 542.1497836906533,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5983248608072955,
+          "intensityNcc": 0.7237950375504707,
+          "intensityScore": 0.7598217717830181,
+          "productionCombined": 0.6112446136853533,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "fang-xu:v2-top:5:eb7a44eeedb8c9571d8b",
+          "productionRank": 5,
+          "x": 5548.3,
+          "y": 3573.8,
+          "angle": 152.5,
+          "radius": 271.8839088,
+          "scale": 6.797097719999999,
+          "gtDistancePx": 521.9054094652483,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5906992660403595,
+          "intensityNcc": 0.7239029866726078,
+          "intensityScore": 0.7599156405848764,
+          "productionCombined": 0.6042365760039209,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "fang-xu:v2-top:6:265a28f2e4545ae53e9e",
+          "productionRank": 6,
+          "x": 6226.3,
+          "y": 3706.8,
+          "angle": 328.5,
+          "radius": 213.22523520000001,
+          "scale": 5.33063088,
+          "gtDistancePx": 288.71255126191124,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5645297925230152,
+          "intensityNcc": 0.7183393704620895,
+          "intensityScore": 0.7550777134452953,
+          "productionCombined": 0.5797736261967976,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "fang-xu:v2-top:7:5940417011077dcee59c",
+          "productionRank": 7,
+          "x": 6184.3,
+          "y": 3996.3,
+          "angle": 45,
+          "radius": 176.44961152,
+          "scale": 4.411240288,
+          "gtDistancePx": 241.64053682197112,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5465789808562738,
+          "intensityNcc": 0.6848039405366858,
+          "intensityScore": 0.7259164700319007,
+          "productionCombined": 0.560925979990324,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        },
+        {
+          "candidateId": "fang-xu:v2-top:8:2a96fec0e48d9d8050dc",
+          "productionRank": 8,
+          "x": 6206.8,
+          "y": 3694.8,
+          "angle": 195.5,
+          "radius": 85.39744106879999,
+          "scale": 2.1349360267199997,
+          "gtDistancePx": 279.51870469156853,
+          "classification": "WRONG",
+          "scaleAwareStructure": 0.5327896973653791,
+          "intensityNcc": 0.7664467920222974,
+          "intensityScore": 0.7969102539324325,
+          "productionCombined": 0.5539193418907433,
+          "inputHash": "3950a4dc6e2a63c2071c1b8b1590144466db5a72a1031bd4d330bbc5b30a20f5",
+          "referenceLineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "d0ParetoDominatesGt": false
+        }
+      ],
+      "wrongCandidateIds": [
+        "fang-xu:v2-top:1:544e26747edbf4ae3ae3",
+        "fang-xu:v2-top:2:4bd32bec519bf85675a6",
+        "fang-xu:v2-top:3:a1b10e84876563106d62",
+        "fang-xu:v2-top:4:87030cc47469a9571647",
+        "fang-xu:v2-top:5:eb7a44eeedb8c9571d8b",
+        "fang-xu:v2-top:6:265a28f2e4545ae53e9e",
+        "fang-xu:v2-top:7:5940417011077dcee59c",
+        "fang-xu:v2-top:8:2a96fec0e48d9d8050dc"
+      ],
+      "nearGtCandidateIds": [],
+      "productionWinnerCandidateId": "fang-xu:v2-top:1:544e26747edbf4ae3ae3"
+    }
+  },
+  "repeatability": {
+    "schema": "wwmsync-descriptor-v2-repeatability-v1",
+    "replicatesFound": 3,
+    "requiredReplicates": 3,
+    "toleranceAbs": 1e-06,
+    "descriptorOutcomesInspected": false,
+    "D1D4Opened": false,
+    "RD": "PENDING",
+    "productionChange": "NO",
+    "replicates": [
+      {
+        "path": "replicate-artifacts/wwmsync-descriptor-v2-replicate-31986349537-1/v2-output/candidate-run.json",
+        "replicate": 1,
+        "status": "PASS",
+        "head": "2d9895880f52d530e89f1d76c9fd7e826da5ab9b",
+        "runtime": {
+          "runner": "ubuntu-24.04",
+          "imageOS": "ubuntu24",
+          "imageVersion": "20260810.271.1",
+          "chromeVersion": "Google Chrome 151.0.7922.108 ",
+          "playwrightCoreVersion": "1.62.1",
+          "port": 40885,
+          "browser": {
+            "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+            "devicePixelRatio": 1,
+            "canvas": {
+              "alpha": false,
+              "imageSmoothingEnabled": true,
+              "imageSmoothingQuality": "high",
+              "attributes": {
+                "alpha": false,
+                "colorSpace": "srgb",
+                "colorType": "unorm8",
+                "desynchronized": false,
+                "toneMapping": {
+                  "mode": "standard"
+                },
+                "willReadFrequently": false
+              }
+            },
+            "readback": {
+              "constructor": "Uint8ClampedArray",
+              "colorSpace": "srgb",
+              "pixelFormat": "rgba-unorm8"
+            }
+          }
+        },
+        "reference": {
+          "lineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "manifestSha256": "e0a6f31950b1ebab36f97c4eb3cf11cdc8715610f237bc58badb5fb1f66d72c6"
+        },
+        "error": null
+      },
+      {
+        "path": "replicate-artifacts/wwmsync-descriptor-v2-replicate-31986349537-2/v2-output/candidate-run.json",
+        "replicate": 2,
+        "status": "PASS",
+        "head": "2d9895880f52d530e89f1d76c9fd7e826da5ab9b",
+        "runtime": {
+          "runner": "ubuntu-24.04",
+          "imageOS": "ubuntu24",
+          "imageVersion": "20260810.271.1",
+          "chromeVersion": "Google Chrome 151.0.7922.108 ",
+          "playwrightCoreVersion": "1.62.1",
+          "port": 33821,
+          "browser": {
+            "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+            "devicePixelRatio": 1,
+            "canvas": {
+              "alpha": false,
+              "imageSmoothingEnabled": true,
+              "imageSmoothingQuality": "high",
+              "attributes": {
+                "alpha": false,
+                "colorSpace": "srgb",
+                "colorType": "unorm8",
+                "desynchronized": false,
+                "toneMapping": {
+                  "mode": "standard"
+                },
+                "willReadFrequently": false
+              }
+            },
+            "readback": {
+              "constructor": "Uint8ClampedArray",
+              "colorSpace": "srgb",
+              "pixelFormat": "rgba-unorm8"
+            }
+          }
+        },
+        "reference": {
+          "lineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "manifestSha256": "e0a6f31950b1ebab36f97c4eb3cf11cdc8715610f237bc58badb5fb1f66d72c6"
+        },
+        "error": null
+      },
+      {
+        "path": "replicate-artifacts/wwmsync-descriptor-v2-replicate-31986349537-3/v2-output/candidate-run.json",
+        "replicate": 3,
+        "status": "PASS",
+        "head": "2d9895880f52d530e89f1d76c9fd7e826da5ab9b",
+        "runtime": {
+          "runner": "ubuntu-24.04",
+          "imageOS": "ubuntu24",
+          "imageVersion": "20260810.271.1",
+          "chromeVersion": "Google Chrome 151.0.7922.108 ",
+          "playwrightCoreVersion": "1.62.1",
+          "port": 41415,
+          "browser": {
+            "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+            "devicePixelRatio": 1,
+            "canvas": {
+              "alpha": false,
+              "imageSmoothingEnabled": true,
+              "imageSmoothingQuality": "high",
+              "attributes": {
+                "alpha": false,
+                "colorSpace": "srgb",
+                "colorType": "unorm8",
+                "desynchronized": false,
+                "toneMapping": {
+                  "mode": "standard"
+                },
+                "willReadFrequently": false
+              }
+            },
+            "readback": {
+              "constructor": "Uint8ClampedArray",
+              "colorSpace": "srgb",
+              "pixelFormat": "rgba-unorm8"
+            }
+          }
+        },
+        "reference": {
+          "lineage": "unchanged Dashen main-v15 z5 production tile/reference lineage using tools/build_dashen_reference_audit_cache.py for CI-local transport only",
+          "manifestSha256": "e0a6f31950b1ebab36f97c4eb3cf11cdc8715610f237bc58badb5fb1f66d72c6"
+        },
+        "error": null
+      }
+    ],
+    "controlVariation": {
+      "buddha-fort": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "dreamfall-cliff": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "east-cross": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "fang-xu": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "general-shrine": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "general-shrine-repeat": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "path-of-void": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      },
+      "prosperity-haven": {
+        "inputHashesEqual": true,
+        "gtGeometryEqual": true,
+        "top8IdsOrderEqual": true,
+        "maxAbsVariation": {
+          "x": 0.0,
+          "y": 0.0,
+          "angle": 0.0,
+          "radius": 0.0,
+          "scale": 0.0,
+          "gtDistancePx": 0.0,
+          "scaleAwareStructure": 0.0,
+          "intensityNcc": 0.0,
+          "productionCombined": 0.0
+        }
+      }
+    },
+    "verdict": "VF0",
+    "reasons": [],
+    "maxAbsVariation": {
+      "x": 0.0,
+      "y": 0.0,
+      "angle": 0.0,
+      "radius": 0.0,
+      "scale": 0.0,
+      "gtDistancePx": 0.0,
+      "scaleAwareStructure": 0.0,
+      "intensityNcc": 0.0,
+      "productionCombined": 0.0
+    }
+  },
+  "semanticInheritance": {
+    "sourcePath": "docs/wwmsync/audits/domain-invariant-structural-descriptor-preregistration-2026-08-16.json",
+    "sourceBlobSha1": "29540d6e9b4458cf4681a71351fdd2b0cdd5f423",
+    "equal": true,
+    "inherited": [
+      "D1 — LOCAL_CENSUS_ORDINAL",
+      "D2 — UNSIGNED_GRADIENT_ORIENTATION",
+      "D3 — SYMMETRIC_EDGE_DISTANCE_CHAMFER",
+      "D4 — SKELETON_NETWORK_DISTANCE",
+      "D5 DISABLED",
+      "81-pose grid"
+    ],
+    "executedInThisTask": false
+  },
+  "strictStopEvidence": {
+    "D1": false,
+    "D2": false,
+    "D3": false,
+    "D4": false,
+    "pose81DescriptorComparison": false,
+    "generalDescriptorDrift": false,
+    "fangDescriptorValidation": false,
+    "retrievalProxy": false,
+    "stress40Frame": false,
+    "RDClassification": false
+  },
+  "diagnosticOnly": {
+    "ethereal-chamber": "NOT_EVALUABLE_REFERENCE_FAMILY; excluded from v2 evaluable candidate population"
+  },
+  "productionGuards": {
+    "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+    "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+    "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+    "structural": 0.58,
+    "intensity": 0.42,
+    "coarseBeam": 8,
+    "productionWwsyncUntouched": true,
+    "productionChange": "NO"
+  },
+  "authoritativeEvidence": {
+    "candidateRun": {
+      "id": 31986349537,
+      "workflowId": 335873510,
+      "runNumber": 2,
+      "name": "WWMSync Descriptor V2 Candidate Freeze",
+      "headSha": "2d9895880f52d530e89f1d76c9fd7e826da5ab9b",
+      "conclusion": "success"
+    },
+    "candidateJobs": [
+      {
+        "id": 95261936507,
+        "name": "candidate replicate 1",
+        "replicate": 1,
+        "conclusion": "success"
+      },
+      {
+        "id": 95261936525,
+        "name": "candidate replicate 2",
+        "replicate": 2,
+        "conclusion": "success"
+      },
+      {
+        "id": 95261936523,
+        "name": "candidate replicate 3",
+        "replicate": 3,
+        "conclusion": "success"
+      },
+      {
+        "id": 95262324193,
+        "name": "repeatability aggregate",
+        "conclusion": "success"
+      }
+    ],
+    "replicateArtifacts": [
+      {
+        "replicate": 1,
+        "id": 9273930819,
+        "name": "wwmsync-descriptor-v2-replicate-31986349537-1",
+        "digest": "sha256:c1f7f52ff9fb00f222a5761c8ff03da4f33492df118efde60b3aca6a9a9135ef"
+      },
+      {
+        "replicate": 2,
+        "id": 9273927666,
+        "name": "wwmsync-descriptor-v2-replicate-31986349537-2",
+        "digest": "sha256:e6d8f77b8da8bd441b6a23a734cbcd64da27bd82c926c6b762b6b72353ecf517"
+      },
+      {
+        "replicate": 3,
+        "id": 9273927681,
+        "name": "wwmsync-descriptor-v2-replicate-31986349537-3",
+        "digest": "sha256:59158f8fb02d524f9872f14c64f30a732cc760aa21832b201281e100e009c8d8"
+      }
+    ],
+    "aggregateArtifact": {
+      "id": 9273933374,
+      "name": "wwmsync-descriptor-v2-repeatability-31986349537",
+      "digest": "sha256:bcde05959c6fc9ff43ab8b666e330d992fb8e6455ba928aa8caddfc926bf36ea"
+    },
+    "aggregatePayloadSha256": "2643e87bc38b929b5a25eace4778be7282c82e437fa67a528f94813d8946f6be",
+    "bl2": {
+      "run": 31985103484,
+      "job": 95258619911,
+      "artifact": 9273501655,
+      "digest": "sha256:8a614778c67e6b05a26d5fd32b6b52e40298f66dc9372f622d1d843a75cdfbbf"
+    },
+    "fangSource": {
+      "run": 31609680755,
+      "artifact": 9146646914,
+      "digest": "sha256:b305444dff3ac2db6a544020093bd64022ffef5406c246849499d6a96525c041",
+      "roiSha256": "272926ce5d001d7ddcd8fdb9d4e915200afbb85b748905d8af8502b6ad9e2f30"
+    }
+  },
+  "descriptorOutcomesInspected": false,
+  "D1D4Opened": false,
+  "RD": "PENDING",
+  "descriptorV2Status": "CANDIDATE/D0 FREEZE COMPLETE; D1-D4 NOT EXECUTED",
+  "productionChange": "NO"
+}
