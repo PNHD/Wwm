@@ -1,0 +1,39 @@
+{
+  "DescriptorV2": "V2-RD2",
+  "FinalFusion": "FA2 \u2014 PARTIAL FUSION RESCUE",
+  "FurtherRepresentationResearchUnderThisProject": "STOP",
+  "LearnedV1": "LR2",
+  "NextResearchTaskJustified": "NO",
+  "Phase0": "COMPLETE",
+  "ProductionCandidate": "NONE",
+  "ProductionChange": "NO",
+  "ProductionFeasibilityArchitectureTaskJustified": "NO",
+  "authoritativeFusionOutcome": {
+    "aggregateJob": 95312585361,
+    "artifact": 9279687922,
+    "artifactDigest": "sha256:803ab7a86ce5ddfea27201f2d09f471e77e5b594aed521cf782a3bbe5429d477",
+    "run": 32004733869
+  },
+  "date": "2026-08-17",
+  "prereg": {
+    "blob": "bde910bc2d17cd11b7732cfa8ad19288fab99a76",
+    "commit": "853682dff56cc6a7fa7ebcf442cafa8c40ff39e2",
+    "fusionOutcomesInspected": false,
+    "path": "docs/wwmsync/audits/wwmsync-final-complementary-fusion-v1-preregistration-2026-08-17.json"
+  },
+  "productionGuards": {
+    "coarseBeam": 8,
+    "intensity": 0.42,
+    "productionChange": "NO",
+    "productionWwsyncUntouched": true,
+    "protectedBlobSha1": {
+      "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+      "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7",
+      "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b"
+    },
+    "structural": 0.58
+  },
+  "reason": "Final equal-weight complementary fusion produced material partial evidence but no head satisfied the complete owner+region+Fang+General-drift local survivor protocol; retrieval and stress were therefore ineligible by preregistration.",
+  "schema": "wwmsync-representation-research-closure-v1",
+  "status": "CLOSED"
+}
