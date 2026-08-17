@@ -4,14 +4,23 @@ import fs from 'node:fs';
 const target=process.argv[2];
 if(!target) throw new Error('usage: node v2-candidate-freeze-instrument.mjs <site/vision-sync.js>');
 let src=fs.readFileSync(target,'utf8');
-const oldFine='finals.push({fine:{...fine,scaleScore:structural.score,intensityScore:recall.score,structuralDetail:structural},hypothesis,verify,combined})';
-const newFine='finals.push({fine:{...fine,scaleScore:structural.score,intensityScore:recall.score,intensityNcc:recall.ncc,structuralDetail:structural},hypothesis,verify,combined})';
-if(!src.includes(oldFine)) throw new Error('production globalMatch fine-result anchor missing');
-src=src.replace(oldFine,newFine);
-const oldAlt='alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,angle:item.fine.angle,scaleScore:item.fine.scaleScore,intensityScore:item.fine.intensityScore,combinedScore:item.combined}))';
+
+function replaceUnique(needle,replacement,label){
+  const first=src.indexOf(needle);
+  if(first<0) throw new Error(`${label} missing`);
+  if(src.indexOf(needle,first+needle.length)>=0) throw new Error(`${label} not unique`);
+  src=src.slice(0,first)+replacement+src.slice(first+needle.length);
+}
+
+// The workflow intentionally applies the established replay-only instrumentation first.
+// Accept that exact post-replay shape; this v2 layer only exposes complete D0 geometry/metrics.
+const postReplayFine='finals.push({fine:{...fine,scaleScore:structural.score,intensityScore:recall.score,intensityNcc:recall.ncc,intensityCount:recall.count,structuralDetail:structural},hypothesis,verify,combined})';
+if(!src.includes(postReplayFine)) throw new Error('post-replay production globalMatch fine-result anchor missing');
+
+const postReplayAlt='alternatives:finals.map(item=>({x:item.fine.globalX,y:item.fine.globalY,radius:item.fine.radius,angle:item.fine.angle,scaleScore:item.fine.scaleScore,intensityScore:item.fine.intensityScore,intensityNcc:item.fine.intensityNcc??null,combinedScore:item.combined}))';
 const newAlt='alternatives:finals.map((item,index)=>({x:item.fine.globalX,y:item.fine.globalY,angle:item.fine.angle,radius:item.fine.radius,scale:item.fine.radius/(ROI_N/2),scaleAwareStructure:item.fine.scaleScore,intensityNcc:item.fine.intensityNcc,intensityScore:item.fine.intensityScore,productionCombined:item.combined,productionRank:index+1}))';
-if(!src.includes(oldAlt)) throw new Error('production globalMatch alternatives anchor missing');
-src=src.replace(oldAlt,newAlt);
+replaceUnique(postReplayAlt,newAlt,'post-replay production globalMatch alternatives anchor');
+
 const anchor='window.__WWMSYNC_ABSOLUTE_SELFTEST__=selfTest;window.__WWMSYNC_ABSOLUTE_DRAW_TEST_CAPTURE__=drawTestCapture;';
 if(!src.includes(anchor)) throw new Error('production diagnostic export anchor missing');
 const code=String.raw`
@@ -30,6 +39,6 @@ async function __v2CandidateD0At(canvas,mapId,candidate){
 }
 window.__WWMSYNC_V2_CANDIDATE_FREEZE__={globalSearch:__v2CandidateGlobalSearch,scoreD0At:__v2CandidateD0At};
 `;
-src=src.replace(anchor,code+'\n'+anchor);
+replaceUnique(anchor,code+'\n'+anchor,'production diagnostic export anchor');
 fs.writeFileSync(target,src);
-console.log(JSON.stringify({target,injected:true,kind:'v2-candidate-freeze-d0-only',rankingChanged:false,thresholdChanged:false}));
+console.log(JSON.stringify({target,injected:true,kind:'v2-candidate-freeze-d0-only',inputShape:'post-real-replay-instrumentation',rankingChanged:false,thresholdChanged:false}));
