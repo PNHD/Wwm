@@ -1,0 +1,282 @@
+{
+  "schema": "wwmsync-final-complementary-fusion-v1-prereg-v1",
+  "audit": "FINAL COMPLEMENTARY FUSION AUDIT V1",
+  "date": "2026-08-17",
+  "prospective": true,
+  "startingLiveHead": "4ca8b596f09535893c22933893cea539dfdc254f",
+  "frozenBeforeFusionOutcomes": true,
+  "fusionOutcomesInspected": false,
+  "finalRepresentationResearchRound": true,
+  "authority": {
+    "descriptorV2": {
+      "verdict": "V2-RD2 — PARTIAL REPRESENTATION RESCUE",
+      "reportPath": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-outcome-2026-08-17.md",
+      "reportBlob": "79287c1657327f03c0861fa0e629e3720edb8e9b",
+      "authoritativeRun": 31989337212,
+      "aggregateJob": 95270023809,
+      "artifact": 9274795303,
+      "artifactDigest": "sha256:549c5a1e7302dd78adb0c2ef0862d31c9a366ce9aaf39ac81e8812ae135a94b7",
+      "componentArtifactByControl": {
+        "east-cross": 9274790104,
+        "general-shrine": 9274792992,
+        "path-of-void": 9274786544,
+        "buddha-fort": 9274791326,
+        "prosperity-haven": 9274784490,
+        "dreamfall-cliff": 9274790736,
+        "general-shrine-repeat": 9274786973,
+        "fang-xu": 9274787456
+      }
+    },
+    "learnedV1": {
+      "verdict": "LR2 — PARTIAL LEARNED RESCUE",
+      "reportPath": "docs/wwmsync/audits/learned-domain-invariant-representation-v1-outcome-2026-08-17.md",
+      "reportBlob": "19761c39b5bf3bdb6fd633f4009506f1d56fc079",
+      "evidencePath": "docs/wwmsync/audits/learned-domain-invariant-representation-v1-evidence-2026-08-17.json",
+      "evidenceBlob": "b5ceaf69d45c98ee9aa2ada2f2d391fa49f9f184",
+      "preregPath": "docs/wwmsync/audits/learned-domain-invariant-representation-v1-preregistration-2026-08-17.json",
+      "preregBlob": "27c9b30a4f84e3de3433678835ea7343176e99ad",
+      "authoritativeOutcomeHead": "40c7a3163341dcf7693c2ecd456c85b3a3191618",
+      "authoritativeRun": 32002871831,
+      "aggregateJob": 95307081395,
+      "artifact": 9279064565,
+      "artifactDigest": "sha256:c9189c23a875da2dd6428402b76c2c894d528d0b3a584f1d878a168cc4e18445"
+    },
+    "candidateFreeze": {
+      "verdict": "VF0 — V2 CANDIDATE FREEZE COMPLETE",
+      "path": "docs/wwmsync/audits/domain-invariant-structural-descriptor-v2-candidate-freeze-2026-08-17.json",
+      "commit": "72a91762dba0efb8106b7afb45124721ff1a7a01",
+      "blob": "51adf1da2cfc201f8f67cd575e271a2461640eeb",
+      "sha256": "6ed0243974efad4c4437f4a6b758670a3e8d2070afca893e9a7a15be7b90d8f3",
+      "gtCount": 8,
+      "top8Count": 64,
+      "wrongCount": 64,
+      "nearGtCount": 0,
+      "regenerationForbidden": true,
+      "geometryMutationForbidden": true
+    }
+  },
+  "sourceRepresentations": {
+    "D2": {
+      "name": "UNSIGNED_GRADIENT_ORIENTATION",
+      "implementationPath": "tools/research/domain-invariant-descriptor/v2-descriptor-outcome-instrument.mjs",
+      "implementationBlob": "8f83589187412dea06f62d0b81e3c7564d3c090b",
+      "input": "luminance",
+      "gradient": "3x3 Sobel BORDER_REFLECT_101",
+      "orientation": "atan2(gy,gx) modulo pi",
+      "bins": 8,
+      "binRule": "floor(theta/pi*8), clamp 0..7",
+      "magnitude": "sqrt(gx^2+gy^2), divide by support p90 then clip 0..1, epsilon=1e-6",
+      "perPixelAgreement": "1-min(circularBinDistance,8-circularBinDistance)/4",
+      "weight": "min(sourceNormalizedMagnitude,referenceNormalizedMagnitude)",
+      "score": "weighted mean over common support, null if weight sum<=1e-6",
+      "support": "exact Descriptor V2 support semantics",
+      "semanticMutationForbidden": true
+    },
+    "L1": {
+      "name": "GLOBAL_PATCH_MEAN_COSINE",
+      "implementationPath": "tools/research/learned-domain-invariant/v1-learned-score.py",
+      "implementationBlob": "b616251c386e58a7f94796f4f8944ce4f8061d1b",
+      "definition": "arithmetic mean of 196 final-layer patch tokens per image; L2-normalize resulting 384-vector; cosine(queryMean,referenceMean)"
+    },
+    "L3": {
+      "name": "BIDIRECTIONAL_PATCH_CHAMFER_COSINE",
+      "implementationPath": "tools/research/learned-domain-invariant/v1-learned-score.py",
+      "implementationBlob": "b616251c386e58a7f94796f4f8944ce4f8061d1b",
+      "definition": "L2-normalize all 196 query/reference patch tokens; average query-to-reference and reference-to-query maximum cosine means"
+    },
+    "learnedRender": {
+      "instrumentPath": "tools/research/learned-domain-invariant/v1-learned-render-instrument.mjs",
+      "instrumentBlob": "6c72c400f2df3e065d23f740a13391d6818b0a49",
+      "runnerPath": "tools/research/learned-domain-invariant/v1-learned-render-runner.mjs",
+      "runnerBlob": "a91aa864349969c94811e9a9d758b1ece15159d6"
+    },
+    "DINO": {
+      "repository": "facebookresearch/dinov2",
+      "sourceCommit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+      "modelIdentity": "dinov2_vits14_reg",
+      "architecture": "DINOv2 ViT-S/14 with 4 register tokens",
+      "weightByteSize": 88291785,
+      "weightSha256": "f433177089a681826f849f194ece3bb48f4d63fb38d32fc837e3dc7a4e5641fb",
+      "preprocess": "exact Learned V1: 192x192 RGB8 -> one 196x196 bicubic antialiased resize -> float32 RGB -> ImageNet normalization",
+      "patchTokens": 196,
+      "embeddingDimension": 384,
+      "registerTokensExcluded": true,
+      "fineTuning": false,
+      "learnedWeights": false
+    }
+  },
+  "fusionFamily": {
+    "onlyHeads": ["F1", "F2", "F3"],
+    "F1": {"formula": "0.5*D2 + 0.5*L1", "components": ["D2", "L1"], "weights": [0.5, 0.5]},
+    "F2": {"formula": "0.5*D2 + 0.5*L3", "components": ["D2", "L3"], "weights": [0.5, 0.5]},
+    "F3": {"formula": "(D2 + L1 + L3)/3", "components": ["D2", "L1", "L3"], "weights": [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]},
+    "weightSweep": false,
+    "parameterSweep": false,
+    "scoreNormalization": false,
+    "fitting": false,
+    "learnedFusion": false
+  },
+  "samePoseRule": {
+    "required": true,
+    "definition": "For every candidate-pose tuple render one exact reference pose, compute D2 and required DINO scores on that exact pose, fuse raw scores at that pose, and only then select the maximum fused score for a candidate in the 81-pose stage.",
+    "independentComponentMaximaFusionForbidden": true,
+    "poseEqualityMustBeAsserted": true
+  },
+  "implementationConformance": {
+    "mustPrecedeFusionOutcomeAggregation": true,
+    "requirements": [
+      "F1 arithmetic identity",
+      "F2 arithmetic identity",
+      "F3 arithmetic identity",
+      "same-pose invariant",
+      "repeat candidate/pose deterministic",
+      "D2 implementation blob unchanged",
+      "DINO model/source/weights/preprocessing unchanged",
+      "accepted Descriptor V2 D2 locked and per-candidate 81 maxima reproduced within tolerance",
+      "accepted Learned V1 L1/L3 locked and per-candidate 81 maxima reproduced within tolerance"
+    ],
+    "D2ToleranceAbs": 0.000001,
+    "learnedToleranceAbs": 0.000002,
+    "formulaToleranceAbs": 1e-12,
+    "onMismatch": "FIX_REPRODUCTION_PLUMBING_ONLY; FUSION_FORMULAS_MUST_NOT_CHANGE"
+  },
+  "controls": {
+    "ownerUnique": [
+      {"id": "east-cross", "region": "Qinghe"},
+      {"id": "general-shrine", "region": "Qinghe"},
+      {"id": "path-of-void", "region": "Qinghe"},
+      {"id": "buddha-fort", "region": "Qinghe"},
+      {"id": "prosperity-haven", "region": "Kaifeng"},
+      {"id": "dreamfall-cliff", "region": "Kaifeng"}
+    ],
+    "sameLocationDrift": {"id": "general-shrine-repeat", "region": "Qinghe"},
+    "independentValidation": {"id": "fang-xu", "region": "Qinghe"}
+  },
+  "candidateLocked": {
+    "populationPerControl": "exact VF0 GT plus all eight exact VF0 WRONG candidates",
+    "candidateCountPerControl": 9,
+    "margin": "GT fused score minus strongest WRONG fused score",
+    "rank": "1 + count(WRONG fused score strictly greater than GT fused score)",
+    "positive": "margin > 0",
+    "candidateMovement": false
+  },
+  "poseGrid": {
+    "inherited": true,
+    "angleDeltaDeg": [-15, 0, 15],
+    "radiusFactor": [0.9, 1.0, 1.1],
+    "xOffsetPx": [-8, 0, 8],
+    "yOffsetPx": [-8, 0, 8],
+    "combinationsPerCandidate": 81,
+    "symmetry": "identical complete grid around GT and every frozen WRONG base candidate",
+    "selection": "maximum FUSED score per candidate after same-pose fusion"
+  },
+  "ownerCrossControl": {
+    "reportPerHead": ["locked positive /6", "81 positive /6", "Qinghe positives", "Kaifeng positives", "median margin", "worst margin", "GT ranks"]
+  },
+  "generalDrift": {
+    "pair": ["general-shrine", "general-shrine-repeat"],
+    "materialMarginChangeAbs": 0.10,
+    "lockedAnd81Separately": true,
+    "classes": {
+      "DR-STABLE": "GT preferred both and absolute margin change <= 0.10",
+      "DR-PARTIAL": "GT preferred both and absolute margin change > 0.10",
+      "DR-FLIP": "ordering reverses",
+      "DR-WRONG-STABLE": "WRONG preferred both"
+    },
+    "safe": ["DR-STABLE", "DR-PARTIAL"]
+  },
+  "fang": {
+    "mandatory": true,
+    "survivorRequiresGtPreferredLocked": true,
+    "survivorRequiresGtPreferred81": true
+  },
+  "localSurvivorRule": {
+    "allClausesRequired": true,
+    "clauses": [
+      "owner locked positive >=4/6",
+      "owner 81 positive >=4/6",
+      "locked successes include Qinghe and Kaifeng",
+      "81 successes include Qinghe and Kaifeng",
+      "Fang GT preferred locked",
+      "Fang GT preferred 81",
+      "General drift locked safe",
+      "General drift 81 safe",
+      "candidate population unchanged",
+      "no production gate/beam changes"
+    ],
+    "relaxationForbidden": true
+  },
+  "retrieval": {
+    "conditional": "ONLY local survivors; none => SKIPPED_NO_LOCAL_SURVIVORS",
+    "population": "frozen deterministic 424-center Dashen z5 retrieval population; sorted tile centers",
+    "fusion": "same surviving raw equal-weight fusion formula",
+    "samePose": true,
+    "poseGrid": "same 81-pose grid at every center",
+    "extraNormalization": false,
+    "report": ["GT-neighborhood rank", "wrong centers above GT", "ties", "false-basin components", "largest false component", "false-basin concentration", "uniqueness", "runtime median", "runtime p95"],
+    "falseBasinConnectivity": 8,
+    "uniqueness": "1-count(non-GT scores >= GTscore-0.01)/max(1,N_nonGT)"
+  },
+  "retrievalSafety": {
+    "safe": "no persistent wrong sampled basin stronger than GT-neighborhood ordering under the surviving fusion head",
+    "unsafe": "persistent false-basin condition established by connected concentration and repeated dominance",
+    "stressEligibility": "only retrieval-safe local survivors"
+  },
+  "stress40Frame": {
+    "conditional": "ONLY retrieval-safe survivors; otherwise SKIPPED_NO_RETRIEVAL_SAFE_SURVIVORS",
+    "fixture": "wwmsync-gfn-motion-20260810-143835.zip",
+    "sha256": "aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216",
+    "absoluteGtAvailable": false,
+    "populationAndPose": "unchanged 424-center retrieval population and same 81-pose grid",
+    "report": ["top-center recurrence", "basin persistence", "candidate diversity", "normalized natural-log Shannon entropy", "consecutive center movement", "top-vs-runner fused-margin stability", "runtime"],
+    "temporalVoting": false,
+    "localizationTruthClaimForbidden": true
+  },
+  "verdict": {
+    "allowed": ["FA1 — COMMON FUSION SURVIVES", "FA2 — PARTIAL FUSION RESCUE", "FA3 — FUSION NON-SEPARABLE", "FA4 — FUSION UNSAFE"],
+    "precedence": [
+      "FA1 only if a fusion head passes all local survivor clauses, Fang, both drift stages, retrieval safety, and conditional stress safety",
+      "otherwise FA4 if unsafe persistent false-basin evidence exists",
+      "otherwise FA2 if meaningful partial positive separation exists",
+      "otherwise FA3"
+    ],
+    "meaningfulPartialPositiveSeparation": "at least one F1/F2/F3 produces positive GT-vs-WRONG margin on at least one owner unique control or Fang in locked or symmetric-81 evaluation without satisfying FA1 and without FA4"
+  },
+  "hardProjectClosure": {
+    "ifVerdictNotFA1": true,
+    "markdownPath": "docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.md",
+    "jsonPath": "docs/wwmsync/audits/wwmsync-representation-research-closure-2026-08-17.json",
+    "requiredState": {
+      "Phase0": "COMPLETE",
+      "DescriptorV2": "V2-RD2",
+      "LearnedV1": "LR2",
+      "ProductionCandidate": "NONE",
+      "ProductionChange": "NO",
+      "FurtherRepresentationResearchUnderThisProject": "STOP",
+      "NextResearchTaskJustified": "NO"
+    }
+  },
+  "ifFA1": {
+    "productionChange": "NO",
+    "productionFeasibilityArchitectureTaskJustified": true,
+    "futureScopeOnly": ["browser deployability", "model size", "latency", "caching", "offline/runtime constraints", "fallback behavior", "memory", "implementation risk"]
+  },
+  "hardStopPolicy": {
+    "noAutomaticResearchRoundAfterThis": true,
+    "ifNoCompleteSurvivor": "CLOSE_WWMSYNC_REPRESENTATION_RESEARCH",
+    "doNotPropose": ["another handcrafted descriptor", "another foundation model", "another fusion family", "domain adaptation", "fine-tuning", "learned weights", "another acquisition", "another temporal audit"]
+  },
+  "forbidden": ["weight sweep", "learned fusion", "trained classifier", "PCA", "VLAD", "CORAL", "fine-tuning", "LoRA", "adapter", "new foundation model", "new descriptor", "new temporal protocol", "new recording", "new GT acquisition", "new threshold", "new beam"],
+  "productionGuards": {
+    "protectedBlobSha1": {
+      "vision-sync.js": "58b5a1babf6a12b944f9b745b8bf7f7df573bf9b",
+      "dashen-tile-cache.js": "9388960a8bff53a9cfc7471372af144b7a28c34f",
+      "tools/build_dashen_visual_cache.py": "1a227d06ae41660ea3e3b832e7f1921cc507c0d7"
+    },
+    "structural": 0.58,
+    "intensity": 0.42,
+    "coarseBeam": 8,
+    "productionWwsyncUntouched": true,
+    "productionChange": "NO"
+  }
+}
