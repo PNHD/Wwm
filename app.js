@@ -5,6 +5,7 @@ const MAP_ASSET_ROOT='https://www.wherewindsmeetgame.com/pc/zt/20260526175803/';
 const LANG_KEY='wwmsync:lang';
 const UID_KEY='wwmsync:uid';
 const FILTER_KEY='wwmsync:hide-completed';
+const POI_CALIBRATION_MODE=new URLSearchParams(location.search).get('gt-poi-calibration')==='1';
 
 const MAP_CONFIG={
   1:{name:'Qinghe',mapName:'qinghe',minZoom:8,maxZoom:13,initialZoom:11,center:[-.8166,1.49071],bounds:[[-2.8,0],[0,2.8]]},
@@ -182,6 +183,12 @@ function pointCoordinates(point){
   const parse=value=>Number.isFinite(Number(value))?parseInt(String(value),8)/1e5:0;
   return[parse(point.lng),parse(point.lat)];
 }
+function catalogueSelection(point,lat,lng){
+  if(!state.map)throw new Error('WWMSync map is unavailable.');
+  const referenceZoom=window.__WWMSYNC_VISION_BRIDGE__?.state?.().referenceZoom??11;
+  const projected=state.map.project(window.L.latLng(lat,lng),referenceZoom);
+  return{id:point.id,name:point.name||'',type:point.type||point.categoryName||'',category:point.categoryName||point.type||'',mapId:state.mapId,catalogueCoordinate:{lat,lng},projected:{x:projected.x,y:projected.y}};
+}
 function leafletBounds(cfg){return window.L.latLngBounds([cfg.bounds[0][1],cfg.bounds[0][0]],[cfg.bounds[1][1],cfg.bounds[1][0]])}
 async function ensureMap(){
   const L=window.L;
@@ -202,6 +209,7 @@ function renderPoints(){
     const[lng,lat]=pointCoordinates(point);
     const marker=L.circleMarker([lat,lng],{renderer:state.pointRenderer,radius:5,color:'#101418',weight:1.2,fillColor:point.finished?'#62d6a8':'#e4b55c',fillOpacity:point.finished?0.65:0.92});
     marker.bindPopup(`<div class="popup-title">${escapeHtml(point.name||'')}</div><div class="popup-meta">${escapeHtml(point.categoryName||'')}</div><div class="${point.finished?'popup-done':'popup-open'}">${t(point.finished?'pointCompleted':'pointNotCompleted')}</div>`);
+    if(POI_CALIBRATION_MODE)marker.on('click',()=>window.dispatchEvent(new CustomEvent('wwmsync:catalogue-point-selected',{detail:catalogueSelection(point,lat,lng)})));
     marker.addTo(state.pointLayer);
   }
 }

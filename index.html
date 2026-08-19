@@ -92,6 +92,21 @@
           <p id="gtStatus" class="vision-status" role="status" aria-live="polite"></p>
         </section>
 
+        <section class="panel gt-poi-calibration" id="gtPoiCalibrationPanel" hidden>
+          <div class="section-head"><h2>POI Calibration Capture</h2><span class="status-badge warn">DEV ONLY</span></div>
+          <p class="fineprint">Evidence acquisition only. Freeze one raw minimap frame, then bind two visibly well-separated icon centres to two existing WWMSync catalogue markers. No tracker or WALK truth is used.</p>
+          <div class="gt-motion-actions">
+            <button id="gtPoiCapture" class="primary-button" type="button">1. Capture calibration frame</button>
+            <button id="gtPoiPickA" class="secondary-button" type="button" disabled>2A. Click POI A icon centre</button>
+            <button id="gtPoiMapA" class="secondary-button" type="button" disabled>2A. Select POI A catalogue marker</button>
+            <button id="gtPoiPickB" class="secondary-button" type="button" disabled>2B. Click POI B icon centre</button>
+            <button id="gtPoiMapB" class="secondary-button" type="button" disabled>2B. Select POI B catalogue marker</button>
+            <button id="gtPoiExport" class="primary-button" type="button" disabled>3. Export calibration</button>
+          </div>
+          <img id="gtPoiFrame" class="gt-poi-frame" alt="Frozen raw minimap ROI. Click POI icon centres here." hidden>
+          <p id="gtPoiA" class="fineprint"></p><p id="gtPoiB" class="fineprint"></p><p id="gtPoiStatus" class="vision-status" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="panel progress-panel">
           <div class="section-head"><h2 data-i18n="progress">Tiến độ game</h2><span id="syncStateBadge" class="status-badge neutral">Chưa nhập snapshot.</span></div>
           <div class="progress-grid"><div><span data-i18n="completed">Đã hoàn thành</span><strong id="completedCount">0</strong></div><div><span data-i18n="totalPoints">Tổng điểm</span><strong id="totalCount">0</strong></div></div>
@@ -127,6 +142,8 @@
   <script src="/vision-sync.js"></script>
   <script src="/gt-motion-fixture-core.js"></script>
   <script src="/gt-motion-fixture.js"></script>
+  <script src="/gt-poi-calibration-core.js"></script>
+  <script src="/gt-poi-calibration.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
