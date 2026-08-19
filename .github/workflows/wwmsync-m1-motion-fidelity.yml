@@ -1,4 +1,4 @@
-name: WWMSync M1.1 Motion Fidelity Acceptance
+name: WWMSync M1.2 Static-Support Outcome
 
 on:
   push:
@@ -8,6 +8,9 @@ on:
       - 'index.html'
       - 'vision-sync.css'
       - 'tools/replay-m1-manual-relative.mjs'
+      - 'tools/replay-m1-2-static-held-red.mjs'
+      - 'docs/wwmsync/audits/m1-2-relative-motion-fidelity-preregistration-2026-08-19.json'
+      - 'docs/wwmsync/audits/m1-2-static-held-before-after-2026-08-19.json'
       - '.github/workflows/wwmsync-m1-motion-fidelity.yml'
   pull_request:
     branches: [feature/wwm-native-sync-v2]
@@ -16,6 +19,9 @@ on:
       - 'index.html'
       - 'vision-sync.css'
       - 'tools/replay-m1-manual-relative.mjs'
+      - 'tools/replay-m1-2-static-held-red.mjs'
+      - 'docs/wwmsync/audits/m1-2-relative-motion-fidelity-preregistration-2026-08-19.json'
+      - 'docs/wwmsync/audits/m1-2-static-held-before-after-2026-08-19.json'
       - '.github/workflows/wwmsync-m1-motion-fidelity.yml'
   workflow_dispatch:
 
@@ -34,20 +40,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify M1.1 runtime boundary
+      - name: Verify M1.2 partial-outcome boundary
         shell: bash
         run: |
           set -euo pipefail
           node --check vision-sync.js
-          node --check tools/replay-m1-manual-relative.mjs
-          grep -Fq 'M1_1_MOTION_FIDELITY_V1' vision-sync.js
-          grep -Fq "implementation:'BOUNDED_COARSE_TO_FINE_LATEST_FRAME'" vision-sync.js
-          grep -Fq 'COARSE_SEARCH_RADIUS' vision-sync.js
-          grep -Fq 'RECOVERABLE_MOTION_BOUND' vision-sync.js
-          grep -Fq 'LATEST_FRAME_SINGLE_INFLIGHT' vision-sync.js
-          grep -Fq 'TWO_MANUAL_MAP_ANCHORS_GLOBAL_SCALAR' vision-sync.js
-          grep -Fq 'best.score<.82' vision-sync.js
-          grep -Fq 'energy<5.5' vision-sync.js
+          node --check tools/replay-m1-2-static-held-red.mjs
+          grep -Fq 'M1_2_STATIC_CONTENT_SUPPRESSION_V1' vision-sync.js
+          grep -Fq 'DYNAMIC_INNER_RADIUS=48' vision-sync.js
+          grep -Fq 'DYNAMIC_OUTER_RADIUS=72' vision-sync.js
+          grep -Fq 'MOTION_EVIDENCE_MIN=.05' vision-sync.js
+          grep -Fq 'FIXED_RATE_LATEST_FRAME_SINGLE_INFLIGHT' vision-sync.js
+          grep -Fq 'calibration-disabled-m1-2' vision-sync.js
+          grep -Fq 'absoluteLocalization:false' vision-sync.js
           ! grep -Fq 'applyAbsoluteFix' vision-sync.js
           ! grep -Fq 'ANCHOR_FREE_STRUCTURAL' vision-sync.js
           ! grep -Fq '__WWMSYNC_ABSOLUTE_REPLAY__' vision-sync.js
@@ -94,23 +99,24 @@ jobs:
           p.write_text(s,encoding='utf-8')
           PY
 
-      - name: Run authoritative M1.1 motion fidelity matrix
+      - name: Run authoritative M1.2 frozen primary-gate outcome
         shell: bash
         run: |
           set -euo pipefail
-          node tools/replay-m1-manual-relative.mjs \
+          M1_2_RECORD_ONLY=1 node tools/replay-m1-2-static-held-red.mjs \
             --site m1-site \
             --fixture '${{ steps.fixture.outputs.fixture_dir }}' \
             --archive '${{ steps.fixture.outputs.archive }}' \
-            --report m1-output/wwmsync-m1-motion-fidelity.json
-          jq '{verdict,motionSource,zeroMotion,displacementSweep,scheduling,scaleCalibration,realReplay:{stride1:.realReplay.stride1.summary,stride2:.realReplay.stride2.comparison,stride3:.realReplay.stride3.comparison,deterministic:.realReplay.deterministic},absoluteMatcher}' m1-output/wwmsync-m1-motion-fidelity.json
-          test "$(jq -r '.verdict' m1-output/wwmsync-m1-motion-fidelity.json)" = 'M1.1-PASS'
+            --report m1-output/wwmsync-m1-2-static-held.json
+          jq '{runtime,requiredMinimumGain,results,redObserved}' m1-output/wwmsync-m1-2-static-held.json
+          test "$(jq -r '.redObserved' m1-output/wwmsync-m1-2-static-held.json)" = 'true'
+          test "$(jq -r '.verdict' docs/wwmsync/audits/m1-2-static-held-before-after-2026-08-19.json)" = 'M1.2-PARTIAL'
 
       - name: Upload authoritative M1.1 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: wwmsync-m1-motion-fidelity-${{ github.run_id }}
+          name: wwmsync-m1-2-static-support-outcome-${{ github.run_id }}
           path: m1-output/
           if-no-files-found: error
           retention-days: 90
