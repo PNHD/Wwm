@@ -31,8 +31,8 @@ jobs:
           node --check sw.js
           python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'getDisplayMedia' vision-sync.js
-          grep -Fq 'M1_MANUAL_RELATIVE_V1' vision-sync.js
-          grep -Fq "implementation:'EXISTING_REUSED'" vision-sync.js
+          grep -Fq 'M1_1_MOTION_FIDELITY_V1' vision-sync.js
+          grep -Fq "implementation:'BOUNDED_COARSE_TO_FINE_LATEST_FRAME'" vision-sync.js
           grep -Fq 'dual-source-agnostic' vision-sync.js
           grep -Fq 'absoluteLocalization:false' vision-sync.js
           grep -Fq 'manualSeed' vision-sync.js
@@ -101,8 +101,8 @@ jobs:
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/vision-sync.js" -o /tmp/vision-sync.js
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/dashen-cache/manifest.json" -o /tmp/cache.json
           grep -Fq '<script src="/vision-sync.js"></script>' /tmp/root.html
-          grep -Fq 'M1_MANUAL_RELATIVE_V1' /tmp/vision-sync.js
-          grep -Fq "implementation:'EXISTING_REUSED'" /tmp/vision-sync.js
+          grep -Fq 'M1_1_MOTION_FIDELITY_V1' /tmp/vision-sync.js
+          grep -Fq "implementation:'BOUNDED_COARSE_TO_FINE_LATEST_FRAME'" /tmp/vision-sync.js
           grep -Fq 'absoluteLocalization:false' /tmp/vision-sync.js
           ! grep -Fq 'ANCHOR_FREE_STRUCTURAL_' /tmp/vision-sync.js
           ! grep -Fq '__WWMSYNC_ABSOLUTE_REPLAY__' /tmp/vision-sync.js
@@ -123,7 +123,7 @@ jobs:
             p.on('pageerror',e=>errors.push(e.message));
             const r=await p.goto(process.env.EXACT_URL,{waitUntil:'domcontentloaded',timeout:60000});
             if(!r?.ok())throw new Error(`HTTP ${r?.status()}`);
-            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_MANUAL_RELATIVE_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='EXISTING_REUSED'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.L?.map==='function',null,{timeout:30000});
+            await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_1_MOTION_FIDELITY_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='BOUNDED_COARSE_TO_FINE_LATEST_FRAME'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.L?.map==='function',null,{timeout:30000});
             const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),mapOptions:document.querySelectorAll('#mapSelect option').length}));
             console.log('DIRECT_RUNTIME',JSON.stringify(s));
             console.log('PAGE_ERRORS',JSON.stringify(errors));
