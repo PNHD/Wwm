@@ -39,7 +39,10 @@ jobs:
           node --check dashen-tile-cache.js
           node --check gt-motion-fixture-core.js
           node --check gt-motion-fixture.js
+          node --check gt-poi-calibration-core.js
+          node --check gt-poi-calibration.js
           node --check sw.js
+          node --test tools/test-gt-poi-calibration.mjs
           python -m py_compile tools/build_dashen_visual_cache.py
           grep -Fq 'getDisplayMedia' vision-sync.js
           grep -Fq 'M1_MANUAL_RELATIVE_V1' vision-sync.js
@@ -54,6 +57,16 @@ jobs:
           grep -Fq '<script src="/vision-sync.js"></script>' index.html
           grep -Fq '<script src="/gt-motion-fixture-core.js"></script>' index.html
           grep -Fq '<script src="/gt-motion-fixture.js"></script>' index.html
+          grep -Fq '<script src="/gt-poi-calibration-core.js"></script>' index.html
+          grep -Fq '<script src="/gt-poi-calibration.js"></script>' index.html
+          grep -Fq 'WWMSyncPoiCalibrationCore' gt-poi-calibration-core.js
+          grep -Fq "params.get('gt-poi-calibration')!=='1'" gt-poi-calibration.js
+          grep -Fq "coordinateSpace:'raw-roi-source-pixels'" gt-poi-calibration-core.js
+          grep -Fq 'trackerUsedForTruth:false' gt-poi-calibration-core.js
+          grep -Fq 'walkOutcomeUsed:false' gt-poi-calibration-core.js
+          grep -Fq 'scaleAppliedToRuntime:false' gt-poi-calibration-core.js
+          grep -Fq 'orientationAppliedToRuntime:false' gt-poi-calibration-core.js
+          grep -Fq 'absoluteLocalization:false' gt-poi-calibration-core.js
           ! grep -Fq '<script src="/vision-sync-loader.js"></script>' index.html
           grep -Fq 'display-capture=(self)' _headers
 
@@ -61,9 +74,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf dist && mkdir dist
-          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js gt-motion-fixture-core.js gt-motion-fixture.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
+          cp index.html styles.css vision-sync.css app.js vision-sync.js dashen-tile-cache.js official-sync.js gt-motion-fixture-core.js gt-motion-fixture.js gt-poi-calibration-core.js gt-poi-calibration.js sw.js manifest.webmanifest _redirects _headers robots.txt dist/
           test -s dist/gt-motion-fixture-core.js
           test -s dist/gt-motion-fixture.js
+          test -s dist/gt-poi-calibration-core.js
+          test -s dist/gt-poi-calibration.js
           python tools/build_dashen_visual_cache.py dist/dashen-cache
           test -s dist/dashen-cache/manifest.json
           test -s dist/dashen-cache/main/3/0_0.png
@@ -116,12 +131,18 @@ jobs:
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/vision-sync.js" -o /tmp/vision-sync.js
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/gt-motion-fixture-core.js" -o /tmp/gt-motion-fixture-core.js
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/gt-motion-fixture.js" -o /tmp/gt-motion-fixture.js
+          curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/gt-poi-calibration-core.js" -o /tmp/gt-poi-calibration-core.js
+          curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/gt-poi-calibration.js" -o /tmp/gt-poi-calibration.js
           curl -fsSL --retry 12 --retry-delay 3 --retry-all-errors "$base/dashen-cache/manifest.json" -o /tmp/cache.json
           grep -Fq '<script src="/vision-sync.js"></script>' /tmp/root.html
           grep -Fq '<script src="/gt-motion-fixture-core.js"></script>' /tmp/root.html
           grep -Fq '<script src="/gt-motion-fixture.js"></script>' /tmp/root.html
+          grep -Fq '<script src="/gt-poi-calibration-core.js"></script>' /tmp/root.html
+          grep -Fq '<script src="/gt-poi-calibration.js"></script>' /tmp/root.html
           grep -Fq 'WWMSyncGroundTruthFixtureCore' /tmp/gt-motion-fixture-core.js
           grep -Fq "params.get('gt-motion-fixture')==='1'" /tmp/gt-motion-fixture.js
+          grep -Fq 'WWMSyncPoiCalibrationCore' /tmp/gt-poi-calibration-core.js
+          grep -Fq "params.get('gt-poi-calibration')!=='1'" /tmp/gt-poi-calibration.js
           grep -Fq 'M1_MANUAL_RELATIVE_V1' /tmp/vision-sync.js
           grep -Fq "implementation:'EXISTING_REUSED'" /tmp/vision-sync.js
           grep -Fq 'absoluteLocalization:false' /tmp/vision-sync.js
@@ -140,21 +161,26 @@ jobs:
           const { chromium }=require(process.cwd()+'/node_modules/playwright-core');
           (async()=>{
             const b=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            async function load(url, acquisition){
+            async function load(url, mode){
               const p=await b.newPage({viewport:{width:1440,height:900}}),errors=[];
               p.on('pageerror',e=>errors.push(e.message));
               const r=await p.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
               if(!r?.ok())throw new Error(`HTTP ${r?.status()}`);
               await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_MANUAL_RELATIVE_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='EXISTING_REUSED'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.L?.map==='function',null,{timeout:30000});
-              if(acquisition)await p.waitForFunction(()=>document.getElementById('gtMotionFixturePanel')?.hidden===false,null,{timeout:30000});
-              const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),hasStartVision:!!document.getElementById('visionStartButton'),gtPanelHidden:document.getElementById('gtMotionFixturePanel')?.hidden,mapOptions:document.querySelectorAll('#mapSelect option').length}));
-              console.log(acquisition?'ACQUISITION_RUNTIME':'DIRECT_RUNTIME',JSON.stringify(s));
-              console.log(acquisition?'ACQUISITION_PAGE_ERRORS':'PAGE_ERRORS',JSON.stringify(errors));
+              if(mode==='motion')await p.waitForFunction(()=>document.getElementById('gtMotionFixturePanel')?.hidden===false,null,{timeout:30000});
+              if(mode==='poi')await p.waitForFunction(()=>document.getElementById('gtPoiCalibrationPanel')?.hidden===false,null,{timeout:30000});
+              const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),hasStartVision:!!document.getElementById('visionStartButton'),gtPanelHidden:document.getElementById('gtMotionFixturePanel')?.hidden,poiPanelHidden:document.getElementById('gtPoiCalibrationPanel')?.hidden,poiRecorderType:typeof window.WWMSyncPoiCalibrationCore?.PoiCalibrationRecorder,mapOptions:document.querySelectorAll('#mapSelect option').length}));
+              console.log(`${mode.toUpperCase()}_RUNTIME`,JSON.stringify(s));
+              console.log(`${mode.toUpperCase()}_PAGE_ERRORS`,JSON.stringify(errors));
               await p.close();
-              if(errors.length||s.leafletMapType!=='function'||!s.hasMapShell||!s.hasSeedAction||!s.hasStartVision||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined'||(acquisition?s.gtPanelHidden!==false:s.gtPanelHidden!==true))process.exit(1);
+              const commonBad=errors.length||s.leafletMapType!=='function'||!s.hasMapShell||!s.hasSeedAction||!s.hasStartVision||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined'||s.poiRecorderType!=='function';
+              const modeBad=mode==='ordinary'?(s.gtPanelHidden!==true||s.poiPanelHidden!==true):mode==='motion'?(s.gtPanelHidden!==false||s.poiPanelHidden!==true):(s.gtPanelHidden!==true||s.poiPanelHidden!==false);
+              if(commonBad||modeBad)process.exit(1);
             }
-            await load(process.env.EXACT_URL,false);
-            await load(`${process.env.EXACT_URL.replace(/\/$/,'')}?gt-motion-fixture=1&app-commit=${process.env.SOURCE_SHA}`,true);
+            const base=process.env.EXACT_URL.replace(/\/$/,'');
+            await load(process.env.EXACT_URL,'ordinary');
+            await load(`${base}?gt-motion-fixture=1&app-commit=${process.env.SOURCE_SHA}`,'motion');
+            await load(`${base}?gt-poi-calibration=1&app-commit=${process.env.SOURCE_SHA}`,'poi');
             await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
