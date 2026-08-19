@@ -1,0 +1,57 @@
+name: Verify WWMSync Ground-Truth Motion Fixture
+
+on:
+  push:
+    branches: [feat/wwmsync-gt-motion-fixture-acquisition]
+    paths:
+      - 'gt-motion-fixture-core.js'
+      - 'gt-motion-fixture.js'
+      - 'vision-sync.js'
+      - 'vision-sync.css'
+      - 'index.html'
+      - 'tools/test-gt-motion-fixture.mjs'
+      - '.github/workflows/wwmsync-gt-motion-fixture.yml'
+  pull_request:
+    branches: [feature/wwm-native-sync-v2]
+    paths:
+      - 'gt-motion-fixture-core.js'
+      - 'gt-motion-fixture.js'
+      - 'vision-sync.js'
+      - 'vision-sync.css'
+      - 'index.html'
+      - 'tools/test-gt-motion-fixture.mjs'
+      - '.github/workflows/wwmsync-gt-motion-fixture.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recorder-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate acquisition recorder contract with synthetic PNG bytes only
+        run: |
+          set -euo pipefail
+          mkdir -p acquisition-output
+          node --check gt-motion-fixture-core.js
+          node --check gt-motion-fixture.js
+          node --check vision-sync.js
+          node --test tools/test-gt-motion-fixture.mjs | tee acquisition-output/test-output.txt
+      - name: Record immutable CI evidence
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^ HEAD > acquisition-output/changed-files.txt
+          sha256sum acquisition-output/test-output.txt acquisition-output/changed-files.txt > acquisition-output/sha256sums.txt
+          node -e "const fs=require('node:fs');const crypto=require('node:crypto');const files=fs.readFileSync('acquisition-output/changed-files.txt','utf8').trim().split('\\n').filter(Boolean);const out={taskId:'WWMSYNC-GT-MOTION-FIXTURE-V1',branch:process.env.GITHUB_REF_NAME,commit:process.env.GITHUB_SHA,acquisitionMode:'?gt-motion-fixture=1&app-commit=<exact-40-char-SHA>',fixtureContract:'synthetic PNG bytes verify recorder contract only; no synthetic tracker output is ground truth',zipStructure:'manifest.json + run-walk/run-run/run-sprint + README.txt',changedFiles:files,sha256:crypto.createHash('sha256').update(fs.readFileSync('acquisition-output/test-output.txt')).digest('hex')};fs.writeFileSync('acquisition-output/acquisition-acceptance.json',JSON.stringify(out,null,2)+'\\n');"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wwmsync-gt-motion-fixture-${{ github.run_id }}
+          path: acquisition-output/
+          if-no-files-found: error
+          retention-days: 90

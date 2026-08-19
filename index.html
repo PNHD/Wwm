@@ -78,6 +78,20 @@
           <div id="visionStatus" class="vision-status" role="status" aria-live="polite">Vision Sync đang tắt.</div>
         </section>
 
+        <section class="panel gt-motion-fixture" id="gtMotionFixturePanel" hidden>
+          <div class="section-head"><h2>Ground Truth Motion Fixture</h2><span class="status-badge warn">DEV ONLY</span></div>
+          <p class="fineprint">For each WALK, RUN, and SPRINT traversal: select the actual start map position, record raw minimap ROI frames, then select the actual end map position. Stay still for about 2 seconds before and after moving.</p>
+          <div class="gt-motion-actions">
+            <button id="gtStart" class="secondary-button" type="button">1. Select start</button>
+            <button id="gtRecord" class="primary-button" type="button" disabled>2. Start recording</button>
+            <button id="gtStop" class="secondary-button" type="button" disabled>3. Stop / Select end</button>
+            <button id="gtNext" class="secondary-button" type="button" disabled>4. Next run</button>
+            <button id="gtExport" class="primary-button" type="button" disabled>5. Export fixture</button>
+          </div>
+          <p class="fineprint"><strong id="gtRun">WALK</strong> · <span id="gtCount">0/300 frames</span></p>
+          <p id="gtStatus" class="vision-status" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="panel progress-panel">
           <div class="section-head"><h2 data-i18n="progress">Tiến độ game</h2><span id="syncStateBadge" class="status-badge neutral">Chưa nhập snapshot.</span></div>
           <div class="progress-grid"><div><span data-i18n="completed">Đã hoàn thành</span><strong id="completedCount">0</strong></div><div><span data-i18n="totalPoints">Tổng điểm</span><strong id="totalCount">0</strong></div></div>
@@ -111,6 +125,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/dashen-tile-cache.js"></script>
   <script src="/vision-sync.js"></script>
+  <script src="/gt-motion-fixture-core.js"></script>
+  <script src="/gt-motion-fixture.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
