@@ -65,13 +65,15 @@
               <div class="vision-diagnostic-row"><span data-vision-i18n="correctedDelta">Corrected player dx/dy</span><code id="visionCorrectedDelta">+0.000, +0.000 map px</code></div>
               <div class="vision-diagnostic-row"><span data-vision-i18n="cumulative">Cumulative displacement</span><code id="visionCumulative">+0.000, +0.000 map px</code></div>
               <div class="vision-diagnostic-row"><span data-vision-i18n="markerDelta">Marker Δ lat/lng</span><code id="visionMarkerDelta">+0.000, +0.000</code></div>
-              <div class="vision-diagnostic-row"><span data-vision-i18n="diagConfidence">Confidence</span><code id="visionDiagnosticConfidence">0% · corr 0.000 · energy 0.00</code></div>
-              <div class="vision-diagnostic-row hold"><span data-vision-i18n="holdReason">HOLD reason</span><code id="visionHoldReason">—</code></div>
+                <div class="vision-diagnostic-row"><span data-vision-i18n="diagConfidence">Confidence</span><code id="visionDiagnosticConfidence">0% · corr 0.000 · energy 0.00</code></div>
+                <div class="vision-diagnostic-row"><span data-vision-i18n="timing">Capture / processing</span><code id="visionPipelineDiagnostics">cap 0 · proc 0 · drop 0 · q 0/0</code></div>
+                <div class="vision-diagnostic-row hold"><span data-vision-i18n="holdReason">HOLD reason</span><code id="visionHoldReason">—</code></div>
             </div>
             <details class="vision-tuning">
               <summary data-vision-i18n="advanced">Tinh chỉnh</summary>
               <label class="range-row"><span data-vision-i18n="roiSize">Kích thước ROI</span><input id="visionRoiSize" type="range" min="0.12" max="0.34" step="0.01" value="0.25"><output id="visionRoiValue">25%</output></label>
-              <label class="range-row"><span data-vision-i18n="scale">Tỉ lệ di chuyển</span><input id="visionScale" type="range" min="0.25" max="6" step="0.05" value="1"><output id="visionScaleValue">1.00×</output></label>
+                <div class="range-row"><span data-vision-i18n="scale">Tỉ lệ di chuyển</span><output id="visionScaleValue">1.000× global</output></div>
+                <button id="visionCalibrateButton" class="secondary-button vision-anchor" type="button" disabled hidden aria-hidden="true">Calibration disabled pending fidelity validation</button>
               <label class="range-row"><span data-vision-i18n="orientation">Bù hướng minimap</span><input id="visionOrientation" type="range" min="-180" max="180" step="1" value="0"><output id="visionOrientationValue">0°</output></label>
             </details>
           </div>
