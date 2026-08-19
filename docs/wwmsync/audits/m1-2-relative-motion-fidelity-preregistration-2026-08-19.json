@@ -1,0 +1,102 @@
+{
+  "schema": "wwmsync-m1-2-relative-motion-fidelity-preregistration-v1",
+  "date": "2026-08-19",
+  "outcomesInspected": false,
+  "scope": {
+    "architecture": "manual seed -> relative motion estimator -> map marker",
+    "representationResearch": "CLOSED",
+    "absoluteLocalization": false,
+    "absoluteMatcher": "DISABLED_REQUIRED",
+    "calibrationExposure": "DISABLED_OWNER_FACING"
+  },
+  "authoritativeInputFixture": {
+    "archive": "wwmsync-gfn-motion-20260810-143835.zip",
+    "sha256": "aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216",
+    "frameCount": 40,
+    "nominalCaptureIntervalMs": 200,
+    "fixtureAssetId": "511291145"
+  },
+  "coordinateUnits": {
+    "estimator": "work px",
+    "syntheticSourceCanvas": "216 source px",
+    "workCanvas": "192 work px",
+    "sourceToWork": "work = source * 192 / 216",
+    "translationExpectations": "work px",
+    "terrainToPlayer": "player map displacement = -terrain image displacement"
+  },
+  "primarySupportCorrection": {
+    "kind": "FIXED_DYNAMIC_ANNULUS",
+    "innerRadiusWorkPx": 48,
+    "outerRadiusWorkPx": 72,
+    "selection": "fixed before M1.2 outcome scoring; no annulus sweep or per-control tuning"
+  },
+  "staticHeldComposite": {
+    "template": "per-pixel temporal mean of all 40 deterministic real-fixture work-feature fields",
+    "residual": "selected frame work-feature field minus that fixed template",
+    "pairA": "template + residual",
+    "pairB": "template + translate(residual, known work-px displacement)",
+    "knownTranslationsWorkPx": [1, 2, 3, 4, 6, 8, 10],
+    "support": "same preregistered fixed dynamic annulus used by the estimator"
+  },
+  "motionEvidence": {
+    "metric": "peakAdvantage = bestCandidateScore - zeroDisplacementScore",
+    "validMotionMinimumPeakAdvantage": 0.05,
+    "validMotion": "nonzero candidate, texture sufficient, bounded dt-aware search, and peakAdvantage >= 0.05",
+    "noMotion": "zero-displacement candidate within 0.05 work px with stable zero-hypothesis evidence; integrates zero and advances reference",
+    "unreliable": "otherwise; does not move marker, advances reference deliberately, increments lostMotionIntervals, and reports degraded tracking"
+  },
+  "zeroAndFalseMotionRules": {
+    "zeroRawMagnitudeMaxWorkPx": 0.05,
+    "zeroCumulativeMovementMaxMapPx": 0.25,
+    "falseMotionInput": "deterministically decorrelated/unrelated real-fixture fields",
+    "falseMotionRequiredClass": "UNRELIABLE",
+    "falseMotionMarkerMovement": "forbidden"
+  },
+  "acceptanceGates": {
+    "wholeFrameGainWorkPxRange": [0.97, 1.03],
+    "wholeFrameSweepWorkPx": [0.5, 19.0],
+    "subpixelSweepWorkPx": [0.1, 1.0],
+    "subpixelAbsoluteErrorMaxWorkPx": 0.15,
+    "directionErrorMaxDegrees": 5,
+    "staticHeldGainMinimum": 0.85,
+    "stride2RetentionMinimum": 0.92,
+    "stride3RetentionMinimum": 0.9,
+    "stride23DirectionErrorMaxDegrees": 10,
+    "stride3RejectedPairsMaximum": 1,
+    "stride4RetentionDiagnosticTarget": 0.8,
+    "stride4Blocking": false
+  },
+  "captureCadenceContract": {
+    "nominalIntervalMs": 200,
+    "clock": "fixed-rate setInterval started independently of processing completion",
+    "processing": "at most one in flight",
+    "queue": "at most one freshest pending frame; replacement drops obsolete pending frame",
+    "latestResult": "latest completed result only",
+    "telemetry": ["captureTimestamp", "processingStartTimestamp", "processingEndTimestamp", "pairDtMs", "frameAgeMs", "capturedFrames", "processedFrames", "droppedFrames", "maxQueueDepth", "latestResultAgeMs"],
+    "semanticGates": {"maxQueueDepth": 1, "unboundedBacklog": false},
+    "ciPerformanceDiagnostics": {"p95PairDtMs": 350, "latestResultAgeMaxMs": 400, "processingDutyCycleMax": 0.6}
+  },
+  "dtAwareSearch": {
+    "formula": "searchRadiusWorkPx = min(19, max(3, ceil(8 * pairDtMs / 200)))",
+    "nominalPairDtMs": 200,
+    "maximumRadiusWorkPx": 19,
+    "rationale": "nominal radius 8 covers the observed 1-2 work-px real pairs with bounded cost; scaling is capped by the previously measured 19.5 work-px pure-translation capability"
+  },
+  "rejectionStateSemantics": {
+    "validMotion": "integrate delta and advance reference",
+    "noMotion": "integrate zero and advance reference",
+    "unreliable": "advance reference, increment explicit lostMotionIntervals, preserve marker position, report degraded status",
+    "forbidden": ["indefinitely holding an old previous frame", "silent multi-interval reset", "fabricated motion"]
+  },
+  "calibrationPolicy": {
+    "m1_1PersistedKey": "wwmsync:vision-metric-scale-v1",
+    "m1_2Action": "ignore and remove the legacy persisted value on initialization; use fixed relative scale 1.0",
+    "twoAnchorControl": "hidden and disabled; no owner-facing calibration action",
+    "syntheticTests": "must not persist inferred physical scale or claim physical meters/map scale"
+  },
+  "verdictDefinitions": {
+    "M1.2-AUTO-PASS": "all frozen estimator, stride, scheduler, safety, calibration-disabled, absolute-disabled, and old-M1 regression gates pass",
+    "M1.2-PARTIAL": "primary defect materially improves but one or more frozen required gates remain unresolved",
+    "M1.2-FAIL": "fixed dynamic annulus fails the primary fidelity gate; stop without post-hoc matcher/support changes"
+  }
+}
