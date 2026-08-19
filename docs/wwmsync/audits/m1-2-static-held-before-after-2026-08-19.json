@@ -1,0 +1,21 @@
+{
+  "schema": "wwmsync-m1-2-static-held-outcome-v1",
+  "fixture": {
+    "archive": "wwmsync-gfn-motion-20260810-143835.zip",
+    "sha256": "aa14ce0e703d0af5c4c86946f2932b465f8a7fd529001cd1900b3b99b501a216"
+  },
+  "construction": "40-frame temporal-mean static template; frame-20 residual translated while template held; estimator and expected displacement in work px",
+  "requiredMinimumGain": 0.85,
+  "beforeFixedDynamicAnnulus": {
+    "gains": {"1": 0.6784568121, "2": 0.6309771016, "3": 0.654178302, "4": 0.7034543277, "6": 0.9339657807, "8": 0.0145212149, "10": 0.993295871},
+    "red": true
+  },
+  "afterFixedDynamicAnnulus48To72": {
+    "gains": {"1": 0.3858926354, "2": 0.3097861007, "3": 0.23573345, "4": 0.1482227857, "6": 0.0308296769, "8": 0.014157435, "10": 0.012251688},
+    "red": true,
+    "conclusion": "The preregistered primary support correction did not meet the frozen static-held minimum-gain gate. No alternate annulus or matcher family was tried."
+  },
+  "verdict": "M1.2-PARTIAL",
+  "physicalScaleClaim": "NONE",
+  "calibrationExposure": "DISABLED"
+}

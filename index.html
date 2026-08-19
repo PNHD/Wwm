@@ -73,8 +73,7 @@
               <summary data-vision-i18n="advanced">Tinh chỉnh</summary>
               <label class="range-row"><span data-vision-i18n="roiSize">Kích thước ROI</span><input id="visionRoiSize" type="range" min="0.12" max="0.34" step="0.01" value="0.25"><output id="visionRoiValue">25%</output></label>
                 <div class="range-row"><span data-vision-i18n="scale">Tỉ lệ di chuyển</span><output id="visionScaleValue">1.000× global</output></div>
-                <button id="visionCalibrateButton" class="secondary-button vision-anchor" type="button" disabled data-vision-i18n="calibrate">Calibrate from two anchors</button>
-                <p class="fineprint" data-vision-i18n="calibrationHint">After moving a measurable distance, click this and mark your actual current position on the map. One global scale is derived from the two anchors.</p>
+                <button id="visionCalibrateButton" class="secondary-button vision-anchor" type="button" disabled hidden aria-hidden="true">Calibration disabled pending fidelity validation</button>
               <label class="range-row"><span data-vision-i18n="orientation">Bù hướng minimap</span><input id="visionOrientation" type="range" min="-180" max="180" step="1" value="0"><output id="visionOrientationValue">0°</output></label>
             </details>
           </div>
