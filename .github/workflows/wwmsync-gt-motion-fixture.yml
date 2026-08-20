@@ -2,7 +2,7 @@ name: Verify WWMSync Ground-Truth Motion Fixture
 
 on:
   push:
-    branches: [feat/wwmsync-gt-motion-fixture-acquisition]
+    branches: [feat/wwmsync-gt-motion-fixture-acquisition, feat/wwmsync-highrate-gt-capture]
     paths:
       - 'gt-motion-fixture-core.js'
       - 'gt-motion-fixture.js'
@@ -10,6 +10,7 @@ on:
       - 'vision-sync.css'
       - 'index.html'
       - 'tools/test-gt-motion-fixture.mjs'
+      - 'tools/test-gt-motion-fixture-highrate.mjs'
       - '.github/workflows/wwmsync-gt-motion-fixture.yml'
   pull_request:
     branches: [feature/wwm-native-sync-v2]
@@ -20,6 +21,7 @@ on:
       - 'vision-sync.css'
       - 'index.html'
       - 'tools/test-gt-motion-fixture.mjs'
+      - 'tools/test-gt-motion-fixture-highrate.mjs'
       - '.github/workflows/wwmsync-gt-motion-fixture.yml'
 
 permissions:
@@ -42,7 +44,43 @@ jobs:
           node --check gt-motion-fixture-core.js
           node --check gt-motion-fixture.js
           node --check vision-sync.js
-          node --test tools/test-gt-motion-fixture.mjs | tee acquisition-output/test-output.txt
+          node --test tools/test-gt-motion-fixture.mjs tools/test-gt-motion-fixture-highrate.mjs | tee acquisition-output/test-output.txt
+      - name: Verify a synthetic high-rate archive opens in standard, non-project ZIP tools
+        run: |
+          set -euo pipefail
+          node -e "
+          const Core = require('./gt-motion-fixture-core.js');
+          (async () => {
+            const projection = { kind: 'Leaflet.project', crs: 'EPSG:3857', referenceZoom: 11 };
+            const a = (x, y, t) => ({ lat: 1, lng: 2, projected: { x, y }, projection, timestampEpochMs: t });
+            const r = new Core.HighRateWalkRecorder();
+            r.selectStart(a(0, 0, 1000));
+            r.start({ captureTimestampEpochMs: 1000, monotonicTimestampMs: 1000, captureMetadata: { sourceDimensions: { width: 1920, height: 1080 } } });
+            const encoded = [];
+            for (let i = 0; i < 8; i++) {
+              const target = 1000 + i * 50;
+              r.recordFrame({ tickIndex: i, targetTimestampMs: target, tickStartMonotonicMs: target, tickCompleteMonotonicMs: target + 2, captureTimestampEpochMs: Date.now(), sourceVideoTimestampMs: target, roi: { x: 10, y: 10, width: 270, height: 270 }, sourceCaptureWidth: 1920, sourceCaptureHeight: 1080, phase: i < 2 ? 'preroll' : 'walk', raw: null });
+              encoded.push({ index: i, pngBytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, i, 0, 0, 0]) });
+            }
+            r.stop({ captureTimestampEpochMs: 2000, monotonicTimestampMs: 1400, reason: 'user' });
+            r.selectEnd(a(3, 4, 2100));
+            const result = await r.export({ appCommitSha: '0'.repeat(40), branch: 'ci-synthetic' }, encoded);
+            require('fs').writeFileSync('acquisition-output/synthetic-highrate-fixture.zip', result.bytes);
+          })();
+          "
+          test -s acquisition-output/synthetic-highrate-fixture.zip
+          unzip -tq acquisition-output/synthetic-highrate-fixture.zip
+          zipinfo acquisition-output/synthetic-highrate-fixture.zip
+          python3 -c "
+          import zipfile
+          z = zipfile.ZipFile('acquisition-output/synthetic-highrate-fixture.zip')
+          bad = z.testzip()
+          assert bad is None, f'corrupt entry: {bad}'
+          names = set(z.namelist())
+          assert 'manifest.json' in names and 'run.json' in names, names
+          assert 'frames/frame-0000.png' in names, names
+          print('python zipfile OK', sorted(names))
+          "
       - name: Record immutable CI evidence
         run: |
           set -euo pipefail

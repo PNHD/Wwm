@@ -92,6 +92,19 @@
           <p id="gtStatus" class="vision-status" role="status" aria-live="polite"></p>
         </section>
 
+        <section class="panel gt-motion-fixture" id="gtHighRateMotionPanel" hidden>
+          <div class="section-head"><h2>High-Rate Motion Capture</h2><span class="status-badge warn">DEV ONLY</span></div>
+          <p class="fineprint">One 20 Hz WALK capture only, for offline causal replay. Select the actual start position, record through an automatic 2-second stationary pre-roll and post-roll, then select the actual end position. Raw ROI frames only; no vision-sync estimation runs during capture.</p>
+          <div class="gt-motion-actions">
+            <button id="gtHrStart" class="secondary-button" type="button">1. Select start</button>
+            <button id="gtHrRecord" class="primary-button" type="button" disabled>2. Start high-rate WALK capture</button>
+            <button id="gtHrStop" class="secondary-button" type="button" disabled>3. Stop</button>
+            <button id="gtHrExport" class="primary-button" type="button" disabled>4. Export fixture</button>
+          </div>
+          <p class="fineprint"><strong id="gtHrPhase">Idle</strong> · <span id="gtHrCount">0/480 frames</span></p>
+          <p id="gtHrStatus" class="vision-status" role="status" aria-live="polite"></p>
+        </section>
+
         <section class="panel gt-poi-calibration" id="gtPoiCalibrationPanel" hidden>
           <div class="section-head"><h2>POI Calibration Capture</h2><span class="status-badge warn">DEV ONLY</span></div>
           <p class="fineprint">Evidence acquisition only. Freeze one raw minimap frame, then bind two visibly well-separated icon centres to two existing WWMSync catalogue markers. No tracker or WALK truth is used.</p>
