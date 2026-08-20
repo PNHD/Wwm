@@ -67,6 +67,15 @@ jobs:
           grep -Fq 'scaleAppliedToRuntime:false' gt-poi-calibration-core.js
           grep -Fq 'orientationAppliedToRuntime:false' gt-poi-calibration-core.js
           grep -Fq 'absoluteLocalization:false' gt-poi-calibration-core.js
+          grep -Fq "gtHighRateMotionPanel" index.html
+          grep -Fq "params.get('gt-highrate')==='1'" gt-motion-fixture.js
+          grep -Fq 'HighRateWalkRecorder' gt-motion-fixture-core.js
+          grep -Fq 'HIGHRATE_NOMINAL_INTERVAL_MS = 50' gt-motion-fixture-core.js
+          grep -Fq "wwmsync-ground-truth-motion-hires-v1.zip" gt-motion-fixture-core.js
+          grep -Fq 'trackerUsedForTruth: false' gt-motion-fixture-core.js
+          grep -Fq 'walkOutcomeUsedForTransform: false' gt-motion-fixture-core.js
+          grep -Fq 'scaleFittedFromWalk: false' gt-motion-fixture-core.js
+          grep -Fq 'orientationFittedFromWalk: false' gt-motion-fixture-core.js
           ! grep -Fq '<script src="/vision-sync-loader.js"></script>' index.html
           grep -Fq 'display-capture=(self)' _headers
 
@@ -141,6 +150,8 @@ jobs:
           grep -Fq '<script src="/gt-poi-calibration.js"></script>' /tmp/root.html
           grep -Fq 'WWMSyncGroundTruthFixtureCore' /tmp/gt-motion-fixture-core.js
           grep -Fq "params.get('gt-motion-fixture')==='1'" /tmp/gt-motion-fixture.js
+          grep -Fq "params.get('gt-highrate')==='1'" /tmp/gt-motion-fixture.js
+          grep -Fq 'HighRateWalkRecorder' /tmp/gt-motion-fixture-core.js
           grep -Fq 'WWMSyncPoiCalibrationCore' /tmp/gt-poi-calibration-core.js
           grep -Fq "params.get('gt-poi-calibration')!=='1'" /tmp/gt-poi-calibration.js
           grep -Fq 'M1_MANUAL_RELATIVE_V1' /tmp/vision-sync.js
@@ -169,18 +180,20 @@ jobs:
               await p.waitForFunction(()=>window.__WWMSYNC_VISION_HARDENING__?.version==='M1_MANUAL_RELATIVE_V1'&&window.__WWMSYNC_VISION_HARDENING__?.implementation==='EXISTING_REUSED'&&window.__WWMSYNC_VISION_HARDENING__?.absoluteLocalization===false&&typeof window.__WWMSYNC_VISION_DIAGNOSTICS__==='function'&&typeof window.L?.map==='function',null,{timeout:30000});
               if(mode==='motion')await p.waitForFunction(()=>document.getElementById('gtMotionFixturePanel')?.hidden===false,null,{timeout:30000});
               if(mode==='poi')await p.waitForFunction(()=>document.getElementById('gtPoiCalibrationPanel')?.hidden===false,null,{timeout:30000});
-              const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),hasStartVision:!!document.getElementById('visionStartButton'),gtPanelHidden:document.getElementById('gtMotionFixturePanel')?.hidden,poiPanelHidden:document.getElementById('gtPoiCalibrationPanel')?.hidden,poiRecorderType:typeof window.WWMSyncPoiCalibrationCore?.PoiCalibrationRecorder,mapOptions:document.querySelectorAll('#mapSelect option').length}));
+              if(mode==='highrate')await p.waitForFunction(()=>document.getElementById('gtHighRateMotionPanel')?.hidden===false,null,{timeout:30000});
+              const s=await p.evaluate(()=>({hardening:window.__WWMSYNC_VISION_HARDENING__,vision:window.__WWMSYNC_VISION_DIAGNOSTICS__(),absoluteReplayType:typeof window.__WWMSYNC_ABSOLUTE_REPLAY__,absoluteDiagnosticsType:typeof window.__WWMSYNC_ABSOLUTE_DIAGNOSTICS__,leafletMapType:typeof window.L?.map,hasMapShell:!!document.getElementById('map'),hasSeedAction:!!document.getElementById('visionAnchorButton'),hasStartVision:!!document.getElementById('visionStartButton'),gtPanelHidden:document.getElementById('gtMotionFixturePanel')?.hidden,poiPanelHidden:document.getElementById('gtPoiCalibrationPanel')?.hidden,hrPanelHidden:document.getElementById('gtHighRateMotionPanel')?.hidden,poiRecorderType:typeof window.WWMSyncPoiCalibrationCore?.PoiCalibrationRecorder,hrRecorderType:typeof window.WWMSyncGroundTruthFixtureCore?.HighRateWalkRecorder,mapOptions:document.querySelectorAll('#mapSelect option').length}));
               console.log(`${mode.toUpperCase()}_RUNTIME`,JSON.stringify(s));
               console.log(`${mode.toUpperCase()}_PAGE_ERRORS`,JSON.stringify(errors));
               await p.close();
-              const commonBad=errors.length||s.leafletMapType!=='function'||!s.hasMapShell||!s.hasSeedAction||!s.hasStartVision||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined'||s.poiRecorderType!=='function';
-              const modeBad=mode==='ordinary'?(s.gtPanelHidden!==true||s.poiPanelHidden!==true):mode==='motion'?(s.gtPanelHidden!==false||s.poiPanelHidden!==true):(s.gtPanelHidden!==true||s.poiPanelHidden!==false);
+              const commonBad=errors.length||s.leafletMapType!=='function'||!s.hasMapShell||!s.hasSeedAction||!s.hasStartVision||s.absoluteReplayType!=='undefined'||s.absoluteDiagnosticsType!=='undefined'||s.poiRecorderType!=='function'||s.hrRecorderType!=='function';
+              const modeBad=mode==='ordinary'?(s.gtPanelHidden!==true||s.poiPanelHidden!==true||s.hrPanelHidden!==true):mode==='motion'?(s.gtPanelHidden!==false||s.poiPanelHidden!==true||s.hrPanelHidden!==true):mode==='poi'?(s.gtPanelHidden!==true||s.poiPanelHidden!==false||s.hrPanelHidden!==true):(s.gtPanelHidden!==true||s.poiPanelHidden!==true||s.hrPanelHidden!==false);
               if(commonBad||modeBad)process.exit(1);
             }
             const base=process.env.EXACT_URL.replace(/\/$/,'');
             await load(process.env.EXACT_URL,'ordinary');
             await load(`${base}?gt-motion-fixture=1&app-commit=${process.env.SOURCE_SHA}`,'motion');
             await load(`${base}?gt-poi-calibration=1&app-commit=${process.env.SOURCE_SHA}`,'poi');
+            await load(`${base}?gt-motion-fixture=1&gt-highrate=1&app-commit=${process.env.SOURCE_SHA}`,'highrate');
             await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
